@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const Color primary = Color(0xFF1E3A8A);
+  static const Color primary = Color(0xFF111827);
   static const Color accent = Color(0xFF10B981);
   static const Color background = Color(0xFFF8FAFC);
   static const Color surface = Color(0xFFFFFFFF);
@@ -21,7 +21,7 @@ class AppTheme {
         seedColor: primary,
         brightness: Brightness.light,
       ),
-      fontFamily: 'Roboto',
+      fontFamily: 'Inter',
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,

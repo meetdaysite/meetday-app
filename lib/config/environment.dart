@@ -19,11 +19,12 @@ class AppConfig {
     const envName = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
     const baseUrl = String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'https://api-dev.meetday.example',
+      defaultValue:
+          'https://meetday-backend-371293689986.asia-south1.run.app/api/v1',
     );
     const socketUrl = String.fromEnvironment(
       'SOCKET_BASE_URL',
-      defaultValue: 'https://socket-dev.meetday.example',
+      defaultValue: 'https://meetday-backend-371293689986.asia-south1.run.app',
     );
 
     final environment = switch (envName) {

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "371293689986",
+    "project_id": "meetday-dev",
+    "storage_bucket": "meetday-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371293689986:android:568bac6292fae3bf36bc9b",
+        "android_client_info": {
+          "package_name": "com.meetday.app.meetday_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "371293689986-e8rfns8q8hj77mraeg46hel4h3i41q78.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.meetday.app.meetday_app",
+            "certificate_hash": "fd4b9b0ed2e4c2864c4e46d65b4cfe8e76f0f344"
+          }
+        },
+        {
+          "client_id": "371293689986-srhldepau68oo8pm7o4s1d0j3q72bh04.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDus0szvX6L9E1QlS4qCr3eceDRcgaaEo8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "371293689986-srhldepau68oo8pm7o4s1d0j3q72bh04.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
