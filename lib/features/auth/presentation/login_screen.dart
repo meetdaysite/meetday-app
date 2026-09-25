@@ -24,8 +24,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .signInWithGoogle(role: widget.role);
     } on AuthException catch (error) {
       if (mounted) _showError(error.message);
-    } catch (_) {
-      if (mounted) _showError('Unable to sign in right now. Please try again.');
+    } catch (error) {
+      if (mounted) {
+        _showError(
+          AuthController.formatLoginError(
+            error,
+            fallback: 'Unable to sign in right now. Please try again.',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../config/environment.dart';
 
@@ -13,6 +14,14 @@ class ApiClient {
           headers: const {'Content-Type': 'application/json'},
         ),
       );
+
+  Future<Map<String, dynamic>> getHostCommunityProfile() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/hosts/community',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
 
   final Dio _dio;
   String? _idToken;
@@ -55,5 +64,14 @@ final appConfigProvider = Provider<AppConfig>((ref) {
 });
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  return ApiClient(config: ref.watch(appConfigProvider));
+  final client = ApiClient(config: ref.watch(appConfigProvider));
+
+  Future.microtask(() async {
+    final token = await const FlutterSecureStorage().read(
+      key: 'firebase_id_token',
+    );
+    client.setIdToken(token);
+  });
+
+  return client;
 });

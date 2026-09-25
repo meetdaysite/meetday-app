@@ -5,7 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
 
 import '../../../config/environment.dart';
-import '../../../data/network/api_client.dart';
+import '../../../core/network/api_client.dart';
 import '../domain/account_role.dart';
 
 abstract class AppSecureStorage {
@@ -52,10 +52,87 @@ class AuthState {
 class AuthController extends Notifier<AuthState> {
   AuthController({AppSecureStorage? storage, ApiClient? api})
     : _storage = storage ?? FlutterSecureStorageAdapter(),
-      _api = api;
+      _api = api,
+      _googleSignIn = GoogleSignIn(
+        serverClientId:
+            '371293689986-srhldepau68oo8pm7o4s1d0j3q72bh04.apps.googleusercontent.com',
+      );
 
   final AppSecureStorage _storage;
   final ApiClient? _api;
+  final GoogleSignIn _googleSignIn;
+
+  static String formatLoginError(
+    Object error, {
+    String fallback = 'Unable to sign in right now. Please try again.',
+  }) {
+    if (error is AuthException) return error.message;
+
+    if (error is FirebaseAuthException) {
+      return _firebaseMessage(error.code);
+    }
+
+    if (error is DioException) {
+      final responseMessage = _extractDioMessage(error.response?.data);
+      if (responseMessage.isNotEmpty) {
+        return responseMessage;
+      }
+
+      if (error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout) {
+        return 'Network connection failed. Please check your internet and try again.';
+      }
+
+      if (error.response?.statusCode == 401) {
+        return 'Your session has expired. Please sign in again.';
+      }
+    }
+
+    final text = error.toString();
+    if (text.startsWith('Exception: ')) {
+      final message = text.substring('Exception: '.length).trim();
+      if (message.isNotEmpty) return message;
+    }
+
+    if (text.startsWith('FirebaseAuthException')) {
+      final match = RegExp(r'code: \s*([A-Za-z0-9_-]+)').firstMatch(text);
+      final code = match?.group(1);
+      if (code != null && code.isNotEmpty) {
+        return _firebaseMessage(code);
+      }
+    }
+
+    return fallback;
+  }
+
+  static String _extractDioMessage(dynamic responseData) {
+    if (responseData is Map<String, dynamic>) {
+      final value = responseData['message'] ?? responseData['error'];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+
+    if (responseData is Map) {
+      final value = responseData['message'] ?? responseData['error'];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+
+    if (responseData is String && responseData.trim().isNotEmpty) {
+      return responseData.trim();
+    }
+
+    return '';
+  }
+
+  static String _firebaseMessage(String code) => switch (code) {
+    'invalid-credential' ||
+    'user-not-found' ||
+    'wrong-password' => 'Email or password is incorrect.',
+    'user-disabled' => 'This account has been disabled.',
+    'too-many-requests' => 'Too many attempts. Please try again later.',
+    _ => 'Unable to sign in with these details.',
+  };
 
   @override
   AuthState build() {
@@ -150,7 +227,7 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> signInWithGoogle({required AccountRole role}) async {
     try {
-      final googleUser = await GoogleSignIn().signIn();
+      final googleUser = await _googleSignIn.signIn();
       if (googleUser == null) return;
 
       final googleAuth = await googleUser.authentication;
@@ -174,7 +251,7 @@ class AuthController extends Notifier<AuthState> {
       final profile = await api.getMe();
       if (!_hasRoleAccess(profile, role)) {
         await FirebaseAuth.instance.signOut();
-        await GoogleSignIn().signOut();
+        await _googleSignIn.signOut();
         throw AuthException(
           'No ${role.label.toLowerCase()} account found for this Google account. Please sign up.',
         );
@@ -218,18 +295,9 @@ class AuthController extends Notifier<AuthState> {
     await _storage.delete(key: 'user_id');
     await _storage.delete(key: 'account_role');
     await FirebaseAuth.instance.signOut();
-    await GoogleSignIn().signOut();
+    await _googleSignIn.signOut();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
-
-  String _firebaseMessage(String code) => switch (code) {
-    'invalid-credential' ||
-    'user-not-found' ||
-    'wrong-password' => 'Email or password is incorrect.',
-    'user-disabled' => 'This account has been disabled.',
-    'too-many-requests' => 'Too many attempts. Please try again later.',
-    _ => 'Unable to sign in with these details.',
-  };
 }
 
 class AuthException implements Exception {

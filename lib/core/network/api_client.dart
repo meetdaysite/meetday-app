@@ -6,10 +6,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../config/environment.dart';
 
 class ApiClient {
+  ApiClient({required AppConfig config}) : _config = config;
+
   ApiClient._(this._config);
 
   final AppConfig _config;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  String? _idToken;
 
   static ApiClient? _instance;
 
@@ -19,6 +22,49 @@ class ApiClient {
   Dio get dio => _dio;
 
   late final Dio _dio = _buildDio();
+
+  void setIdToken(String? token) {
+    _idToken = token;
+  }
+
+  Future<Map<String, dynamic>> getHostCommunityProfile() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/hosts/community',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> getMe() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/auth/me',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<bool> checkConnection() async {
+    try {
+      await dio.get<void>('/health');
+      return true;
+    } on DioException {
+      return false;
+    }
+  }
+
+  Map<String, String> _authHeaders() {
+    if (_idToken != null && _idToken!.isNotEmpty) {
+      return {'Authorization': 'Bearer $_idToken'};
+    }
+    return {};
+  }
+
+  Map<String, dynamic> _unwrapData(Map<String, dynamic>? response) {
+    final data = response?['data'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return response ?? <String, dynamic>{};
+  }
 
   Dio _buildDio() {
     final dio = Dio(
@@ -37,7 +83,8 @@ class ApiClient {
     dio.interceptors.addAll([
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await _secureStorage.read(key: 'firebase_id_token');
+          final token =
+              _idToken ?? await _secureStorage.read(key: 'firebase_id_token');
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../data/network/api_client.dart';
+import '../../../core/network/api_client.dart';
 import '../../auth/state/auth_provider.dart';
 
 class HomeShell extends ConsumerWidget {

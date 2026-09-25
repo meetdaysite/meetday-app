@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/role_selection_screen.dart';
 import '../features/auth/state/auth_provider.dart';
+import '../features/community/presentation/community_dashboard_screen.dart';
 import '../features/home/presentation/home_shell.dart';
 import '../features/auth/domain/account_role.dart';
 
@@ -33,6 +34,10 @@ class AppRouter {
         },
       ),
       GoRoute(path: '/home', builder: (context, state) => const HomeShell()),
+      GoRoute(
+        path: '/community-dashboard',
+        builder: (context, state) => const CommunityDashboardScreen(),
+      ),
     ],
   );
 }
@@ -42,7 +47,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   ref.listen<AuthState>(authControllerProvider, (_, next) {
     if (next.status == AuthStatus.authenticated) {
-      router.go('/home');
+      final destination = next.role == AccountRole.community
+          ? '/community-dashboard'
+          : '/home';
+      router.go(destination);
     } else if (next.status == AuthStatus.unauthenticated) {
       router.go('/roles');
     }
