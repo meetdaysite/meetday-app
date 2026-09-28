@@ -218,26 +218,39 @@ final dashboardDealsProvider = FutureProvider.autoDispose((ref) async {
   }
 });
 
-// Support Conversations
+// Support Conversations (from /sponsorships/chats - real sponsorship chats)
 final supportConversationsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/conversations?type=support&limit=50');
-    if (response.statusCode == 200) {
-      final data = _safeList(response.data);
-      if (data.isEmpty) return [];
+    final response = await api.dio.get<dynamic>('/sponsorships/chats');
+    print('=== SPONSORSHIPS/CHATS RESPONSE ===');
+    print('Status: ${response.statusCode}');
+    print('Response: ${response.data}');
 
-      return (data as List)
+    if (response.statusCode == 200) {
+      final responseData = response.data;
+      List<dynamic> chats = [];
+
+      if (responseData is Map && responseData.containsKey('data')) {
+        chats = responseData['data'] ?? [];
+      }
+
+      print('Chats count: ${chats.length}');
+
+      if (chats.isEmpty) return [];
+
+      final result = (chats as List)
           .whereType<Map>()
-          .where((item) => item['type'] == 'support')
           .map((item) => {
                 'id': item['id'] ?? '',
-                'participantName': item['participantName'] ?? 'Support',
-                'lastMessage': item['lastMessage'] ?? '',
-                'lastMessageTime': item['lastMessageTime'] ?? '',
+                'participantName': item['counterpartName'] ?? item['participantName'] ?? 'Support',
+                'lastMessage': item['lastMessage'] ?? item['lastMessageText'] ?? '',
+                'lastMessageTime': item['lastMessageTime'] ?? item['lastMessageAt'] ?? '',
                 'unreadCount': item['unreadCount'] ?? 0,
               })
           .toList();
+      print('Final chats: $result');
+      return result;
     }
     return [];
   } catch (e) {
@@ -246,24 +259,30 @@ final supportConversationsProvider = FutureProvider.autoDispose((ref) async {
   }
 });
 
-// All Conversations (for messaging)
+// All Conversations (from /sponsorships/chats - real sponsorship chats/conversations)
 final allConversationsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/conversations?limit=50');
+    final response = await api.dio.get<dynamic>('/sponsorships/chats');
     if (response.statusCode == 200) {
-      final data = _safeList(response.data);
-      if (data.isEmpty) return [];
+      final responseData = response.data;
+      List<dynamic> chats = [];
 
-      return (data as List)
+      if (responseData is Map && responseData.containsKey('data')) {
+        chats = responseData['data'] ?? [];
+      }
+
+      if (chats.isEmpty) return [];
+
+      return (chats as List)
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
-                'participantName': item['participantName'] ?? 'Unknown',
-                'lastMessage': item['lastMessage'] ?? '',
-                'lastMessageTime': item['lastMessageTime'] ?? '',
+                'participantName': item['counterpartName'] ?? item['participantName'] ?? 'Unknown',
+                'lastMessage': item['lastMessage'] ?? item['lastMessageText'] ?? '',
+                'lastMessageTime': item['lastMessageTime'] ?? item['lastMessageAt'] ?? '',
                 'unreadCount': item['unreadCount'] ?? 0,
-                'type': item['type'] ?? 'brand',
+                'type': item['type'] ?? 'sponsorship',
               })
           .toList();
     }
