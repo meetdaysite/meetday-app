@@ -22,10 +22,15 @@ void main() {
 
     await tester.pump();
 
+    // Open the drawer to reveal the mobile navigation items matching meetday-frontend
+    final scaffoldState = tester.firstState<ScaffoldState>(find.byType(Scaffold));
+    scaffoldState.openDrawer();
+    await tester.pumpAndSettle();
+
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('Experience Proposals'), findsOneWidget);
     expect(find.text('Community Hubs'), findsOneWidget);
-    expect(find.text('Communities'), findsOneWidget);
+    expect(find.descendant(of: find.byType(Drawer), matching: find.text('Communities')), findsOneWidget);
     expect(find.text('Locked Deals'), findsOneWidget);
     expect(find.text('Support Chat'), findsOneWidget);
     expect(find.text('Notifications'), findsOneWidget);

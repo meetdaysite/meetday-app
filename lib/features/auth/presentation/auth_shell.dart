@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../domain/account_role.dart';
 
@@ -20,26 +22,26 @@ class AuthShell extends StatelessWidget {
               children: [
                 if (wide) Expanded(child: _BrandPanel(role: role)),
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: wide ? 28 : 20,
-                      vertical: wide ? 28 : 22,
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: wide ? constraints.maxHeight - 56 : 0,
+                  child: Column(
+                    children: [
+                      if (!wide) ...[
+                        const Padding(
+                          padding: EdgeInsets.only(top: 14, bottom: 8),
+                          child: Center(child: _Logo(large: false)),
+                        ),
+                      ],
+                      Expanded(
+                        child: Center(
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: wide ? 28 : 20,
+                              vertical: wide ? 28 : 16,
+                            ),
+                            child: _AuthCard(child: child),
+                          ),
+                        ),
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (!wide) ...[
-                            const _Logo(large: false),
-                            const SizedBox(height: 22),
-                          ],
-                          _AuthCard(child: child),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 ),
               ],
@@ -129,10 +131,10 @@ class _BrandPanel extends StatelessWidget {
           const SizedBox(height: 28),
           Text(
             role == null ? 'Find your people.' : 'Your ${role!.label} space.',
-            style: const TextStyle(
+            style: GoogleFonts.bricolageGrotesque(
               color: Colors.white,
               fontSize: 25,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -148,19 +150,11 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'MEETDAY',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: large ? 30 : 25,
-            fontWeight: FontWeight.w900,
-            letterSpacing: large ? 1.2 : 0.8,
-          ),
-        ),
-      ],
+    return SvgPicture.asset(
+      'assets/logo/meetday-white.svg',
+      height: large ? 46 : 34,
+      fit: BoxFit.contain,
+      semanticsLabel: 'Meetday Logo',
     );
   }
 }

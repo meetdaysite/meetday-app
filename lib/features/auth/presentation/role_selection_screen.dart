@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../domain/account_role.dart';
 import 'auth_shell.dart';
@@ -13,18 +14,43 @@ class RoleSelectionScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/');
+                }
+              },
+              icon: const Icon(Icons.arrow_back, size: 17),
+              label: const Text('Back to home'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.black54,
+                padding: EdgeInsets.zero,
+                textStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
             'Welcome to Meetday',
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
+            style: GoogleFonts.bricolageGrotesque(
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
               color: Colors.black,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Pick your side of the experience to get started.',
-            style: TextStyle(color: Color(0xFF667085), height: 1.45),
+            style: GoogleFonts.poppins(
+              color: const Color(0xFF667085),
+              fontSize: 14.5,
+              fontWeight: FontWeight.w400,
+              height: 1.45,
+            ),
           ),
           const SizedBox(height: 24),
           ...AccountRole.values.map(
@@ -34,10 +60,14 @@ class RoleSelectionScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Center(
+          Center(
             child: Text(
               'One account. Every side of the experience.',
-              style: TextStyle(color: Color(0xFF98A2B3), fontSize: 12),
+              style: GoogleFonts.poppins(
+                color: const Color(0xFF98A2B3),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -95,18 +125,19 @@ class _RoleCard extends StatelessWidget {
                 children: [
                   Text(
                     role.label,
-                    style: const TextStyle(
+                    style: GoogleFonts.bricolageGrotesque(
                       fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF101828),
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF101828),
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     role.description,
-                    style: const TextStyle(
+                    style: GoogleFonts.poppins(
                       fontSize: 13,
-                      color: Color(0xFF667085),
+                      fontWeight: FontWeight.w400,
+                      color: const Color(0xFF667085),
                       height: 1.35,
                     ),
                   ),

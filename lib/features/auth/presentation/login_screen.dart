@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../domain/account_role.dart';
 import '../state/auth_provider.dart';
@@ -56,29 +57,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: () => context.go('/roles'),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/');
+                }
+              },
               icon: const Icon(Icons.arrow_back, size: 17),
-              label: const Text('Back to welcome'),
+              label: const Text('Back to home'),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.black54,
                 padding: EdgeInsets.zero,
-                textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                textStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13),
               ),
             ),
           ),
           const SizedBox(height: 18),
           Text(
             'Log In',
-            style: const TextStyle(
+            style: GoogleFonts.bricolageGrotesque(
               fontSize: 32,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
               color: Colors.black,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Welcome back! Sign in to your ${widget.role.label.toLowerCase()} workspace.',
-            style: const TextStyle(color: Color(0xFF667085), fontSize: 15),
+            style: GoogleFonts.poppins(
+              color: const Color(0xFF667085),
+              fontSize: 14.5,
+              fontWeight: FontWeight.w400,
+              height: 1.45,
+            ),
           ),
           const SizedBox(height: 28),
           ElevatedButton.icon(
@@ -100,13 +112,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     width: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Continue with Google'),
+                : Text(
+                    'Continue with Google',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                    ),
+                  ),
           ),
           const SizedBox(height: 18),
           Center(
             child: TextButton(
               onPressed: () => _showError('Sign up flow is coming next.'),
-              child: const Text('Create a new account'),
+              child: Text(
+                'Create a new account',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
             ),
           ),
         ],

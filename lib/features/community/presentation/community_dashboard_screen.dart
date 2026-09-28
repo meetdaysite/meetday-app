@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/theme/meetday_colors.dart';
+import '../../auth/domain/account_role.dart';
+import '../../auth/state/auth_provider.dart';
+import '../../dashboard/presentation/meetday_sidebar_drawer.dart';
 
 enum CommunityDashboardTab {
   dashboard,
@@ -33,12 +39,36 @@ extension CommunityDashboardTabX on CommunityDashboardTab {
         return 'Notifications';
     }
   }
+
+  IconData get icon {
+    switch (this) {
+      case CommunityDashboardTab.dashboard:
+        return Icons.dashboard_rounded;
+      case CommunityDashboardTab.proposals:
+        return Icons.description_rounded;
+      case CommunityDashboardTab.hubs:
+        return Icons.calendar_today_rounded;
+      case CommunityDashboardTab.communities:
+        return Icons.groups_rounded;
+      case CommunityDashboardTab.deals:
+        return Icons.lock_rounded;
+      case CommunityDashboardTab.support:
+        return Icons.headset_mic_rounded;
+      case CommunityDashboardTab.notifications:
+        return Icons.notifications_rounded;
+    }
+  }
 }
 
-class CommunityDashboardScreen extends ConsumerWidget {
-  const CommunityDashboardScreen({super.key, this.profileFuture});
+class CommunityDashboardScreen extends ConsumerStatefulWidget {
+  const CommunityDashboardScreen({
+    super.key,
+    this.profileFuture,
+    this.roleOverride,
+  });
 
   final Future<Map<String, dynamic>>? profileFuture;
+  final AccountRole? roleOverride;
 
   static const List<CommunityDashboardTab> tabs = [
     CommunityDashboardTab.dashboard,
@@ -51,100 +81,164 @@ class CommunityDashboardScreen extends ConsumerWidget {
   ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CommunityDashboardScreen> createState() =>
+      _CommunityDashboardScreenState();
+}
+
+class _CommunityDashboardScreenState
+    extends ConsumerState<CommunityDashboardScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  int _currentTabIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(
+      length: CommunityDashboardScreen.tabs.length,
+      vsync: this,
+    );
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging ||
+          _tabController.index != _currentTabIndex) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _onTabSelected(int index) {
+    setState(() {
+      _currentTabIndex = index;
+    });
+    _tabController.animateTo(index);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final api = ref.watch(apiClientProvider);
+    final authState = ref.watch(authControllerProvider);
+    final effectiveRole = widget.roleOverride ?? authState.role ?? AccountRole.community;
 
     return FutureBuilder<Map<String, dynamic>>(
-      future:
-          profileFuture ??
+      future: widget.profileFuture ??
           (() async {
             final token = await const FlutterSecureStorage().read(
               key: 'firebase_id_token',
             );
             api.setIdToken(token);
+            if (effectiveRole == AccountRole.brand) {
+              return await api.getMe();
+            }
             return await api.getHostCommunityProfile();
           })(),
       builder: (context, snapshot) {
         final profile = snapshot.data ?? const <String, dynamic>{};
-        final profileName =
-            (profile['name'] as String?) ??
+        final profileName = (profile['name'] as String?) ??
             (profile['communityName'] as String?) ??
+            (profile['brandName'] as String?) ??
             (profile['displayName'] as String?) ??
-            'Your Community';
-        final displayName =
-            (profile['displayName'] as String?) ??
+            (effectiveRole == AccountRole.brand ? 'My Brand' : 'My Community');
+        final displayName = (profile['displayName'] as String?) ??
+            (profile['firstName'] as String?) ??
             (profile['name'] as String?) ??
-            'Host';
-        final approvalStatus =
-            (profile['approvalStatus'] as String?) ??
+            (effectiveRole == AccountRole.brand ? 'Brand' : 'Host');
+        final approvalStatus = (profile['approvalStatus'] as String?) ??
             (profile['status'] as String?) ??
-            'PENDING';
+            'APPROVED';
+        final avatarUrl = profile['avatarUrl'] as String?;
 
-        return DefaultTabController(
-          length: tabs.length,
-          child: Scaffold(
-            backgroundColor: const Color(0xFFF7F7F6),
-            appBar: AppBar(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF101828),
-              title: Text(profileName),
-              actions: [
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.search_rounded),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.notifications_none_rounded),
-                ),
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(58),
-                child: Container(
-                  color: Colors.white,
-                  child: TabBar(
-                    isScrollable: true,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    labelColor: const Color(0xFF101828),
-                    unselectedLabelColor: const Color(0xFF667085),
-                    indicator: BoxDecoration(
+        return Scaffold(
+          backgroundColor: const Color(0xFFFFFDFC),
+          drawer: MeetdaySidebarDrawer(
+            currentTabIndex: _currentTabIndex,
+            onSelectTab: _onTabSelected,
+            communityName: profileName,
+            avatarUrl: avatarUrl,
+            role: effectiveRole,
+          ),
+          appBar: AppBar(
+            backgroundColor: MeetdayColors.primaryRed,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            toolbarHeight: 64,
+            centerTitle: false,
+            automaticallyImplyLeading: false,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(
+                bottom: Radius.circular(24),
+              ),
+            ),
+            titleSpacing: 16,
+            title: GestureDetector(
+              onTap: () => _onTabSelected(0),
+              behavior: HitTestBehavior.opaque,
+              child: SvgPicture.asset(
+                'assets/logo/meetday-white.svg',
+                height: 28,
+                fit: BoxFit.contain,
+              ),
+            ),
+            actions: [
+              Builder(
+                builder: (context) => GestureDetector(
+                  onTap: () => Scaffold.of(context).openDrawer(),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      color: const Color(0xFFFFF2C8),
+                      border: Border.all(color: Colors.black, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(2, 2),
+                          blurRadius: 0,
+                        ),
+                      ],
                     ),
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    tabs: tabs
-                        .map(
-                          (tab) => Tab(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                              child: Text(tab.label),
-                            ),
-                          ),
-                        )
-                        .toList(),
+                    child: const Icon(Icons.menu_rounded, color: Colors.black, size: 20),
                   ),
                 ),
               ),
-            ),
-            body: snapshot.connectionState == ConnectionState.waiting
-                ? const Center(child: CircularProgressIndicator())
-                : TabBarView(
-                    children: [
-                      _DashboardTabBody(
-                        displayName: displayName,
-                        profileName: profileName,
-                        approvalStatus: approvalStatus,
-                      ),
-                      const _ProposalTabBody(),
-                      const _HubTabBody(),
-                      const _CommunityTabBody(),
-                      const _DealsTabBody(),
-                      const _SupportTabBody(),
-                      const _NotificationsTabBody(),
-                    ],
+            ],
+          ),
+          body: snapshot.connectionState == ConnectionState.waiting
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: MeetdayColors.primaryRed,
                   ),
+                )
+              : TabBarView(
+                  controller: _tabController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _DashboardTabBody(
+                      displayName: displayName,
+                      profileName: profileName,
+                      approvalStatus: approvalStatus,
+                      role: effectiveRole,
+                      onNavigateToTab: _onTabSelected,
+                    ),
+                    _ProposalTabBody(role: effectiveRole),
+                    const _HubTabBody(),
+                    const _CommunityTabBody(),
+                    const _ChatsTabBody(),
+                    const _SupportTabBody(),
+                    const _NotificationsTabBody(),
+                  ],
+                ),
+          bottomNavigationBar: _MeetdayMobileBottomBar(
+            currentIndex: _currentTabIndex,
+            onTap: _onTabSelected,
           ),
         );
       },
@@ -157,307 +251,318 @@ class _DashboardTabBody extends StatelessWidget {
     required this.displayName,
     required this.profileName,
     required this.approvalStatus,
+    required this.role,
+    required this.onNavigateToTab,
   });
 
   final String displayName;
   final String profileName;
   final String approvalStatus;
+  final AccountRole role;
+  final ValueChanged<int> onNavigateToTab;
 
   @override
   Widget build(BuildContext context) {
-    final normalizedStatus = approvalStatus.toUpperCase();
-    final isApproved = normalizedStatus == 'APPROVED';
-    final statusPill = isApproved ? 'Live' : 'Pending';
+    final isBrand = role == AccountRole.brand;
 
     final proposalCards = [
       _ProposalCardPreview(
         title: 'The Block Party',
-        city: 'Mumbai',
-        venue: 'Marine Drive',
-        description:
-            'A weekend music and food festival for creators and growing communities.',
         dateLabel: '12–14 Oct',
-        guestLabel: '1200 Guests',
+        hasCash: true,
+        hasBarter: true,
+        onTap: () => onNavigateToTab(1),
       ),
       _ProposalCardPreview(
         title: 'Creator Night',
-        city: 'Bengaluru',
-        venue: 'Arena Hall',
-        description:
-            'An intimate creator-led networking night with live performances and sponsor booths.',
         dateLabel: '24 Oct',
-        guestLabel: '650 Guests',
-        badge: 'Cash',
-        badgeColor: const Color(0xFFDCFCE7),
+        hasCash: true,
+        onTap: () => onNavigateToTab(1),
       ),
       _ProposalCardPreview(
         title: 'Weekend Pop-Up',
-        city: 'Hyderabad',
-        venue: 'Skyline Courtyard',
-        description:
-            'A premium community pop-up bringing brands, creators, and local audiences together.',
         dateLabel: '9 Nov',
-        guestLabel: '850 Guests',
-        badge: 'Barter',
-        badgeColor: const Color(0xFFFFF3BF),
+        hasBarter: true,
+        onTap: () => onNavigateToTab(1),
       ),
     ];
 
     final hubCards = [
       _CommunityHubCardPreview(
         title: 'Design & Culture Hub',
-        subtitle: '3 spaces · 12 active members',
+        memberCount: '12',
+        onTap: () => onNavigateToTab(2),
       ),
       _CommunityHubCardPreview(
-        title: 'Startup Circle',
-        subtitle: '2 spaces · 8 active members',
+        title: 'Startup Circle Hub',
+        memberCount: '8',
+        onTap: () => onNavigateToTab(2),
       ),
       _CommunityHubCardPreview(
-        title: 'Wellness Club',
-        subtitle: '4 spaces · 15 active members',
+        title: 'Wellness Courtyard',
+        memberCount: '15',
+        onTap: () => onNavigateToTab(2),
+      ),
+    ];
+
+    final communityCards = [
+      _CommunityCardPreview(
+        title: 'Meetday Social Circle',
+        memberCount: '1,240',
+        onTap: () => onNavigateToTab(3),
+      ),
+      _CommunityCardPreview(
+        title: 'Creative Hosts Network',
+        memberCount: '760',
+        onTap: () => onNavigateToTab(3),
+      ),
+      _CommunityCardPreview(
+        title: 'Indie Creators Club',
+        memberCount: '2,100',
+        onTap: () => onNavigateToTab(3),
+      ),
+      _CommunityCardPreview(
+        title: 'Tech & Founders Collective',
+        memberCount: '1,850',
+        onTap: () => onNavigateToTab(3),
       ),
     ];
 
     final dealCards = [
-      _DealCardPreview(
+      const _DealCardPreview(
         brandName: 'Aster Labs',
-        projectName: 'Launch Week',
+        projectName: 'Launch Week Activation',
         amount: '₹1,80,000',
         paid: true,
       ),
-      _DealCardPreview(
+      const _DealCardPreview(
         brandName: 'Urban Mint',
-        projectName: 'Weekend Fest',
+        projectName: 'Weekend Street Fest',
         amount: '₹2,35,000',
         paid: false,
       ),
     ];
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
       children: [
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
+
+        // Hero headline
         RichText(
           textAlign: TextAlign.center,
           text: TextSpan(
-            style: const TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.w900,
-              height: 1.15,
-              color: Color(0xFF111111),
+            style: GoogleFonts.bricolageGrotesque(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              height: 1.2,
+              letterSpacing: -0.4,
+              color: const Color(0xFF111111),
             ),
             children: [
-              const TextSpan(text: 'Hey '),
+              TextSpan(text: 'Hey $displayName, '),
               TextSpan(
-                text: displayName,
-                style: const TextStyle(color: Color(0xFF111111)),
-              ),
-              const TextSpan(text: ', '),
-              TextSpan(
-                text: 'what are we building today?',
-                style: const TextStyle(color: Color(0xFFEE2C2C)),
+                text: isBrand
+                    ? 'what are we sponsoring today?'
+                    : 'what are we building today?',
+                style: const TextStyle(color: MeetdayColors.primaryRed),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        const Center(
-          child: Text(
-            'Start something new or pick up where you left off!',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF667085),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
+
+        const SizedBox(height: 6),
+
         Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isApproved
-                  ? const Color(0xFFDCFCE7)
-                  : const Color(0xFFE0F2FE),
-              border: Border.all(color: Colors.black, width: 2),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              'Community status: $statusPill',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF111111),
-              ),
+          child: Text(
+            isBrand
+                ? 'Browse sponsorship opportunities or check out communities!'
+                : 'Start something new or pick up where you left off!',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF667085),
             ),
           ),
         ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: _ActionCard(
-                title: 'Raise Sponsorship',
-                badge: 'LIVE',
-                body:
-                    'Build custom proposals, pitch relevant brand sponsors, and secure brand backing to scale your upcoming experiences.',
-                buttonLabel: 'CREATE PROPOSAL',
-                accent: const Color(0xFFFFC940),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _ActionCard(
-                title: 'Explore Campaigns',
-                badge: 'SOON',
-                body:
-                    'Browse active marketing and sponsorship campaign briefs posted by brands, review requirements, and contact them to collaborate.',
-                buttonLabel: 'EXPLORE CAMPAIGNS',
-                accent: const Color(0xFFE5E7EB),
-                disabled: true,
-              ),
-            ),
-          ],
+
+        const SizedBox(height: 16),
+
+        // Two Hero Action Cards (Stacked vertically for mobile phone screens, exactly like frontend)
+        _ActionCard(
+          title: isBrand ? 'Curated Experiences' : 'Raise Sponsorship',
+          badge: 'LIVE',
+          body: isBrand
+              ? 'Browse hand-picked, curated experiences from top communities and secure offline marketing opportunities.'
+              : 'Build custom proposals, pitch relevant brand sponsors, and secure brand backing to scale your upcoming experiences.',
+          buttonLabel: isBrand ? 'START EXPLORING ➔' : 'CREATE PROPOSAL ➔',
+          accent: MeetdayColors.accentYellow,
+          onTap: () => onNavigateToTab(1),
         ),
-        const SizedBox(height: 24),
-        const Divider(height: 1, color: Color(0x1A000000)),
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Sponsorship Proposals',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'View your approved proposals.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-              ],
-            ),
-            const Text(
-              'View All Proposals >',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF6C32D1),
-              ),
-            ),
-          ],
-        ),
+
         const SizedBox(height: 12),
-        SizedBox(
-          height: 220,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: proposalCards.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
-            itemBuilder: (context, index) => proposalCards[index],
-          ),
+
+        _ActionCard(
+          title: isBrand ? 'Launch a Campaign' : 'Explore Campaigns',
+          badge: isBrand ? 'LIVE' : 'SOON',
+          body: isBrand
+              ? 'Share your offline marketing requirements with active communities and get matched instantly.'
+              : 'Browse active marketing and sponsorship campaign briefs posted by brands, review requirements, and contact them to collaborate.',
+          buttonLabel: isBrand ? 'POST A BRIEF ➔' : 'EXPLORE CAMPAIGNS Soon',
+          accent: isBrand ? MeetdayColors.accentYellow : const Color(0xFFE5E7EB),
+          disabled: !isBrand,
+          onTap: isBrand ? () => onNavigateToTab(1) : null,
         ),
+
         const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Active Community Hubs',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Discover venues and hubs for offline activations and community events.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-              ],
-            ),
-            const Text(
-              'View All Hubs >',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF6C32D1),
-              ),
-            ),
-          ],
+        const Divider(height: 1, color: Color(0x1F000000), thickness: 1.5),
+        const SizedBox(height: 18),
+
+        // Section 1: Proposals
+        _SectionHeaderRow(
+          title: isBrand ? 'Curated Proposals' : 'Sponsorship Proposals',
+          subtitle: isBrand
+              ? 'Approved community event sponsorship proposals.'
+              : 'View your approved proposals.',
+          actionLabel: 'View All Proposals >',
+          onActionTap: () => onNavigateToTab(1),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 200,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: hubCards.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
-            itemBuilder: (context, index) => hubCards[index],
-          ),
-        ),
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Locked Deals & Reports',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'View locked deal terms and submitted deliverables reports.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-              ],
-            ),
-            const Text(
-              'Go to Chats >',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF6C32D1),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         SizedBox(
           height: 210,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: proposalCards.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) => proposalCards[index],
+          ),
+        ),
+
+        const SizedBox(height: 22),
+
+        // Section 2: Active Community Hubs
+        _SectionHeaderRow(
+          title: 'Active Community Hubs',
+          subtitle:
+              'Discover venues and hubs for offline activations and community events.',
+          actionLabel: 'View All Hubs >',
+          onActionTap: () => onNavigateToTab(2),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 210,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: hubCards.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) => hubCards[index],
+          ),
+        ),
+
+        const SizedBox(height: 22),
+
+        // Section 3: Active Communities
+        _SectionHeaderRow(
+          title: 'Active Communities',
+          subtitle:
+              'Discover verified creator and host communities on Meetday.',
+          actionLabel: 'View All Communities >',
+          onActionTap: () => onNavigateToTab(3),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 210,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: communityCards.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) => communityCards[index],
+          ),
+        ),
+
+        const SizedBox(height: 22),
+
+        // Section 4: Locked Deals & Reports
+        _SectionHeaderRow(
+          title: 'Locked Deals & Reports',
+          subtitle:
+              'View locked deal terms and submitted deliverables reports.',
+          actionLabel: 'Go to Chats >',
+          onActionTap: () => onNavigateToTab(4),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 155,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
             itemCount: dealCards.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, index) => dealCards[index],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeaderRow extends StatelessWidget {
+  const _SectionHeaderRow({
+    required this.title,
+    required this.subtitle,
+    required this.actionLabel,
+    required this.onActionTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String actionLabel;
+  final VoidCallback onActionTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.bricolageGrotesque(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF111111),
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: onActionTap,
+              child: Text(
+                actionLabel,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF6C32D1),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          subtitle,
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF667085),
           ),
         ),
       ],
@@ -473,6 +578,7 @@ class _ActionCard extends StatelessWidget {
     required this.buttonLabel,
     required this.accent,
     this.disabled = false,
+    this.onTap,
   });
 
   final String title;
@@ -481,44 +587,51 @@ class _ActionCard extends StatelessWidget {
   final String buttonLabel;
   final Color accent;
   final bool disabled;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: Colors.black, width: 3),
-        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black, width: 2.5),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
+          BoxShadow(
+            color: Colors.black,
+            offset: Offset(4, 4),
+            blurRadius: 0,
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
+                  style: GoogleFonts.bricolageGrotesque(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111111),
                   ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E1B4B),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   badge,
-                  style: const TextStyle(
-                    fontSize: 9,
+                  style: GoogleFonts.poppins(
+                    fontSize: 8.5,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     letterSpacing: 0.8,
@@ -527,35 +640,48 @@ class _ActionCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Text(
-              body,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF4A5565),
-                height: 1.5,
-              ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF525252),
+              height: 1.4,
             ),
           ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: disabled ? const Color(0xFFEBEBEB) : accent,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.black, width: 2),
-            ),
-            child: Center(
-              child: Text(
-                buttonLabel,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                  color: disabled ? const Color(0xFF7A7A7A) : Colors.black,
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: disabled ? null : onTap,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: disabled ? const Color(0x12000000) : accent,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: disabled ? const Color(0x33000000) : Colors.black,
+                  width: disabled ? 1.5 : 2,
+                ),
+                boxShadow: disabled
+                    ? null
+                    : const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(3, 3),
+                          blurRadius: 0,
+                        ),
+                      ],
+              ),
+              child: Center(
+                child: Text(
+                  buttonLabel,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: disabled ? const Color(0x66000000) : Colors.black,
+                  ),
                 ),
               ),
             ),
@@ -569,239 +695,488 @@ class _ActionCard extends StatelessWidget {
 class _ProposalCardPreview extends StatelessWidget {
   const _ProposalCardPreview({
     required this.title,
-    required this.city,
-    required this.venue,
-    required this.description,
     required this.dateLabel,
-    required this.guestLabel,
-    this.badge,
-    this.badgeColor,
+    this.hasCash = false,
+    this.hasBarter = false,
+    this.onTap,
   });
 
   final String title;
-  final String city;
-  final String venue;
-  final String description;
   final String dateLabel;
-  final String guestLabel;
-  final String? badge;
-  final Color? badgeColor;
+  final bool hasCash;
+  final bool hasBarter;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 360,
-      padding: EdgeInsets.zero,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 3),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 120,
-            height: 180,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(17),
-                bottomLeft: Radius.circular(17),
-              ),
-              border: Border.all(color: Colors.black, width: 0),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 148,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2.5),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black,
+              offset: Offset(3, 3),
+              blurRadius: 0,
             ),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.grey.shade200,
-                          Colors.orange.shade100,
-                          Colors.yellow.shade100,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1:1 Image
+            AspectRatio(
+              aspectRatio: 1.0,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  border: Border(
+                    bottom: BorderSide(color: Colors.black, width: 2),
                   ),
                 ),
-                Center(
-                  child: Text(
-                    title.substring(0, 2).toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black54,
-                    ),
-                  ),
-                ),
-                if (badge != null)
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: badgeColor ?? const Color(0xFFDCFCE7),
-                        border: Border.all(color: Colors.black, width: 2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        badge!,
-                        style: const TextStyle(
-                          fontSize: 7,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.8,
-                          color: Colors.black,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _fallbackThumbnail(),
+
+                    // Cash / Barter badge on the TOP RIGHT
+                    if (hasCash || hasBarter)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (hasCash)
+                              Container(
+                                margin: EdgeInsets.only(bottom: hasBarter ? 3 : 0),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  border: Border.all(color: Colors.black, width: 1.2),
+                                  borderRadius: BorderRadius.circular(999),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black,
+                                      offset: Offset(1, 1),
+                                      blurRadius: 0,
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  'CASH',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 7.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                            if (hasBarter)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: MeetdayColors.accentYellow,
+                                  border: Border.all(color: Colors.black, width: 1.2),
+                                  borderRadius: BorderRadius.circular(999),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black,
+                                      offset: Offset(1, 1),
+                                      blurRadius: 0,
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  'BARTER',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 7.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  ),
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
+
+            // Below 1:1 image: Title + Date
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF111111),
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111111),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$city • $venue',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF667085),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    description,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF4A5565),
-                      height: 1.4,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                  const SizedBox(height: 3),
+                  Row(
                     children: [
-                      _miniTag(
-                        dateLabel,
-                        const Color(0xFF6C32D1),
-                        Colors.white,
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 11,
+                        color: Color(0xFF667085),
                       ),
-                      _miniTag(
-                        guestLabel,
-                        const Color(0xFFEE2C2C),
-                        Colors.white,
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          dateLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF667085),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackThumbnail() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.grey.shade200,
+            Colors.orange.shade100,
+            Colors.yellow.shade100,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          title.substring(0, title.length > 2 ? 2 : title.length).toUpperCase(),
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: Colors.black26,
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _CommunityHubCardPreview extends StatelessWidget {
-  const _CommunityHubCardPreview({required this.title, required this.subtitle});
+  const _CommunityHubCardPreview({
+    required this.title,
+    required this.memberCount,
+    this.onTap,
+  });
 
   final String title;
-  final String subtitle;
+  final String memberCount;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 180,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 3),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            height: 110,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0F4FF),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.black, width: 2),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 148,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2.5),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black,
+              offset: Offset(3, 3),
+              blurRadius: 0,
             ),
-            child: Center(
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1:1 Image
+            AspectRatio(
+              aspectRatio: 1.0,
               child: Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC7D2FE),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.black, width: 2),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFEFF6FF),
+                  border: Border(
+                    bottom: BorderSide(color: Colors.black, width: 2),
+                  ),
                 ),
-                child: const Icon(Icons.location_city_rounded, size: 28),
+                child: _fallbackThumbnail(),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
+
+            // Below 1:1 image: Name + Members
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111111),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5C343),
+                          border: Border.all(color: Colors.black, width: 1.1),
+                          borderRadius: BorderRadius.circular(5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(1, 1),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          memberCount,
+                          style: GoogleFonts.poppins(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Members',
+                        style: GoogleFonts.poppins(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0x80000000),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackThumbnail() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFFEFF6FF),
+            Color(0xFFDBEAFE),
+            Color(0xFFC7D2FE),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.black, width: 1.5),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black,
+                offset: Offset(1.5, 1.5),
+                blurRadius: 0,
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF667085),
-            ),
+          child: const Icon(
+            Icons.location_city_rounded,
+            size: 22,
+            color: Colors.black,
           ),
-        ],
+        ),
       ),
     );
   }
 }
+
+class _CommunityCardPreview extends StatelessWidget {
+  const _CommunityCardPreview({
+    required this.title,
+    required this.memberCount,
+    this.onTap,
+  });
+
+  final String title;
+  final String memberCount;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 148,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2.5),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black,
+              offset: Offset(3, 3),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1:1 Image
+            AspectRatio(
+              aspectRatio: 1.0,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFFBEB),
+                  border: Border(
+                    bottom: BorderSide(color: Colors.black, width: 2),
+                  ),
+                ),
+                child: _fallbackThumbnail(),
+              ),
+            ),
+
+            // Below 1:1 image: Name + Members
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111111),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5C343),
+                          border: Border.all(color: Colors.black, width: 1.1),
+                          borderRadius: BorderRadius.circular(5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(1, 1),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          memberCount,
+                          style: GoogleFonts.poppins(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Members',
+                        style: GoogleFonts.poppins(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0x80000000),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackThumbnail() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFFFCE29),
+      ),
+      child: Center(
+        child: Text(
+          title.substring(0, title.length > 2 ? 2 : title.length).toUpperCase(),
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            color: Colors.black,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
 class _DealCardPreview extends StatelessWidget {
   const _DealCardPreview({
@@ -819,14 +1194,18 @@ class _DealCardPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 300,
-      padding: const EdgeInsets.all(16),
+      width: 210,
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: Colors.black, width: 3),
-        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black, width: 2.5),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+          BoxShadow(
+            color: Colors.black,
+            offset: Offset(2.5, 2.5),
+            blurRadius: 0,
+          ),
         ],
       ),
       child: Column(
@@ -835,138 +1214,95 @@ class _DealCardPreview extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 26,
+                height: 26,
                 decoration: BoxDecoration(
                   color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.black, width: 2),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black, width: 1.5),
                 ),
                 child: Center(
                   child: Text(
                     brandName.substring(0, 1).toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  brandName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-              ),
-              if (paid)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF86EFAC),
-                    border: Border.all(color: Colors.black, width: 2),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'PAID',
-                    style: TextStyle(
-                      fontSize: 8,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
                       fontWeight: FontWeight.w900,
                       color: Colors.black,
                     ),
                   ),
                 ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  brandName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.bricolageGrotesque(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111111),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: paid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                  border: Border.all(color: Colors.black, width: 1.2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  paid ? 'PAID' : 'PENDING',
+                  style: GoogleFonts.poppins(
+                    fontSize: 7.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 6),
           Text(
-            'Project: $projectName',
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF667085),
+            projectName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF667085),
             ),
           ),
           const Spacer(),
-          const Divider(color: Color(0x14000000), thickness: 2),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Amount:',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
-                ),
-              ),
-              Text(
-                amount,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFC940),
-                    border: Border.all(color: Colors.black, width: 2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'Locked Deal',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                        color: Colors.black,
-                      ),
-                    ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: MeetdayColors.accentYellow,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.black, width: 1.2),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Deal Value',
+                  style: GoogleFonts.poppins(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.black, width: 2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'Report',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                        color: Colors.black,
-                      ),
-                    ),
+                Text(
+                  amount,
+                  style: GoogleFonts.poppins(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -974,51 +1310,55 @@ class _DealCardPreview extends StatelessWidget {
   }
 }
 
-Widget _miniTag(String text, Color bg, Color fg) {
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.black, width: 1.5),
-      boxShadow: const [
-        BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
-      ],
-    ),
-    child: Text(
-      text,
-      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: fg),
-    ),
-  );
-}
+// ── Other Tabs Implementation ─────────────────────────────────────────────
 
 class _ProposalTabBody extends StatelessWidget {
-  const _ProposalTabBody();
+  const _ProposalTabBody({required this.role});
+
+  final AccountRole role;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
       children: [
-        const _SectionHeader(title: 'Experience Proposals'),
-        const SizedBox(height: 8),
-        _ListCard(
+        Text(
+          role == AccountRole.brand ? 'Curated Experiences' : 'Experience Proposals',
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF111111),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          role == AccountRole.brand
+              ? 'Discover and back vetted experiences hosted by communities.'
+              : 'Submit and manage your sponsorship proposals for upcoming events.',
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF667085),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NeoListCard(
           title: 'Weekend Night Market',
           subtitle: 'Under review · submitted 2 days ago',
           status: 'Reviewing',
-          accent: const Color(0xFFF0A12B),
+          statusColor: const Color(0xFFFEF3C7),
         ),
-        _ListCard(
+        _NeoListCard(
           title: 'Founders Mixer',
           subtitle: 'Published · visible to brands',
           status: 'Live',
-          accent: const Color(0xFF12B76A),
+          statusColor: const Color(0xFFDCFCE7),
         ),
-        _ListCard(
+        _NeoListCard(
           title: 'Creative Workshop',
           subtitle: 'Draft · waiting for edits',
           status: 'Draft',
-          accent: const Color(0xFF98A2B3),
+          statusColor: const Color(0xFFE5E7EB),
         ),
       ],
     );
@@ -1031,21 +1371,37 @@ class _HubTabBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
       children: [
-        const _SectionHeader(title: 'Community Hubs'),
-        const SizedBox(height: 8),
-        _ListCard(
+        Text(
+          'Community Hubs',
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF111111),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          'Discover offline partner venues and physical spaces for events.',
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF667085),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NeoListCard(
           title: 'Design & Culture Hub',
           subtitle: '3 spaces · 12 active members',
           status: 'Open',
-          accent: const Color(0xFF2673E8),
+          statusColor: const Color(0xFFDBEAFE),
         ),
-        _ListCard(
-          title: 'Startup Circle',
+        _NeoListCard(
+          title: 'Startup Circle Hub',
           subtitle: '2 spaces · 8 active members',
           status: 'Open',
-          accent: const Color(0xFF12B76A),
+          statusColor: const Color(0xFFDCFCE7),
         ),
       ],
     );
@@ -1058,48 +1414,86 @@ class _CommunityTabBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
       children: [
-        const _SectionHeader(title: 'Communities'),
-        const SizedBox(height: 8),
-        _ListCard(
-          title: 'Meetday Social Circle',
-          subtitle: 'Member count · 1,240',
-          status: 'Approved',
-          accent: const Color(0xFF12B76A),
+        Text(
+          'Communities',
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF111111),
+          ),
         ),
-        _ListCard(
+        const SizedBox(height: 3),
+        Text(
+          'Browse registered communities and host collectives on Meetday.',
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF667085),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NeoListCard(
+          title: 'Meetday Social Circle',
+          subtitle: 'Member count · 1,240 members',
+          status: 'Approved',
+          statusColor: const Color(0xFFDCFCE7),
+        ),
+        _NeoListCard(
           title: 'Creative Hosts Network',
-          subtitle: 'Member count · 760',
+          subtitle: 'Member count · 760 members',
           status: 'Pending',
-          accent: const Color(0xFFF0A12B),
+          statusColor: const Color(0xFFFEF3C7),
         ),
       ],
     );
   }
 }
 
-class _DealsTabBody extends StatelessWidget {
-  const _DealsTabBody();
+class _ChatsTabBody extends StatelessWidget {
+  const _ChatsTabBody();
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
       children: [
-        const _SectionHeader(title: 'Locked Deals'),
-        const SizedBox(height: 8),
-        _ListCard(
-          title: 'Brand partnership agreement',
-          subtitle: 'Signed yesterday · payout pending',
-          status: 'Locked',
-          accent: const Color(0xFF2673E8),
+        Text(
+          'Chats & Messages',
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF111111),
+          ),
         ),
-        _ListCard(
-          title: 'Venue add-on package',
-          subtitle: 'Awaiting final approval',
-          status: 'Review',
-          accent: const Color(0xFFF0A12B),
+        const SizedBox(height: 3),
+        Text(
+          'Direct conversations with brand sponsors, hosts, and collaborators.',
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF667085),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NeoListCard(
+          title: 'Aster Labs Partnership',
+          subtitle: 'Active chat · Last message: "Contract looks good!"',
+          status: 'Online',
+          statusColor: const Color(0xFFDCFCE7),
+        ),
+        _NeoListCard(
+          title: 'Urban Mint Activation',
+          subtitle: 'Awaiting response · Proposal sent',
+          status: '1 Unread',
+          statusColor: const Color(0xFFFEF3C7),
+        ),
+        _NeoListCard(
+          title: 'Meetday Support Concierge',
+          subtitle: 'Always here to assist with verification & payouts',
+          status: '24/7 Support',
+          statusColor: const Color(0xFFDBEAFE),
         ),
       ],
     );
@@ -1112,21 +1506,37 @@ class _SupportTabBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
       children: [
-        const _SectionHeader(title: 'Support Chat'),
-        const SizedBox(height: 8),
-        _ListCard(
-          title: 'Meetday support',
-          subtitle: 'Last reply 14 minutes ago',
-          status: 'Active',
-          accent: const Color(0xFF12B76A),
+        Text(
+          'Support Chat',
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF111111),
+          ),
         ),
-        _ListCard(
-          title: 'KYC verification',
-          subtitle: 'Document follow-up needed',
-          status: 'Waiting',
-          accent: const Color(0xFFF0A12B),
+        const SizedBox(height: 3),
+        Text(
+          'Need assistance? Message Meetday concierge support anytime.',
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF667085),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NeoListCard(
+          title: 'Meetday Concierge Support',
+          subtitle: 'Active support thread · last reply 14m ago',
+          status: 'Active',
+          statusColor: const Color(0xFFDCFCE7),
+        ),
+        _NeoListCard(
+          title: 'KYC & Payout Helpdesk',
+          subtitle: 'Bank account validation inquiry',
+          status: 'Open',
+          statusColor: const Color(0xFFDBEAFE),
         ),
       ],
     );
@@ -1139,67 +1549,75 @@ class _NotificationsTabBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
       children: [
-        const _SectionHeader(title: 'Notifications'),
-        const SizedBox(height: 8),
-        _ListCard(
-          title: 'New sponsorship interest',
-          subtitle: 'A brand has shown interest in your event.',
-          status: 'New',
-          accent: const Color(0xFFE5484D),
+        Text(
+          'Notifications',
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF111111),
+          ),
         ),
-        _ListCard(
-          title: 'Community profile approved',
-          subtitle: 'Your profile is now visible in the directory.',
-          status: 'Seen',
-          accent: const Color(0xFF98A2B3),
+        const SizedBox(height: 3),
+        Text(
+          'Stay updated on proposals, chats, deals, and community activity.',
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF667085),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NeoListCard(
+          title: 'New Sponsorship Interest',
+          subtitle: 'A brand sponsor initiated collaboration on your event.',
+          status: 'New',
+          statusColor: MeetdayColors.primaryRed,
+          statusTextColor: Colors.white,
+        ),
+        _NeoListCard(
+          title: 'Profile Approved',
+          subtitle: 'Your community workspace is verified and live.',
+          status: 'Approved',
+          statusColor: const Color(0xFFDCFCE7),
         ),
       ],
     );
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w800,
-        color: Color(0xFF101828),
-      ),
-    );
-  }
-}
-
-class _ListCard extends StatelessWidget {
-  const _ListCard({
+class _NeoListCard extends StatelessWidget {
+  const _NeoListCard({
     required this.title,
     required this.subtitle,
     required this.status,
-    required this.accent,
+    required this.statusColor,
+    this.statusTextColor = Colors.black,
   });
 
   final String title;
   final String subtitle;
   final String status;
-  final Color accent;
+  final Color statusColor;
+  final Color statusTextColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: Colors.black, width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black,
+            offset: Offset(2.5, 2.5),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -1209,36 +1627,39 @@ class _ListCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 15,
+                  style: GoogleFonts.bricolageGrotesque(
+                    fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF101828),
+                    color: const Color(0xFF111111),
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF667085),
-                    height: 1.4,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: const Color(0xFF667085),
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
+              color: statusColor,
+              border: Border.all(color: Colors.black, width: 1.2),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
               status,
-              style: TextStyle(
-                fontSize: 11,
+              style: GoogleFonts.poppins(
+                fontSize: 9,
                 fontWeight: FontWeight.w800,
-                color: accent,
+                color: statusTextColor,
               ),
             ),
           ),
@@ -1247,3 +1668,98 @@ class _ListCard extends StatelessWidget {
     );
   }
 }
+
+class _MeetdayMobileBottomBar extends StatelessWidget {
+  const _MeetdayMobileBottomBar({
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // 5 primary dock destinations: Communities (3), Hubs (2), Proposals (1 - Center), Chats (4), Support (5)
+    final items = [
+      (3, Icons.groups_rounded, 'Communities'),
+      (2, Icons.calendar_today_rounded, 'Hubs'),
+      (1, Icons.description_rounded, 'Proposals'),
+      (4, Icons.chat_bubble_rounded, 'Chats'),
+      (5, Icons.headset_mic_rounded, 'Support'),
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: MeetdayColors.primaryRed,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: items.map((item) {
+            final index = item.$1;
+            final icon = item.$2;
+            final label = item.$3;
+            final isSelected = currentIndex == index;
+
+            return GestureDetector(
+              onTap: () => onTap(index),
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isSelected ? 12 : 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? MeetdayColors.accentYellow : Colors.transparent,
+                  borderRadius: BorderRadius.circular(14),
+                  border: isSelected
+                      ? Border.all(color: Colors.black, width: 2)
+                      : null,
+                  boxShadow: isSelected
+                      ? const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: isSelected ? Colors.black : Colors.white,
+                    ),
+                    if (isSelected) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
