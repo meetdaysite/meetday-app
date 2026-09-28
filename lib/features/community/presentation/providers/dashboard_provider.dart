@@ -33,11 +33,11 @@ dynamic _safeList(dynamic data) {
   return [];
 }
 
-// Dashboard Proposals (from /sponsorships/published - authenticated endpoint)
+// Dashboard Proposals (from /sponsorships/me - host's own sponsorship proposals)
 final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/sponsorships/published');
+    final response = await api.dio.get<dynamic>('/sponsorships/me');
     if (response.statusCode == 200) {
       // Response is { success: true, data: { proposals: [...], total: number } }
       final responseData = response.data;
@@ -56,10 +56,10 @@ final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
-                'title': item['title'] ?? item['briefTitle'] ?? 'Untitled',
-                'dateLabel': _formatDate(item['deadline'] ?? item['createdAt']),
+                'title': item['title'] ?? item['briefTitle'] ?? 'Untitled Proposal',
+                'dateLabel': _formatDate(item['eventDate'] ?? item['createdAt']),
                 'hasCash': (item['budget'] ?? 0) > 0,
-                'hasBarter': item['category'] != null || item['barterDetails'] != null,
+                'hasBarter': item['barterDetails'] != null || item['category'] != null,
               })
           .toList();
     }
