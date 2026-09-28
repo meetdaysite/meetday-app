@@ -38,6 +38,10 @@ final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
     final response = await api.dio.get<dynamic>('/sponsorships/me');
+    print('=== SPONSORSHIPS/ME RESPONSE ===');
+    print('Status: ${response.statusCode}');
+    print('Response: ${response.data}');
+
     if (response.statusCode == 200) {
       // Response is { success: true, data: { proposals: [...], total: number } }
       final responseData = response.data;
@@ -45,6 +49,9 @@ final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
 
       if (responseData is Map && responseData.containsKey('data')) {
         final innerData = responseData['data'];
+        print('Inner data type: ${innerData.runtimeType}');
+        print('Inner data: $innerData');
+
         if (innerData is Map && innerData.containsKey('proposals')) {
           proposals = innerData['proposals'] ?? [];
         } else if (innerData is List) {
@@ -52,7 +59,8 @@ final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
         }
       }
 
-      return proposals
+      print('Proposals count: ${proposals.length}');
+      final result = proposals
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
@@ -62,6 +70,8 @@ final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
                 'hasBarter': item['barterDetails'] != null || item['category'] != null,
               })
           .toList();
+      print('Final proposals: $result');
+      return result;
     }
     return [];
   } catch (e) {
@@ -111,6 +121,11 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
   try {
     final response = await api.dio.get<dynamic>('/sponsorships/communities');
 
+    print('=== SPONSORSHIPS/COMMUNITIES RESPONSE ===');
+    print('Status: ${response.statusCode}');
+    print('Response type: ${response.data.runtimeType}');
+    print('Response: ${response.data}');
+
     if (response.statusCode == 200) {
       // Response is { success: true, data: { communities: [...], total: number } }
       final responseData = response.data;
@@ -118,14 +133,19 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
 
       if (responseData is Map && responseData.containsKey('data')) {
         final innerData = responseData['data'];
+        print('Inner data type: ${innerData.runtimeType}');
+        print('Inner data: $innerData');
+
         if (innerData is Map && innerData.containsKey('communities')) {
           communities = innerData['communities'] ?? [];
         }
       }
 
+      print('Communities count: ${communities.length}');
+
       if (communities.isEmpty) return [];
 
-      return (communities as List)
+      final result = (communities as List)
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
@@ -133,6 +153,8 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
                 'memberCount': (item['memberCount'] ?? item['size'] ?? 0).toString(),
               })
           .toList();
+      print('Final communities: $result');
+      return result;
     }
     return [];
   } catch (e) {
