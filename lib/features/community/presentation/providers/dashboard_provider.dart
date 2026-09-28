@@ -83,23 +83,32 @@ final dashboardHubsProvider = FutureProvider.autoDispose((ref) async {
   }
 });
 
-// Dashboard Communities
+// Dashboard Communities (from /sponsorships/communities - authenticated endpoint with real data)
 final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/communities');
+    final response = await api.dio.get<dynamic>('/sponsorships/communities');
 
     if (response.statusCode == 200) {
-      // Response is { success: true, data: { data: [...], total: number, page: 1, limit: 20 } }
-      final data = _safeList(response.data);
-      if (data.isEmpty) return [];
+      // Response is { success: true, data: { communities: [...], total: number } }
+      final responseData = response.data;
+      List<dynamic> communities = [];
 
-      return (data as List)
+      if (responseData is Map && responseData.containsKey('data')) {
+        final innerData = responseData['data'];
+        if (innerData is Map && innerData.containsKey('communities')) {
+          communities = innerData['communities'] ?? [];
+        }
+      }
+
+      if (communities.isEmpty) return [];
+
+      return (communities as List)
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
                 'title': item['name'] ?? item['displayName'] ?? 'Community',
-                'memberCount': (item['memberCount'] ?? 0).toString(),
+                'memberCount': (item['memberCount'] ?? item['size'] ?? 0).toString(),
               })
           .toList();
     }
