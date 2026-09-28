@@ -1421,45 +1421,84 @@ class _HubTabBody extends StatelessWidget {
   }
 }
 
-class _CommunityTabBody extends StatelessWidget {
+class _CommunityTabBody extends ConsumerWidget {
   const _CommunityTabBody();
 
   @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-      children: [
-        Text(
-          'Communities',
-          style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF111111),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final communitiesAsync = ref.watch(dashboardCommunitiesProvider);
+
+    return communitiesAsync.when(
+      data: (communities) {
+        final items = communities.isNotEmpty
+            ? communities
+                .map((c) => _NeoListCard(
+                      title: c['title'] ?? 'Community',
+                      subtitle: 'Member count · ${c['memberCount'] ?? 0} members',
+                      status: 'Active',
+                      statusColor: const Color(0xFFDCFCE7),
+                    ))
+                .toList()
+            : [
+                _NeoListCard(
+                  title: 'Meetday Social Circle',
+                  subtitle: 'Member count · 1,240 members',
+                  status: 'Approved',
+                  statusColor: const Color(0xFFDCFCE7),
+                ),
+                _NeoListCard(
+                  title: 'Creative Hosts Network',
+                  subtitle: 'Member count · 760 members',
+                  status: 'Pending',
+                  statusColor: const Color(0xFFFEF3C7),
+                ),
+              ];
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+          children: [
+            Text(
+              'Communities',
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Browse registered communities and host collectives on Meetday.',
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF667085),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...items,
+          ],
+        );
+      },
+      loading: () => Center(
+        child: CircularProgressIndicator(),
+      ),
+      error: (err, stack) => ListView(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+        children: [
+          Text(
+            'Communities',
+            style: GoogleFonts.bricolageGrotesque(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF111111),
+            ),
           ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Browse registered communities and host collectives on Meetday.',
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF667085),
+          const SizedBox(height: 12),
+          _ErrorCard(
+            onRetry: () => ref.refresh(dashboardCommunitiesProvider),
           ),
-        ),
-        const SizedBox(height: 12),
-        _NeoListCard(
-          title: 'Meetday Social Circle',
-          subtitle: 'Member count · 1,240 members',
-          status: 'Approved',
-          statusColor: const Color(0xFFDCFCE7),
-        ),
-        _NeoListCard(
-          title: 'Creative Hosts Network',
-          subtitle: 'Member count · 760 members',
-          status: 'Pending',
-          statusColor: const Color(0xFFFEF3C7),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
