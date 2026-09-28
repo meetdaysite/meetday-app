@@ -85,6 +85,10 @@ final dashboardHubsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
     final response = await api.dio.get<dynamic>('/spaces/community/browse');
+    print('=== SPACES/COMMUNITY/BROWSE RESPONSE ===');
+    print('Status: ${response.statusCode}');
+    print('Response: ${response.data}');
+
     if (response.statusCode == 200) {
       // Response is { success: true, data: { spaces: [...], total: number } }
       final responseData = response.data;
@@ -92,14 +96,17 @@ final dashboardHubsProvider = FutureProvider.autoDispose((ref) async {
 
       if (responseData is Map && responseData.containsKey('data')) {
         final innerData = responseData['data'];
+        print('Inner data type: ${innerData.runtimeType}');
         if (innerData is Map && innerData.containsKey('spaces')) {
           spaces = innerData['spaces'] ?? [];
         }
       }
 
+      print('Spaces/Hubs count: ${spaces.length}');
+
       if (spaces.isEmpty) return [];
 
-      return (spaces as List)
+      final result = (spaces as List)
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
@@ -107,6 +114,8 @@ final dashboardHubsProvider = FutureProvider.autoDispose((ref) async {
                 'memberCount': (item['capacity'] ?? item['memberCount'] ?? 0).toString(),
               })
           .toList();
+      print('Final hubs: $result');
+      return result;
     }
     return [];
   } catch (e) {
@@ -168,6 +177,10 @@ final dashboardDealsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
     final response = await api.dio.get<dynamic>('/sponsorships/billing');
+    print('=== SPONSORSHIPS/BILLING RESPONSE ===');
+    print('Status: ${response.statusCode}');
+    print('Response: ${response.data}');
+
     if (response.statusCode == 200) {
       // Response is { success: true, data: [...] }
       final responseData = response.data;
@@ -175,14 +188,17 @@ final dashboardDealsProvider = FutureProvider.autoDispose((ref) async {
 
       if (responseData is Map && responseData.containsKey('data')) {
         final innerData = responseData['data'];
+        print('Inner data type: ${innerData.runtimeType}');
         if (innerData is List) {
           deals = innerData;
         }
       }
 
+      print('Deals count: ${deals.length}');
+
       if (deals.isEmpty) return [];
 
-      return (deals as List)
+      final result = (deals as List)
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
@@ -192,6 +208,8 @@ final dashboardDealsProvider = FutureProvider.autoDispose((ref) async {
                 'paid': item['status'] == 'completed' || item['paymentStatus'] == 'paid',
               })
           .toList();
+      print('Final deals: $result');
+      return result;
     }
     return [];
   } catch (e) {
