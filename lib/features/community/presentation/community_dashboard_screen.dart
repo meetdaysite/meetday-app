@@ -9,6 +9,7 @@ import '../../../core/theme/meetday_colors.dart';
 import '../../auth/domain/account_role.dart';
 import '../../auth/state/auth_provider.dart';
 import '../../dashboard/presentation/meetday_sidebar_drawer.dart';
+import 'providers/dashboard_provider.dart';
 
 enum CommunityDashboardTab {
   dashboard,
@@ -246,7 +247,7 @@ class _CommunityDashboardScreenState
   }
 }
 
-class _DashboardTabBody extends StatelessWidget {
+class _DashboardTabBody extends ConsumerWidget {
   const _DashboardTabBody({
     required this.displayName,
     required this.profileName,
@@ -262,86 +263,98 @@ class _DashboardTabBody extends StatelessWidget {
   final ValueChanged<int> onNavigateToTab;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isBrand = role == AccountRole.brand;
 
-    final proposalCards = [
-      _ProposalCardPreview(
-        title: 'The Block Party',
-        dateLabel: '12–14 Oct',
-        hasCash: true,
-        hasBarter: true,
-        onTap: () => onNavigateToTab(1),
-      ),
-      _ProposalCardPreview(
-        title: 'Creator Night',
-        dateLabel: '24 Oct',
-        hasCash: true,
-        onTap: () => onNavigateToTab(1),
-      ),
-      _ProposalCardPreview(
-        title: 'Weekend Pop-Up',
-        dateLabel: '9 Nov',
-        hasBarter: true,
-        onTap: () => onNavigateToTab(1),
-      ),
-    ];
+    // Fetch data from backend
+    final proposalsAsync = ref.watch(dashboardProposalsProvider);
+    final hubsAsync = ref.watch(dashboardHubsProvider);
+    final communitiesAsync = ref.watch(dashboardCommunitiesProvider);
+    final dealsAsync = ref.watch(dashboardDealsProvider);
 
-    final hubCards = [
-      _CommunityHubCardPreview(
-        title: 'Design & Culture Hub',
-        memberCount: '12',
-        onTap: () => onNavigateToTab(2),
-      ),
-      _CommunityHubCardPreview(
-        title: 'Startup Circle Hub',
-        memberCount: '8',
-        onTap: () => onNavigateToTab(2),
-      ),
-      _CommunityHubCardPreview(
-        title: 'Wellness Courtyard',
-        memberCount: '15',
-        onTap: () => onNavigateToTab(2),
-      ),
-    ];
+    // Build proposal cards from data
+    final proposalCards = proposalsAsync.when(
+      data: (proposals) => proposals
+          .map((p) => _ProposalCardPreview(
+                title: p['title'] ?? 'Untitled',
+                dateLabel: p['dateLabel'] ?? 'TBD',
+                hasCash: p['hasCash'] ?? false,
+                hasBarter: p['hasBarter'] ?? false,
+                onTap: () => onNavigateToTab(1),
+              ))
+          .toList(),
+      loading: () => [_LoadingCard()],
+      error: (err, stack) => [
+        _ErrorCard(
+          onRetry: () => ref.refresh(dashboardProposalsProvider),
+        ),
+      ],
+    );
 
-    final communityCards = [
-      _CommunityCardPreview(
-        title: 'Meetday Social Circle',
-        memberCount: '1,240',
-        onTap: () => onNavigateToTab(3),
-      ),
-      _CommunityCardPreview(
-        title: 'Creative Hosts Network',
-        memberCount: '760',
-        onTap: () => onNavigateToTab(3),
-      ),
-      _CommunityCardPreview(
-        title: 'Indie Creators Club',
-        memberCount: '2,100',
-        onTap: () => onNavigateToTab(3),
-      ),
-      _CommunityCardPreview(
-        title: 'Tech & Founders Collective',
-        memberCount: '1,850',
-        onTap: () => onNavigateToTab(3),
-      ),
-    ];
+    // Build hub cards from data
+    final hubCards = hubsAsync.when(
+      data: (hubs) => hubs
+          .map((h) => _CommunityHubCardPreview(
+                title: h['title'] ?? 'Hub',
+                memberCount: h['memberCount'] ?? '0',
+                onTap: () => onNavigateToTab(2),
+              ))
+          .toList(),
+      loading: () => [_LoadingCard()],
+      error: (err, stack) => [
+        _ErrorCard(
+          onRetry: () => ref.refresh(dashboardHubsProvider),
+        ),
+      ],
+    );
 
-    final dealCards = [
-      const _DealCardPreview(
-        brandName: 'Aster Labs',
-        projectName: 'Launch Week Activation',
-        amount: '₹1,80,000',
-        paid: true,
-      ),
-      const _DealCardPreview(
-        brandName: 'Urban Mint',
-        projectName: 'Weekend Street Fest',
-        amount: '₹2,35,000',
-        paid: false,
-      ),
-    ];
+    // Build community cards from data
+    final communityCards = communitiesAsync.when(
+      data: (communities) => communities.isNotEmpty
+          ? communities
+              .map((c) => _CommunityCardPreview(
+                    title: c['title'] ?? 'Community',
+                    memberCount: c['memberCount'] ?? '0',
+                    onTap: () => onNavigateToTab(3),
+                  ))
+              .toList()
+          : [
+              _CommunityCardPreview(
+                title: 'Meetday Social Circle',
+                memberCount: '1,240',
+                onTap: () => onNavigateToTab(3),
+              ),
+              _CommunityCardPreview(
+                title: 'Creative Hosts Network',
+                memberCount: '760',
+                onTap: () => onNavigateToTab(3),
+              ),
+            ],
+      loading: () => [_LoadingCard()],
+      error: (err, stack) => [
+        _ErrorCard(
+          onRetry: () => ref.refresh(dashboardCommunitiesProvider),
+        ),
+      ],
+    );
+
+    // Build deal cards from data
+    final dealCards = dealsAsync.when(
+      data: (deals) => deals
+          .map((d) => _DealCardPreview(
+                brandName: d['brandName'] ?? 'Brand',
+                projectName: d['projectName'] ?? 'Project',
+                amount: d['amount'] ?? '₹0',
+                paid: d['paid'] ?? false,
+              ))
+          .toList(),
+      loading: () => [_LoadingCard()],
+      error: (err, stack) => [
+        _ErrorCard(
+          onRetry: () => ref.refresh(dashboardDealsProvider),
+        ),
+      ],
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
@@ -1758,6 +1771,68 @@ class _MeetdayMobileBottomBar extends StatelessWidget {
             );
           }).toList(),
         ),
+      ),
+    );
+  }
+}
+
+class _LoadingCard extends StatelessWidget {
+  const _LoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 148,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.black, width: 2.5),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 30,
+          height: 30,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(MeetdayColors.primaryRed),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 148,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.black, width: 2.5),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, color: MeetdayColors.primaryRed),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: onRetry,
+            child: Text(
+              'Retry',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: MeetdayColors.primaryRed,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

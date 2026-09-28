@@ -248,7 +248,64 @@ class AuthController extends Notifier<AuthState> {
 
       final api = _api ?? ApiClient(config: AppConfig.fromEnvironment());
       api.setIdToken(token);
-      final profile = await api.getMe();
+
+      // Try to get existing profile
+      Map<String, dynamic> profile;
+      try {
+        profile = await api.getMe();
+      } catch (e) {
+        // User doesn't exist yet, register them
+        if (e.toString().contains('404')) {
+          final names = (user.displayName ?? '').split(' ');
+          final firstName = names.isNotEmpty ? names[0] : 'User';
+          final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
+
+          final registerData = {
+            'firstName': firstName,
+            'lastName': lastName,
+          };
+
+          // Add role-specific required fields
+          if (role == AccountRole.brand) {
+            registerData['accountType'] = 'BRAND';
+            registerData['brandName'] = user.displayName ?? 'Brand';
+          } else if (role == AccountRole.community) {
+            registerData['accountType'] = 'HOST';
+            registerData['hostType'] = 'INDIVIDUAL'; // Default host type
+            registerData['communityName'] = user.displayName ?? 'Community';
+          } else {
+            registerData['accountType'] = 'USER';
+          }
+
+          print('=== AUTH REGISTER DEBUG ===');
+          print('Token: ${token.substring(0, 50)}...');
+          print('Register Data: $registerData');
+          print('Base URL: ${api.dio.options.baseUrl}');
+          print('Full URL: ${api.dio.options.baseUrl}/auth/register');
+
+          final response = await api.dio.post(
+            '/auth/register',
+            data: registerData,
+            options: Options(
+              headers: {'Authorization': 'Bearer $token'},
+              contentType: 'application/json',
+            ),
+          );
+
+          print('Register Response Status: ${response.statusCode}');
+          print('Register Response: ${response.data}');
+
+          if (response.statusCode != 201 && response.statusCode != 200) {
+            throw Exception('Registration failed: ${response.statusMessage}');
+          }
+
+          // Now get the profile after registration
+          profile = await api.getMe();
+        } else {
+          rethrow;
+        }
+      }
+
       if (!_hasRoleAccess(profile, role)) {
         await FirebaseAuth.instance.signOut();
         await _googleSignIn.signOut();

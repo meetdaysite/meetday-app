@@ -135,9 +135,64 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 24),
+          GestureDetector(
+            onLongPress: _showDevLoginOption,
+            child: Center(
+              child: Text(
+                'Development Mode',
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.black26,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  void _showDevLoginOption() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Development Mode'),
+        content: const Text('Login without Google for testing?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _devLogin();
+            },
+            child: const Text('Yes, Login'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _devLogin() async {
+    setState(() => _isSubmitting = true);
+    try {
+      final controller = ref.read(authControllerProvider.notifier);
+      await controller.signIn(
+        uid: 'dev-user-${widget.role.name}',
+        role: widget.role,
+      );
+      if (mounted) {
+        context.go('/dashboard');
+      }
+    } catch (e) {
+      if (mounted) _showError('Dev login failed: $e');
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 }
 
