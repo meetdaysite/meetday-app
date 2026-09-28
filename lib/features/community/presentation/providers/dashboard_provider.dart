@@ -33,21 +33,33 @@ dynamic _safeList(dynamic data) {
   return [];
 }
 
-// Dashboard Proposals (from campaigns endpoint)
+// Dashboard Proposals (from /sponsorships/published - authenticated endpoint)
 final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/campaigns?limit=10');
+    final response = await api.dio.get<dynamic>('/sponsorships/published');
     if (response.statusCode == 200) {
-      final data = _safeList(response.data);
-      return data
+      // Response is { success: true, data: { proposals: [...], total: number } }
+      final responseData = response.data;
+      List<dynamic> proposals = [];
+
+      if (responseData is Map && responseData.containsKey('data')) {
+        final innerData = responseData['data'];
+        if (innerData is Map && innerData.containsKey('proposals')) {
+          proposals = innerData['proposals'] ?? [];
+        } else if (innerData is List) {
+          proposals = innerData;
+        }
+      }
+
+      return proposals
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
-                'title': item['title'] ?? item['brandName'] ?? 'Untitled',
-                'dateLabel': _formatDate(item['deadline']),
+                'title': item['title'] ?? item['briefTitle'] ?? 'Untitled',
+                'dateLabel': _formatDate(item['deadline'] ?? item['createdAt']),
                 'hasCash': (item['budget'] ?? 0) > 0,
-                'hasBarter': item['category'] != null,
+                'hasBarter': item['category'] != null || item['barterDetails'] != null,
               })
           .toList();
     }
@@ -58,21 +70,31 @@ final dashboardProposalsProvider = FutureProvider.autoDispose((ref) async {
   }
 });
 
-// Dashboard Hubs/Spaces
+// Dashboard Hubs/Spaces (from /spaces/community/browse - authenticated endpoint)
 final dashboardHubsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/spaces?limit=10');
+    final response = await api.dio.get<dynamic>('/spaces/community/browse');
     if (response.statusCode == 200) {
-      final data = _safeList(response.data);
-      if (data.isEmpty) return [];
+      // Response is { success: true, data: { spaces: [...], total: number } }
+      final responseData = response.data;
+      List<dynamic> spaces = [];
 
-      return (data as List)
+      if (responseData is Map && responseData.containsKey('data')) {
+        final innerData = responseData['data'];
+        if (innerData is Map && innerData.containsKey('spaces')) {
+          spaces = innerData['spaces'] ?? [];
+        }
+      }
+
+      if (spaces.isEmpty) return [];
+
+      return (spaces as List)
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
-                'title': item['name'] ?? 'Untitled Space',
-                'memberCount': (item['capacity'] ?? 0).toString(),
+                'title': item['name'] ?? item['spaceName'] ?? 'Untitled Space',
+                'memberCount': (item['capacity'] ?? item['memberCount'] ?? 0).toString(),
               })
           .toList();
     }
@@ -119,23 +141,33 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
   }
 });
 
-// Dashboard Deals/Locked Deals (using payouts endpoint)
+// Dashboard Deals/Locked Deals (from /sponsorships/billing - authenticated endpoint)
 final dashboardDealsProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/payouts?limit=10');
+    final response = await api.dio.get<dynamic>('/sponsorships/billing');
     if (response.statusCode == 200) {
-      final data = _safeList(response.data);
-      if (data.isEmpty) return [];
+      // Response is { success: true, data: [...] }
+      final responseData = response.data;
+      List<dynamic> deals = [];
 
-      return (data as List)
+      if (responseData is Map && responseData.containsKey('data')) {
+        final innerData = responseData['data'];
+        if (innerData is List) {
+          deals = innerData;
+        }
+      }
+
+      if (deals.isEmpty) return [];
+
+      return (deals as List)
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
-                'brandName': item['dealName']?.split(' - ')[0] ?? 'Unknown Brand',
-                'projectName': item['dealName'] ?? 'Project',
-                'amount': _formatAmount(item['amount']),
-                'paid': item['status'] == 'completed',
+                'brandName': item['brandName'] ?? item['communityName'] ?? 'Unknown',
+                'projectName': item['projectName'] ?? item['briefTitle'] ?? 'Project',
+                'amount': _formatAmount(item['amount'] ?? item['payoutAmount']),
+                'paid': item['status'] == 'completed' || item['paymentStatus'] == 'paid',
               })
           .toList();
     }
