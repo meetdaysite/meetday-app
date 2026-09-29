@@ -9,7 +9,11 @@ import '../../../core/theme/meetday_colors.dart';
 import '../../auth/domain/account_role.dart';
 import '../../auth/state/auth_provider.dart';
 import '../../dashboard/presentation/meetday_sidebar_drawer.dart';
+import 'chat/community_chat_hub.dart';
+import 'community_detail_screen.dart';
+import 'proposal_components.dart';
 import 'providers/dashboard_provider.dart';
+import 'support/community_support_chat_view.dart';
 
 enum CommunityDashboardTab {
   dashboard,
@@ -232,7 +236,7 @@ class _CommunityDashboardScreenState
                     _ProposalTabBody(role: effectiveRole),
                     const _HubTabBody(),
                     const _CommunityTabBody(),
-                    const _ChatsTabBody(),
+                    const CommunityChatHubScreen(),
                     const _SupportTabBody(),
                     const _NotificationsTabBody(),
                   ],
@@ -271,16 +275,37 @@ class _DashboardTabBody extends ConsumerWidget {
     final hubsAsync = ref.watch(dashboardHubsProvider);
     final communitiesAsync = ref.watch(dashboardCommunitiesProvider);
     final dealsAsync = ref.watch(dashboardDealsProvider);
+    final publishedAsync = ref.watch(publishedProposalsProvider);
 
     // Build proposal cards from data
     final proposalCards = proposalsAsync.when(
       data: (proposals) => proposals
           .map((p) => _ProposalCardPreview(
-                title: p['title'] ?? 'Untitled',
-                dateLabel: p['dateLabel'] ?? 'TBD',
-                hasCash: p['hasCash'] ?? false,
-                hasBarter: p['hasBarter'] ?? false,
-                onTap: () => onNavigateToTab(1),
+                title: (p['name'] ?? p['title'] ?? 'Untitled Proposal').toString(),
+                dateLabel: (p['dateLabel'] ?? 'TBD').toString(),
+                imageUrl: p['imageUrl'] as String?,
+                status: p['status'] as String?,
+                hasCash: p['hasCash'] == true,
+                hasBarter: p['hasBarter'] == true,
+                onTap: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (ctx) => ProposalDetailDialog(
+                      proposal: p,
+                      onSubmitApproval: () async {
+                        Navigator.of(ctx).pop();
+                        final id = p['id'];
+                        if (id != null) {
+                          try {
+                            final api = ref.read(apiClientProvider);
+                            await api.dio.post<dynamic>('/sponsorships/$id/submit');
+                            ref.invalidate(dashboardProposalsProvider);
+                          } catch (_) {}
+                        }
+                      },
+                    ),
+                  );
+                },
               ))
           .toList(),
       loading: () => [_LoadingCard()],
@@ -308,26 +333,71 @@ class _DashboardTabBody extends ConsumerWidget {
       ],
     );
 
+    final publishedProposals = (publishedAsync.asData?.value ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
     // Build community cards from data
     final communityCards = communitiesAsync.when(
       data: (communities) => communities.isNotEmpty
           ? communities
               .map((c) => _CommunityCardPreview(
-                    title: c['title'] ?? 'Community',
-                    memberCount: c['memberCount'] ?? '0',
-                    onTap: () => onNavigateToTab(3),
+                    title: (c['title'] ?? c['name'] ?? 'Community').toString(),
+                    memberCount: (c['memberCount'] ?? c['size'] ?? '0').toString(),
+                    imageUrl: c['logoUrl'] as String?,
+                    onTap: () {
+                      final matching = getCommunityMatchingProposals(c, publishedProposals);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CommunityDetailScreen(
+                            community: c,
+                            activeProposals: matching,
+                          ),
+                        ),
+                      );
+                    },
                   ))
               .toList()
           : [
               _CommunityCardPreview(
                 title: 'Meetday Social Circle',
                 memberCount: '1,240',
-                onTap: () => onNavigateToTab(3),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const CommunityDetailScreen(
+                        community: {
+                          'name': 'Meetday Social Circle',
+                          'size': '1,240',
+                          'about': 'A curated social circle bringing together founders, creators, and artists for weekly offline meetups.',
+                          'operatingCities': ['Delhi NCR', 'Bengaluru'],
+                          'avgGuestCount': '60-80',
+                          'experiencesPerYear': '24',
+                        },
+                      ),
+                    ),
+                  );
+                },
               ),
               _CommunityCardPreview(
                 title: 'Creative Hosts Network',
                 memberCount: '760',
-                onTap: () => onNavigateToTab(3),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const CommunityDetailScreen(
+                        community: {
+                          'name': 'Creative Hosts Network',
+                          'size': '760',
+                          'about': 'Independent community organizers and event hosts curating intimate music, design, and culture popups.',
+                          'operatingCities': ['Mumbai'],
+                          'avgGuestCount': '45',
+                          'experiencesPerYear': '12',
+                        },
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
       loading: () => [_LoadingCard()],
@@ -442,16 +512,84 @@ class _DashboardTabBody extends ConsumerWidget {
           onActionTap: () => onNavigateToTab(1),
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          height: 210,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: proposalCards.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => proposalCards[index],
-          ),
-        ),
+        proposalCards.isEmpty
+            ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.black, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(2.5, 2.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.note_add_outlined, size: 32, color: Colors.black54),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No proposals created yet',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Create your first proposal to get sponsored by top brands.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: const Color(0xFF667085),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () => onNavigateToTab(1),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: MeetdayColors.primaryRed,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.black, width: 1.8),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '+ CREATE PROPOSAL',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : SizedBox(
+                height: 210,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: proposalCards.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) => proposalCards[index],
+                ),
+              ),
 
         const SizedBox(height: 22),
 
@@ -709,6 +847,8 @@ class _ProposalCardPreview extends StatelessWidget {
   const _ProposalCardPreview({
     required this.title,
     required this.dateLabel,
+    this.imageUrl,
+    this.status,
     this.hasCash = false,
     this.hasBarter = false,
     this.onTap,
@@ -716,6 +856,8 @@ class _ProposalCardPreview extends StatelessWidget {
 
   final String title;
   final String dateLabel;
+  final String? imageUrl;
+  final String? status;
   final bool hasCash;
   final bool hasBarter;
   final VoidCallback? onTap;
@@ -755,7 +897,22 @@ class _ProposalCardPreview extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _fallbackThumbnail(),
+                    (imageUrl != null && imageUrl!.isNotEmpty)
+                        ? Image.network(
+                            imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _fallbackThumbnail(),
+                          )
+                        : _fallbackThumbnail(),
+
+                    // Status badge on TOP LEFT
+                    if (status != null && status!.isNotEmpty)
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: _statusBadge(status!),
+                      ),
 
                     // Cash / Barter badge on the TOP RIGHT
                     if (hasCash || hasBarter)
@@ -899,6 +1056,55 @@ class _ProposalCardPreview extends StatelessWidget {
             fontWeight: FontWeight.w900,
             color: Colors.black26,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusBadge(String status) {
+    Color bg = const Color(0xFF4ADE80);
+    Color fg = Colors.black;
+    String label = status;
+
+    if (status == 'PUBLISHED') {
+      bg = const Color(0xFF4ADE80);
+      label = 'LIVE';
+    } else if (status == 'UNDER_REVIEW') {
+      bg = const Color(0xFFFFC940);
+      label = 'REVIEW';
+    } else if (status == 'DRAFT') {
+      bg = const Color(0xFFF1F5F9);
+      label = 'DRAFT';
+    } else if (status == 'REJECTED') {
+      bg = const Color(0xFFFEE2E2);
+      fg = const Color(0xFFDC2626);
+      label = 'REJECTED';
+    } else if (status == 'COMPLETED') {
+      bg = const Color(0xFF1E293B);
+      fg = Colors.white;
+      label = 'DONE';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: Colors.black, width: 1.1),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black,
+            offset: Offset(1, 1),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.poppins(
+          fontSize: 7.5,
+          fontWeight: FontWeight.w900,
+          color: fg,
         ),
       ),
     );
@@ -1062,11 +1268,15 @@ class _CommunityCardPreview extends StatelessWidget {
   const _CommunityCardPreview({
     required this.title,
     required this.memberCount,
+    this.imageUrl,
+    this.width = 148,
     this.onTap,
   });
 
   final String title;
   final String memberCount;
+  final String? imageUrl;
+  final double? width;
   final VoidCallback? onTap;
 
   @override
@@ -1074,7 +1284,7 @@ class _CommunityCardPreview extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 148,
+        width: width,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1101,7 +1311,13 @@ class _CommunityCardPreview extends StatelessWidget {
                     bottom: BorderSide(color: Colors.black, width: 2),
                   ),
                 ),
-                child: _fallbackThumbnail(),
+                child: (imageUrl != null && imageUrl!.isNotEmpty)
+                    ? Image.network(
+                        imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => _fallbackThumbnail(),
+                      )
+                    : _fallbackThumbnail(),
               ),
             ),
 
@@ -1325,55 +1541,308 @@ class _DealCardPreview extends StatelessWidget {
 
 // ── Other Tabs Implementation ─────────────────────────────────────────────
 
-class _ProposalTabBody extends StatelessWidget {
+class _ProposalTabBody extends ConsumerStatefulWidget {
   const _ProposalTabBody({required this.role});
 
   final AccountRole role;
 
   @override
+  ConsumerState<_ProposalTabBody> createState() => _ProposalTabBodyState();
+}
+
+class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
+  String _selectedSegment = 'ALL';
+
+  void _openCreateProposalModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => CreateProposalModal(
+        onSuccess: () {
+          ref.invalidate(dashboardProposalsProvider);
+        },
+      ),
+    );
+  }
+
+  void _openProposalDetail(Map<String, dynamic> proposal) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => ProposalDetailDialog(
+        proposal: proposal,
+        onSubmitApproval: () async {
+          Navigator.of(ctx).pop();
+          final id = proposal['id'];
+          if (id != null) {
+            try {
+              final api = ref.read(apiClientProvider);
+              await api.dio.post<dynamic>('/sponsorships/$id/submit');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Proposal submitted for admin approval!'),
+                    backgroundColor: Color(0xFF10B981),
+                  ),
+                );
+              }
+              ref.invalidate(dashboardProposalsProvider);
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to submit proposal: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-      children: [
-        Text(
-          role == AccountRole.brand ? 'Curated Experiences' : 'Experience Proposals',
-          style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF111111),
+    final proposalsAsync = ref.watch(dashboardProposalsProvider);
+
+    return proposalsAsync.when(
+      data: (proposals) {
+        final allCount = proposals.length;
+        final publishedCount = proposals.where((p) => p['status'] == 'PUBLISHED').length;
+        final underReviewCount = proposals.where((p) => p['status'] == 'UNDER_REVIEW').length;
+        final draftCount = proposals.where((p) => p['status'] == 'DRAFT').length;
+        final completedCount = proposals.where((p) => p['status'] == 'COMPLETED').length;
+        final rejectedCount = proposals.where((p) => p['status'] == 'REJECTED').length;
+
+        final filtered = proposals.where((p) {
+          if (_selectedSegment == 'ALL') return true;
+          return p['status'] == _selectedSegment;
+        }).toList();
+
+        final segments = [
+          {'key': 'ALL', 'label': 'ALL ($allCount)'},
+          {'key': 'PUBLISHED', 'label': 'PUBLISHED ($publishedCount)'},
+          {'key': 'UNDER_REVIEW', 'label': 'UNDER REVIEW ($underReviewCount)'},
+          {'key': 'DRAFT', 'label': 'DRAFT ($draftCount)'},
+          {'key': 'COMPLETED', 'label': 'COMPLETED ($completedCount)'},
+          {'key': 'REJECTED', 'label': 'REJECTED ($rejectedCount)'},
+        ];
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 32),
+          children: [
+            // Header with Title and + CREATE PROPOSAL button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.role == AccountRole.brand
+                            ? 'Curated Experiences'
+                            : 'My Sponsorships',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF111111),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        widget.role == AccountRole.brand
+                            ? 'Discover and back vetted experiences hosted by communities.'
+                            : 'For all your proposals',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF667085),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _openCreateProposalModal,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: MeetdayColors.primaryRed,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.black, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(2, 2),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                        const SizedBox(width: 4),
+                        Text(
+                          'CREATE NEW',
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Horizontal segment bar (tabs)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: segments.map((seg) {
+                  final isSelected = _selectedSegment == seg['key'];
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedSegment = seg['key']!;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.black : Colors.white,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.black, width: 1.8),
+                        boxShadow: isSelected
+                            ? const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(1.5, 1.5),
+                                  blurRadius: 0,
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Text(
+                        seg['label']!,
+                        style: GoogleFonts.poppins(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: isSelected ? Colors.white : const Color(0xFF525252),
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Proposal cards list or Empty State
+            if (filtered.isEmpty)
+              Container(
+                margin: const EdgeInsets.only(top: 20),
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.black38,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.description_outlined, size: 44, color: Colors.black38),
+                    const SizedBox(height: 10),
+                    Text(
+                      'No proposals found',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'No proposals in "$_selectedSegment" category yet.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: const Color(0xFF667085),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: _openCreateProposalModal,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: MeetdayColors.accentYellow,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.black, width: 2),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '+ CREATE PROPOSAL',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...filtered.map((p) => ProposalListItemCard(
+                    proposal: p,
+                    onTap: () => _openProposalDetail(p),
+                  )),
+          ],
+        );
+      },
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
+      ),
+      error: (err, stack) => ListView(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+        children: [
+          Text(
+            widget.role == AccountRole.brand ? 'Curated Experiences' : 'My Sponsorships',
+            style: GoogleFonts.bricolageGrotesque(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF111111),
+            ),
           ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          role == AccountRole.brand
-              ? 'Discover and back vetted experiences hosted by communities.'
-              : 'Submit and manage your sponsorship proposals for upcoming events.',
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF667085),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _NeoListCard(
-          title: 'Weekend Night Market',
-          subtitle: 'Under review · submitted 2 days ago',
-          status: 'Reviewing',
-          statusColor: const Color(0xFFFEF3C7),
-        ),
-        _NeoListCard(
-          title: 'Founders Mixer',
-          subtitle: 'Published · visible to brands',
-          status: 'Live',
-          statusColor: const Color(0xFFDCFCE7),
-        ),
-        _NeoListCard(
-          title: 'Creative Workshop',
-          subtitle: 'Draft · waiting for edits',
-          status: 'Draft',
-          statusColor: const Color(0xFFE5E7EB),
-        ),
-      ],
+          const SizedBox(height: 14),
+          _ErrorCard(onRetry: () => ref.refresh(dashboardProposalsProvider)),
+        ],
+      ),
     );
   }
 }
@@ -1427,31 +1896,38 @@ class _CommunityTabBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final communitiesAsync = ref.watch(dashboardCommunitiesProvider);
+    final publishedAsync = ref.watch(publishedProposalsProvider);
+    final publishedProposals = (publishedAsync.asData?.value ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .toList();
 
     return communitiesAsync.when(
       data: (communities) {
-        final items = communities.isNotEmpty
+        final list = communities.isNotEmpty
             ? communities
-                .map((c) => _NeoListCard(
-                      title: c['title'] ?? 'Community',
-                      subtitle: 'Member count · ${c['memberCount'] ?? 0} members',
-                      status: 'Active',
-                      statusColor: const Color(0xFFDCFCE7),
-                    ))
-                .toList()
             : [
-                _NeoListCard(
-                  title: 'Meetday Social Circle',
-                  subtitle: 'Member count · 1,240 members',
-                  status: 'Approved',
-                  statusColor: const Color(0xFFDCFCE7),
-                ),
-                _NeoListCard(
-                  title: 'Creative Hosts Network',
-                  subtitle: 'Member count · 760 members',
-                  status: 'Pending',
-                  statusColor: const Color(0xFFFEF3C7),
-                ),
+                <String, dynamic>{
+                  'id': 'demo-1',
+                  'name': 'Meetday Social Circle',
+                  'size': '1,240',
+                  'memberCount': '1,240',
+                  'about':
+                      'A curated social circle bringing together founders, creators, and artists for weekly offline meetups.',
+                  'operatingCities': ['Delhi NCR', 'Bengaluru'],
+                  'avgGuestCount': '60-80',
+                  'experiencesPerYear': '24',
+                },
+                <String, dynamic>{
+                  'id': 'demo-2',
+                  'name': 'Creative Hosts Network',
+                  'size': '760',
+                  'memberCount': '760',
+                  'about':
+                      'Independent community organizers and event hosts curating intimate music, design, and culture popups.',
+                  'operatingCities': ['Mumbai'],
+                  'avgGuestCount': '45',
+                  'experiencesPerYear': '12',
+                },
               ];
 
         return ListView(
@@ -1460,27 +1936,64 @@ class _CommunityTabBody extends ConsumerWidget {
             Text(
               'Communities',
               style: GoogleFonts.bricolageGrotesque(
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 3),
             Text(
-              'Browse registered communities and host collectives on Meetday.',
+              'Communities onboarded on Meetday, available for sponsorship.',
               style: GoogleFonts.poppins(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: const Color(0xFF667085),
               ),
             ),
-            const SizedBox(height: 12),
-            ...items,
+            const SizedBox(height: 16),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: list.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 14,
+                childAspectRatio: 0.72,
+              ),
+              itemBuilder: (context, index) {
+                final c = list[index];
+                final name = (c['name'] ?? c['title'] ?? 'Community').toString();
+                final members = (c['memberCount'] ?? c['size'] ?? '0').toString();
+                final imageUrl = c['logoUrl'] as String?;
+
+                return _CommunityCardPreview(
+                  title: name,
+                  memberCount: members,
+                  imageUrl: imageUrl,
+                  width: null,
+                  onTap: () {
+                    final matchingProposals = getCommunityMatchingProposals(c, publishedProposals);
+
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CommunityDetailScreen(
+                          community: c,
+                          activeProposals: matchingProposals,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           ],
         );
       },
-      loading: () => Center(
-        child: CircularProgressIndicator(),
+      loading: () => const Center(
+        child: CircularProgressIndicator(
+          color: MeetdayColors.primaryRed,
+        ),
       ),
       error: (err, stack) => ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
@@ -1488,7 +2001,7 @@ class _CommunityTabBody extends ConsumerWidget {
           Text(
             'Communities',
             style: GoogleFonts.bricolageGrotesque(
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF111111),
             ),
@@ -1503,95 +2016,13 @@ class _CommunityTabBody extends ConsumerWidget {
   }
 }
 
-class _ChatsTabBody extends StatelessWidget {
-  const _ChatsTabBody();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-      children: [
-        Text(
-          'Chats & Messages',
-          style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF111111),
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Direct conversations with brand sponsors, hosts, and collaborators.',
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF667085),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _NeoListCard(
-          title: 'Aster Labs Partnership',
-          subtitle: 'Active chat · Last message: "Contract looks good!"',
-          status: 'Online',
-          statusColor: const Color(0xFFDCFCE7),
-        ),
-        _NeoListCard(
-          title: 'Urban Mint Activation',
-          subtitle: 'Awaiting response · Proposal sent',
-          status: '1 Unread',
-          statusColor: const Color(0xFFFEF3C7),
-        ),
-        _NeoListCard(
-          title: 'Meetday Support Concierge',
-          subtitle: 'Always here to assist with verification & payouts',
-          status: '24/7 Support',
-          statusColor: const Color(0xFFDBEAFE),
-        ),
-      ],
-    );
-  }
-}
 
 class _SupportTabBody extends StatelessWidget {
   const _SupportTabBody();
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-      children: [
-        Text(
-          'Support Chat',
-          style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF111111),
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Need assistance? Message Meetday concierge support anytime.',
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF667085),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _NeoListCard(
-          title: 'Meetday Concierge Support',
-          subtitle: 'Active support thread · last reply 14m ago',
-          status: 'Active',
-          statusColor: const Color(0xFFDCFCE7),
-        ),
-        _NeoListCard(
-          title: 'KYC & Payout Helpdesk',
-          subtitle: 'Bank account validation inquiry',
-          status: 'Open',
-          statusColor: const Color(0xFFDBEAFE),
-        ),
-      ],
-    );
+    return const CommunitySupportChatView();
   }
 }
 
@@ -1734,11 +2165,11 @@ class _MeetdayMobileBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     // 5 primary dock destinations: Communities (3), Hubs (2), Proposals (1 - Center), Chats (4), Support (5)
     final items = [
-      (3, Icons.groups_rounded, 'Communities'),
-      (2, Icons.calendar_today_rounded, 'Hubs'),
-      (1, Icons.description_rounded, 'Proposals'),
-      (4, Icons.chat_bubble_rounded, 'Chats'),
-      (5, Icons.headset_mic_rounded, 'Support'),
+      (3, Icons.groups_rounded, null, null, 'Communities'),
+      (2, Icons.calendar_today_rounded, null, null, 'Hubs'),
+      (1, Icons.description_rounded, null, null, 'Proposals'),
+      (4, null, 'assets/icons/chat.svg', 'assets/icons/chat-filled.svg', 'Chats'),
+      (5, Icons.headset_mic_rounded, null, null, 'Support'),
     ];
 
     return Container(
@@ -1756,8 +2187,11 @@ class _MeetdayMobileBottomBar extends StatelessWidget {
           children: items.map((item) {
             final index = item.$1;
             final icon = item.$2;
-            final label = item.$3;
+            final svgOutlined = item.$3;
+            final svgFilled = item.$4;
+            final label = item.$5;
             final isSelected = currentIndex == index;
+            final itemColor = isSelected ? Colors.black : Colors.white;
 
             return GestureDetector(
               onTap: () => onTap(index),
@@ -1788,11 +2222,22 @@ class _MeetdayMobileBottomBar extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      icon,
-                      size: 20,
-                      color: isSelected ? Colors.black : Colors.white,
-                    ),
+                    if (svgOutlined != null)
+                      SvgPicture.asset(
+                        (isSelected && svgFilled != null) ? svgFilled : svgOutlined,
+                        width: 20,
+                        height: 20,
+                        colorFilter: ColorFilter.mode(
+                          itemColor,
+                          BlendMode.srcIn,
+                        ),
+                      )
+                    else if (icon != null)
+                      Icon(
+                        icon,
+                        size: 20,
+                        color: itemColor,
+                      ),
                     if (isSelected) ...[
                       const SizedBox(width: 6),
                       Text(

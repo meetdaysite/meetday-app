@@ -52,6 +52,29 @@ class ApiClient {
     }
   }
 
+  Future<dynamic> getRequest(String path) async {
+    final response = await dio.get<dynamic>(path);
+    return response.data;
+  }
+
+  Future<dynamic> postRequest(String path, [dynamic data]) async {
+    final response = await dio.post<dynamic>(path, data: data);
+    return response.data;
+  }
+
+  Future<dynamic> putRequest(String path, [dynamic data]) async {
+    final response = await dio.put<dynamic>(path, data: data);
+    return response.data;
+  }
+
+  Future<dynamic> uploadFile(String path, String filePath) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath),
+    });
+    final response = await dio.post<dynamic>(path, data: formData);
+    return response.data;
+  }
+
   Map<String, String> _authHeaders() {
     if (_idToken != null && _idToken!.isNotEmpty) {
       return {'Authorization': 'Bearer $_idToken'};

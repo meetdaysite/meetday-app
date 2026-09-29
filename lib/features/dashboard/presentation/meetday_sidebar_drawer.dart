@@ -353,13 +353,13 @@ class _MeetdaySidebarDrawerState extends ConsumerState<MeetdaySidebarDrawer> {
                 children: [
                   _DrawerNavItem(
                     label: 'Chats',
-                    icon: Icons.chat_bubble_outline_rounded,
-                    activeIcon: Icons.chat_bubble_rounded,
+                    svgAsset: 'assets/icons/chat.svg',
+                    activeSvgAsset: 'assets/icons/chat-filled.svg',
                     badgeCount: 2,
-                    isActive: false,
+                    isActive: widget.currentTabIndex == 4,
                     onTap: () {
                       Navigator.of(context).pop();
-                      widget.onSelectTab(5); // Support/Chat tab
+                      widget.onSelectTab(4); // Chats tab
                     },
                   ),
                   const SizedBox(height: 4),
@@ -482,8 +482,10 @@ class _MeetdaySidebarDrawerState extends ConsumerState<MeetdaySidebarDrawer> {
 class _DrawerNavItem extends StatelessWidget {
   const _DrawerNavItem({
     required this.label,
-    required this.icon,
-    required this.activeIcon,
+    this.icon,
+    this.activeIcon,
+    this.svgAsset,
+    this.activeSvgAsset,
     required this.isActive,
     required this.onTap,
     this.badgeText,
@@ -493,14 +495,33 @@ class _DrawerNavItem extends StatelessWidget {
   });
 
   final String label;
-  final IconData icon;
-  final IconData activeIcon;
+  final IconData? icon;
+  final IconData? activeIcon;
+  final String? svgAsset;
+  final String? activeSvgAsset;
   final bool isActive;
   final VoidCallback onTap;
   final String? badgeText;
   final int? badgeCount;
   final bool hasUnreadDot;
   final bool disabled;
+
+  Widget _buildIcon(Color color) {
+    if (svgAsset != null) {
+      final path = (isActive && activeSvgAsset != null) ? activeSvgAsset! : svgAsset!;
+      return SvgPicture.asset(
+        path,
+        width: 20,
+        height: 20,
+        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      );
+    }
+    return Icon(
+      isActive ? (activeIcon ?? icon) : (icon ?? activeIcon),
+      size: 20,
+      color: color,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -512,7 +533,7 @@ class _DrawerNavItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: Colors.white.withValues(alpha: 0.4)),
+            _buildIcon(Colors.white.withValues(alpha: 0.4)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -557,11 +578,7 @@ class _DrawerNavItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              isActive ? activeIcon : icon,
-              size: 20,
-              color: Colors.white,
-            ),
+            _buildIcon(Colors.white),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

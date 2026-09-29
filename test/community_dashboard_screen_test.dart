@@ -25,7 +25,7 @@ void main() {
     // Open the drawer to reveal the mobile navigation items matching meetday-frontend
     final scaffoldState = tester.firstState<ScaffoldState>(find.byType(Scaffold));
     scaffoldState.openDrawer();
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('Experience Proposals'), findsOneWidget);
