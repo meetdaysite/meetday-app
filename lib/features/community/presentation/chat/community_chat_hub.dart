@@ -1,7 +1,11 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
@@ -1773,9 +1777,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     }
   }
 
-  Future<void> _sendMessage({String? mediaUrl}) async {
+  Future<void> _sendMessage({String? mediaUrl, String? mediaKey}) async {
     final text = _textController.text.trim();
-    if (text.isEmpty && mediaUrl == null) return;
+    if (text.isEmpty && mediaUrl == null && mediaKey == null) return;
     if (_isSending) return;
 
     setState(() => _isSending = true);
@@ -1794,6 +1798,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           if (text.isNotEmpty) 'content': text,
         };
         if (mediaUrl != null) payload['mediaUrl'] = mediaUrl;
+        if (mediaKey != null) payload['mediaKey'] = mediaKey;
         if (_replyingTo != null) payload['replyToId'] = _replyingTo!.id;
 
         switch (widget.thread.kind) {
@@ -2244,7 +2249,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF9FAFB),
+                        color: _textController.text.isNotEmpty
+                            ? const Color(0xFFF1F5F9)
+                            : const Color(0xFFF9FAFB),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
@@ -2253,6 +2260,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       ),
                       child: TextField(
                         controller: _textController,
+                        cursorColor: Colors.black,
+                        onChanged: (_) => setState(() {}),
                         style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w500),
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
@@ -2636,10 +2645,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.check_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
           children: const [
             TextSpan(text: 'Congratulations! The '),
-            TextSpan(text: 'deal is officially completed and closed', style: TextStyle(fontWeight: FontWeight.w900)),
+            TextSpan(text: 'deal is officially completed and closed', style: TextStyle(fontWeight: FontWeight.w800)),
             TextSpan(text: '!'),
           ],
         ),
@@ -2655,9 +2664,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.edit_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
           children: const [
-            TextSpan(text: 'Revision was requested', style: TextStyle(fontWeight: FontWeight.w900)),
+            TextSpan(text: 'Revision requested', style: TextStyle(fontWeight: FontWeight.w800)),
             TextSpan(text: ' on the deliverables report.'),
           ],
         ),
@@ -2674,10 +2683,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.assignment_turned_in_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
           children: const [
             TextSpan(text: 'The '),
-            TextSpan(text: 'deliverables report', style: TextStyle(fontWeight: FontWeight.w900)),
+            TextSpan(text: 'deliverables report', style: TextStyle(fontWeight: FontWeight.w800)),
             TextSpan(text: ' was submitted for review.'),
           ],
         ),
@@ -2695,10 +2704,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.lock_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
           children: const [
             TextSpan(text: 'The '),
-            TextSpan(text: 'deal is officially locked', style: TextStyle(fontWeight: FontWeight.w900)),
+            TextSpan(text: 'deal is officially locked', style: TextStyle(fontWeight: FontWeight.w800)),
             TextSpan(text: ' and confirmed!'),
           ],
         ),
@@ -2718,10 +2727,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       final dealWord = isCampaign ? 'campaign deal' : 'deal proposal';
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
           children: [
             const TextSpan(text: 'A new '),
-            TextSpan(text: dealWord, style: const TextStyle(fontWeight: FontWeight.w900)),
+            TextSpan(text: dealWord, style: const TextStyle(fontWeight: FontWeight.w800)),
             const TextSpan(text: ' was shared for approval.'),
           ],
         ),
@@ -2737,9 +2746,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       final dealWord = isCampaign ? 'campaign deal' : 'proposal';
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
           children: [
-            const TextSpan(text: 'Changes were requested', style: TextStyle(fontWeight: FontWeight.w900)),
+            const TextSpan(text: 'Changes requested', style: TextStyle(fontWeight: FontWeight.w800)),
             TextSpan(text: ' on the $dealWord.'),
           ],
         ),
@@ -2754,9 +2763,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.credit_card_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 12, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
           children: const [
-            TextSpan(text: 'Payment completed', style: TextStyle(fontWeight: FontWeight.w900)),
+            TextSpan(text: 'Payment completed', style: TextStyle(fontWeight: FontWeight.w800)),
             TextSpan(text: ' successfully!'),
           ],
         ),
@@ -2769,57 +2778,47 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           .trim();
       return Center(
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.88),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
           decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
+            color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: const [
-              BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-            ],
+            border: Border.all(color: Colors.black.withValues(alpha: 0.1), width: 1),
           ),
           child: Text(
             clean.isNotEmpty ? clean : msg.content,
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.black87),
+            style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.black54),
           ),
         ),
       );
     }
 
-    // Neo-brutalist system message card matching SystemMessageBubble.tsx
+    // Subtle, compact pill matching user request
     return Center(
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.88),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(2.5, 2.5), blurRadius: 0),
-          ],
+          border: Border.all(color: Colors.black.withValues(alpha: 0.12), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 24,
-              height: 24,
+              width: 18,
+              height: 18,
               decoration: BoxDecoration(
                 color: iconCircleBg,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.black, width: 2),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
-                ],
               ),
-              child: Icon(iconData, size: 13, color: iconColor),
+              child: Icon(iconData, size: 10, color: iconColor),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Flexible(child: messageText),
           ],
         ),
@@ -2872,219 +2871,214 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     final alignment = (isAdmin || !isMe) ? Alignment.centerLeft : Alignment.centerRight;
     final crossAlign = (isAdmin || !isMe) ? CrossAxisAlignment.start : CrossAxisAlignment.end;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      alignment: alignment,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        child: Column(
-          crossAxisAlignment: crossAlign,
-          children: [
-            // Header label above bubble: "You" / "Admin" / Counterpart Name + Timestamp + Actions (Reply, Edit, Delete)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    isMe ? 'You' : (isAdmin ? 'Admin' : widget.thread.counterpartName),
+    return Dismissible(
+      key: ValueKey('msg_${msg.id}_${msg.createdAt}'),
+      direction: isMe ? DismissDirection.startToEnd : DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _editingMessage = null;
+          _replyingTo = msg;
+        });
+        return false;
+      },
+      background: isMe
+          ? Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 16),
+              child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
+            )
+          : Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 16),
+              child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
+            ),
+      secondaryBackground: !isMe
+          ? Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 16),
+              child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
+            )
+          : const SizedBox.shrink(),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        alignment: alignment,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.78,
+          ),
+          child: Column(
+            crossAxisAlignment: crossAlign,
+            children: [
+              // Sender Name Header (only for counterpart / admin, not self)
+              if (!isMe || isAdmin)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 2),
+                  child: Text(
+                    isAdmin ? 'Admin' : widget.thread.counterpartName,
                     style: GoogleFonts.poppins(
                       fontSize: 9.5,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black38,
-                      letterSpacing: 0.3,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black45,
+                      letterSpacing: 0.2,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _messageTime(msg.createdAt),
-                    style: GoogleFonts.poppins(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black38,
-                    ),
-                  ),
-                  if (!isDeleted) ...[
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _editingMessage = null;
-                          _replyingTo = msg;
-                        });
-                      },
-                      child: Text(
-                        'Reply',
-                        style: GoogleFonts.poppins(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black45,
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (isMe && !isDeleted) ...[
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _replyingTo = null;
-                          _editingMessage = msg;
-                          _textController.text = msg.content;
-                        });
-                      },
-                      child: Text(
-                        'Edit',
-                        style: GoogleFonts.poppins(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black45,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => _handleDelete(msg),
-                      child: Text(
-                        'Delete',
-                        style: GoogleFonts.poppins(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: MeetdayColors.primaryRed,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+                ),
 
-            // Message Bubble: NO BORDER, NO SHADOW!
-            GestureDetector(
-              onLongPress: () => _showMessageContextMenu(msg),
-              child: isDeleted
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F4F6),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        'This message was deleted',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black45,
+              // Message Bubble: Long press opens context menu with Reply, Copy, Edit, Delete
+              GestureDetector(
+                onLongPress: () => _showMessageContextMenu(msg),
+                child: isDeleted
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      ),
-                    )
-                  : Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-                      decoration: BoxDecoration(
-                        color: bubbleBg,
-                        borderRadius: BorderRadius.circular(16).copyWith(
-                          bottomRight: isMe ? const Radius.circular(3) : const Radius.circular(16),
-                          bottomLeft: (!isMe || isAdmin) ? const Radius.circular(3) : const Radius.circular(16),
+                        child: Text(
+                          'This message was deleted',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black45,
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Replying quote snippet preview
-                          if (msg.replyTo != null) ...[
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: isDarkBubble
-                                    ? Colors.white.withValues(alpha: 0.15)
-                                    : Colors.black.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border(
-                                  left: BorderSide(
-                                    color: isDarkBubble ? Colors.white70 : Colors.black45,
-                                    width: 3.5,
-                                  ),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '↩ Replying to ${msg.replyTo!.senderType == 'ADMIN' ? 'Admin' : (msg.replyTo!.isMe ? 'You' : widget.thread.counterpartName)}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w900,
-                                      color: isDarkBubble ? Colors.white70 : Colors.black54,
+                      )
+                    : Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                        decoration: BoxDecoration(
+                          color: bubbleBg,
+                          borderRadius: BorderRadius.circular(16).copyWith(
+                            bottomRight: isMe ? const Radius.circular(3) : const Radius.circular(16),
+                            bottomLeft: (!isMe || isAdmin) ? const Radius.circular(3) : const Radius.circular(16),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Replying quote snippet preview
+                            if (msg.replyTo != null) ...[
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: isDarkBubble
+                                      ? Colors.white.withValues(alpha: 0.15)
+                                      : Colors.black.withValues(alpha: 0.06),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: isDarkBubble ? Colors.white70 : Colors.black45,
+                                      width: 3.5,
                                     ),
                                   ),
-                                  if (msg.replyTo!.content.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      msg.replyTo!.content,
+                                      '↩ Replying to ${msg.replyTo!.senderType == 'ADMIN' ? 'Admin' : (msg.replyTo!.isMe ? 'You' : widget.thread.counterpartName)}',
                                       style: GoogleFonts.poppins(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w500,
-                                        color: isDarkBubble ? Colors.white : Colors.black87,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        color: isDarkBubble ? Colors.white70 : Colors.black54,
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
+                                    if (msg.replyTo!.content.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        msg.replyTo!.content,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w500,
+                                          color: isDarkBubble ? Colors.white : Colors.black87,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ],
-                                ],
-                              ),
-                            ),
-                          ],
-
-                          // Media Attachment
-                          if (msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty) ...[
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Image.network(
-                                msg.mediaUrl!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  padding: const EdgeInsets.all(8),
-                                  color: Colors.black12,
-                                  child: const Icon(Icons.broken_image_rounded, size: 36),
                                 ),
                               ),
-                            ),
-                            if (msg.content.isNotEmpty) const SizedBox(height: 6),
-                          ],
+                            ],
 
-                          // Content text
-                          if (msg.content.isNotEmpty)
-                            RichText(
-                              text: TextSpan(
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: textColor,
-                                  height: 1.35,
+                            // Media Attachment
+                            if (msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty) ...[
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(
+                                  msg.mediaUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => Container(
+                                    padding: const EdgeInsets.all(8),
+                                    color: Colors.black12,
+                                    child: const Icon(Icons.broken_image_rounded, size: 36),
+                                  ),
                                 ),
-                                children: [
-                                  TextSpan(text: msg.content),
-                                  if (msg.isEdited)
-                                    TextSpan(
-                                      text: ' (edited)',
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        fontStyle: FontStyle.italic,
-                                        color: isDarkBubble ? Colors.white60 : Colors.black45,
+                              ),
+                              if (msg.content.isNotEmpty) const SizedBox(height: 6),
+                            ],
+
+                            // Content text
+                            if (msg.content.isNotEmpty)
+                              RichText(
+                                text: TextSpan(
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: textColor,
+                                    height: 1.35,
+                                  ),
+                                  children: [
+                                    TextSpan(text: msg.content),
+                                    if (msg.isEdited)
+                                      TextSpan(
+                                        text: ' (edited)',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontStyle: FontStyle.italic,
+                                          color: isDarkBubble ? Colors.white60 : Colors.black45,
+                                        ),
                                       ),
-                                    ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
+                      ),
+              ),
+
+              // Timestamp UNDER the message
+              Padding(
+                padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _messageTime(msg.createdAt),
+                      style: GoogleFonts.poppins(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black38,
                       ),
                     ),
-            ),
-          ],
+                    if (msg.isEdited) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        '(edited)',
+                        style: GoogleFonts.poppins(
+                          fontSize: 9,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.black38,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3207,7 +3201,130 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     );
   }
 
-  // ─── Attachment Dialog ─────────────────────────────────────────────────────
+  // ─── Attachment Dialog & Phone File Picking ────────────────────────────────
+
+  Future<void> _pickAndSendImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: source, imageQuality: 85);
+      if (picked == null) return;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Uploading media...'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.black87,
+          ),
+        );
+      }
+
+      final bytes = await picked.readAsBytes();
+      final api = ref.read(apiClientProvider);
+
+      String uploadContext = 'SPONSORSHIP_CHAT_MEDIA';
+      if (widget.thread.kind == 'SPACE_INTEREST') {
+        uploadContext = 'SPACE_CHAT_MEDIA';
+      } else if (widget.thread.kind == 'SPACE_HOST') {
+        uploadContext = 'SPACE_HOST_CHAT_MEDIA';
+      } else if (widget.thread.kind == 'COMMUNITY_COLLAB') {
+        uploadContext = 'COMMUNITY_COLLABORATION_CHAT_MEDIA';
+      }
+
+      final key = await api.uploadMediaFile(
+        bytes: bytes,
+        fileName: picked.name,
+        context: uploadContext,
+        resourceId: widget.thread.id,
+      );
+
+      if (key != null) {
+        await _sendMessage(mediaKey: key);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload failed. Please try again.'),
+              backgroundColor: MeetdayColors.primaryRed,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking/uploading image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting image: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickAndSendFile() async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx'],
+      );
+      if (files.isEmpty) return;
+
+      final file = files.first;
+      final bytes = await file.xFile.readAsBytes();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Uploading file...'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.black87,
+          ),
+        );
+      }
+
+      final api = ref.read(apiClientProvider);
+      String uploadContext = 'SPONSORSHIP_CHAT_MEDIA';
+      if (widget.thread.kind == 'SPACE_INTEREST') {
+        uploadContext = 'SPACE_CHAT_MEDIA';
+      } else if (widget.thread.kind == 'SPACE_HOST') {
+        uploadContext = 'SPACE_HOST_CHAT_MEDIA';
+      } else if (widget.thread.kind == 'COMMUNITY_COLLAB') {
+        uploadContext = 'COMMUNITY_COLLABORATION_CHAT_MEDIA';
+      }
+
+      final key = await api.uploadMediaFile(
+        bytes: bytes,
+        fileName: file.name,
+        context: uploadContext,
+        resourceId: widget.thread.id,
+      );
+
+      if (key != null) {
+        await _sendMessage(mediaKey: key);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload failed. Please try again.'),
+              backgroundColor: MeetdayColors.primaryRed,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking/uploading file: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting file: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
+        );
+      }
+    }
+  }
 
   void _showAttachmentDialog() {
     final urlController = TextEditingController();
@@ -3237,10 +3354,125 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
               'Attach Media',
               style: GoogleFonts.bricolageGrotesque(fontSize: 18, fontWeight: FontWeight.w900),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
-              'Enter an image or document URL to share with ${widget.thread.counterpartName}',
+              'Select files from your phone or share a media link',
               style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54),
+            ),
+            const SizedBox(height: 16),
+
+            // Selection Grid: Gallery, Camera, Document
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _pickAndSendImage(ImageSource.gallery);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: MeetdayColors.accentYellow,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.photo_library_rounded, size: 24, color: Colors.black),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Gallery',
+                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.black),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _pickAndSendImage(ImageSource.camera);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.camera_alt_rounded, size: 24, color: Colors.black),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Camera',
+                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.black),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _pickAndSendFile();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.file_present_rounded, size: 24, color: Color(0xFF2563EB)),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Document',
+                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.black),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Divider or text URL
+            Row(
+              children: [
+                const Expanded(child: Divider(color: Colors.black12, thickness: 1)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(
+                    'OR PASTE URL',
+                    style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.black38),
+                  ),
+                ),
+                const Expanded(child: Divider(color: Colors.black12, thickness: 1)),
+              ],
             ),
             const SizedBox(height: 14),
             Container(
@@ -3282,7 +3514,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     _sendMessage(mediaUrl: url);
                   }
                 },
-                child: Text('Send Attachment', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
+                child: Text('Send Media URL', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
               ),
             ),
           ],
@@ -3446,6 +3678,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   // ─── Deal Details Dialog ───────────────────────────────────────────────────
 
   void _showDealDetailsDialog(BuildContext context, Map<String, dynamic> deal, Map<String, dynamic>? report) {
+    final dealStatus = (deal['status'] ?? 'PENDING').toString().toUpperCase();
+    final isLocked = dealStatus == 'APPROVED';
+    final isReviewer = widget.thread.category == 'brands' && widget.thread.kind == 'SPONSORSHIP';
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3481,7 +3717,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             const SizedBox(height: 10),
             _infoRow('Project', deal['projectName']?.toString() ?? '-'),
             _infoRow('Amount', '₹${deal['sponsorshipAmount'] ?? deal['amount'] ?? '0'}'),
-            _infoRow('Status', (deal['status'] ?? 'PENDING').toString().toUpperCase()),
+            _infoRow('Status', dealStatus),
             _infoRow('Payment', (deal['paymentStatus'] ?? 'UNPAID').toString().toUpperCase()),
             _infoRow('Venue', deal['venue']?.toString() ?? '-'),
             _infoRow('Date', deal['startDate']?.toString().split('T').first ?? '-'),
@@ -3490,21 +3726,163 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             if (deal['additionalNotes'] != null && deal['additionalNotes'].toString().isNotEmpty)
               _infoRow('Notes', deal['additionalNotes'].toString()),
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+
+            // Deal Actions: Approve / Request Changes / Edit Deal
+            if (!isLocked) ...[
+              if (isReviewer) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: Colors.black, width: 2),
+                          ),
+                          elevation: 0,
+                        ),
+                        onPressed: () async {
+                          Navigator.of(ctx).pop();
+                          try {
+                            final api = ref.read(apiClientProvider);
+                            await approveDealApi(api, widget.thread);
+                            ref.invalidate(threadDealProvider(widget.thread));
+                            ref.invalidate(chatMessagesProvider(widget.thread));
+                            ref.invalidate(chatHubProvider);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Deal approved and locked!'), backgroundColor: Color(0xFF10B981)),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to approve deal: $e'), backgroundColor: MeetdayColors.primaryRed),
+                              );
+                            }
+                          }
+                        },
+                        child: Text('Approve & Lock', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: MeetdayColors.accentYellow,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: Colors.black, width: 2),
+                          ),
+                          elevation: 0,
+                        ),
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _showRequestDealChangesDialog(context);
+                        },
+                        child: Text('Request Changes', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Close', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+              ] else ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MeetdayColors.accentYellow,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Colors.black, width: 2),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _showDealFormDialog(context, existingDeal: deal);
+                    },
+                    child: Text('Edit Deal Terms', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
+                  ),
+                ),
+              ],
+            ] else ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: Colors.black, width: 2),
+                    ),
+                    elevation: 0,
+                  ),
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _showDealReportDialog(context, existingReport: report, deal: deal);
+                  },
+                  child: Text('View Deliverables Report', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
+                ),
               ),
-            ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  void _showRequestDealChangesDialog(BuildContext context) {
+    final noteCtrl = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: Colors.black, width: 2.5)),
+        title: Text('Request Changes', style: GoogleFonts.bricolageGrotesque(fontWeight: FontWeight.w900)),
+        content: TextField(
+          controller: noteCtrl,
+          maxLines: 3,
+          style: GoogleFonts.poppins(fontSize: 12.5),
+          decoration: InputDecoration(
+            hintText: 'Describe changes needed on the deal terms…',
+            hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dCtx).pop(), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: MeetdayColors.primaryRed, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.of(dCtx).pop();
+              try {
+                final api = ref.read(apiClientProvider);
+                await requestDealChangesApi(api, widget.thread, note: noteCtrl.text.trim());
+                ref.invalidate(threadDealProvider(widget.thread));
+                ref.invalidate(chatMessagesProvider(widget.thread));
+                ref.invalidate(chatHubProvider);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Changes requested successfully!')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to request changes: $e')));
+                }
+              }
+            },
+            child: const Text('Submit'),
+          ),
+        ],
       ),
     );
   }
@@ -3513,14 +3891,42 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   void _showDealReportDialog(
       BuildContext context, {Map<String, dynamic>? existingReport, Map<String, dynamic>? deal}) {
-    final summaryCtrl = TextEditingController(text: existingReport?['summary']?.toString() ?? '');
-    final proofCtrl = TextEditingController(
-        text: (existingReport?['proofUrls'] is List
-                ? (existingReport!['proofUrls'] as List).join(', ')
-                : existingReport?['notes']?.toString()) ??
-            '');
+    // Parse summary if stored as JSON (matching meetday-frontend DealPanel.tsx)
+    Map<String, dynamic> parsedSummary = {};
+    if (existingReport != null && existingReport['summary'] != null) {
+      try {
+        final decoded = jsonDecode(existingReport['summary'].toString());
+        if (decoded is Map) parsedSummary = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+
+    final projectName = parsedSummary['projectName'] ?? existingReport?['projectName'] ?? deal?['projectName'] ?? widget.thread.title;
+    final eventDate = parsedSummary['date'] ?? existingReport?['eventDate'] ?? deal?['startDate']?.toString().split('T').first ?? '';
+    final venue = parsedSummary['venue'] ?? existingReport?['venue'] ?? deal?['venue'] ?? '';
+    final time = parsedSummary['time'] ?? existingReport?['time'] ?? '';
+    final guestCount = parsedSummary['guestCount'] ?? existingReport?['guestCount'] ?? '';
+    final ageRange = parsedSummary['ageRange'] ?? existingReport?['ageRange'] ?? '';
+    final summaryText = parsedSummary['summary'] ?? existingReport?['summary'] ?? '';
+    final status = (existingReport?['status'] ?? parsedSummary['status'] ?? 'PENDING').toString().toUpperCase();
+    final revisionNote = (existingReport?['revisionNote'] ?? parsedSummary['revisionNote'] ?? '').toString();
+
+    final nameCtrl = TextEditingController(text: projectName.toString());
+    final dateCtrl = TextEditingController(text: eventDate.toString());
+    final venueCtrl = TextEditingController(text: venue.toString());
+    final timeCtrl = TextEditingController(text: time.toString());
+    final guestCountCtrl = TextEditingController(text: guestCount.toString());
+    final ageRangeCtrl = TextEditingController(text: ageRange.toString());
+    final summaryCtrl = TextEditingController(text: summaryText.isNotEmpty && !summaryText.startsWith('{') ? summaryText : '');
     final notesCtrl = TextEditingController(text: existingReport?['notes']?.toString() ?? '');
+
+    final initialProofKeys = <String>[];
+    if (existingReport?['proofKeys'] is List) {
+      initialProofKeys.addAll((existingReport!['proofKeys'] as List).map((e) => e.toString()));
+    }
+
+    final proofKeys = List<String>.from(initialProofKeys);
     bool isSaving = false;
+    bool isUploadingProof = false;
 
     showModalBottomSheet<void>(
       context: context,
@@ -3556,20 +3962,139 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(ctx).pop()),
                   ],
                 ),
+                if (status == 'REVISION_REQUESTED' && revisionNote.isNotEmpty) ...[
+                  Container(
+                    margin: const EdgeInsets.only(top: 8, bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Revision Requested:', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w900, color: const Color(0xFF92400E))),
+                        const SizedBox(height: 2),
+                        Text(revisionNote, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF92400E))),
+                      ],
+                    ),
+                  ),
+                ],
                 Text(
                   'Share execution proof, photos, video links, or attendee counts.',
                   style: GoogleFonts.poppins(fontSize: 11, color: Colors.black54),
                 ),
                 const SizedBox(height: 14),
-                _fieldLabel('SUMMARY OF EVENT & DELIVERABLES'),
-                _formInput(summaryCtrl, 'e.g. Successfully hosted with 200 attendees and banner displayed',
-                    maxLines: 3),
+                _fieldLabel('PROJECT / EVENT NAME'),
+                _formInput(nameCtrl, 'Project Name'),
                 const SizedBox(height: 10),
-                _fieldLabel('PROOF / MEDIA LINKS'),
-                _formInput(proofCtrl, 'https://drive.google.com/..., https://youtube.com/...'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _fieldLabel('EVENT DATE'),
+                          _formInput(dateCtrl, 'YYYY-MM-DD'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _fieldLabel('TIME'),
+                          _formInput(timeCtrl, 'e.g. 5:00 PM'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _fieldLabel('VENUE'),
+                _formInput(venueCtrl, 'Event Venue'),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _fieldLabel('GUEST COUNT'),
+                          _formInput(guestCountCtrl, 'e.g. 150'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _fieldLabel('AGE RANGE'),
+                          _formInput(ageRangeCtrl, 'e.g. 18-35'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _fieldLabel('EVENT HIGHLIGHTS & SUMMARY'),
+                _formInput(summaryCtrl, 'Overview of how deliverables were fulfilled…', maxLines: 3),
+                const SizedBox(height: 10),
+                _fieldLabel('PROOF PHOTOS & FILES (${proofKeys.length} attached)'),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        foregroundColor: Colors.black,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: const BorderSide(color: Colors.black, width: 1.5),
+                        ),
+                      ),
+                      onPressed: isUploadingProof
+                          ? null
+                          : () async {
+                              final picker = ImagePicker();
+                              final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+                              if (picked == null) return;
+
+                              setModalState(() => isUploadingProof = true);
+                              try {
+                                final bytes = await picked.readAsBytes();
+                                final api = ref.read(apiClientProvider);
+                                final key = await api.uploadMediaFile(
+                                  bytes: bytes,
+                                  fileName: picked.name,
+                                  context: widget.thread.kind == 'SPACE_INTEREST' || widget.thread.kind == 'SPACE_HOST'
+                                      ? 'SPACE_DEAL_REPORT_MEDIA'
+                                      : 'SPONSORSHIP_DEAL_REPORT_MEDIA',
+                                  resourceId: widget.thread.id,
+                                );
+                                if (key != null) {
+                                  setModalState(() => proofKeys.add(key));
+                                }
+                              } catch (e) {
+                                debugPrint('Error uploading proof: $e');
+                              } finally {
+                                setModalState(() => isUploadingProof = false);
+                              }
+                            },
+                      icon: isUploadingProof
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.add_photo_alternate_rounded, size: 16),
+                      label: Text('Attach Proof from Phone', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 10),
                 _fieldLabel('ADDITIONAL NOTES'),
-                _formInput(notesCtrl, 'Any further feedback or notes for brand review', maxLines: 2),
+                _formInput(notesCtrl, 'Any further notes or details for review', maxLines: 2),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
@@ -3587,21 +4112,35 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     onPressed: isSaving
                         ? null
                         : () async {
-                            final sum = summaryCtrl.text.trim();
-                            if (sum.isEmpty) return;
-
                             setModalState(() => isSaving = true);
                             try {
                               final api = ref.read(apiClientProvider);
+                              final summaryData = jsonEncode({
+                                'projectName': nameCtrl.text.trim(),
+                                'date': dateCtrl.text.trim(),
+                                'venue': venueCtrl.text.trim(),
+                                'time': timeCtrl.text.trim(),
+                                'guestCount': guestCountCtrl.text.trim(),
+                                'ageRange': ageRangeCtrl.text.trim(),
+                                'summary': summaryCtrl.text.trim(),
+                                'status': 'PENDING',
+                                'revisionNote': '',
+                              });
+
                               final payload = {
-                                'summary': sum,
+                                'projectName': nameCtrl.text.trim(),
+                                'eventDate': dateCtrl.text.trim(),
+                                'venue': venueCtrl.text.trim(),
+                                'time': timeCtrl.text.trim(),
+                                'guestCount': guestCountCtrl.text.trim(),
+                                'ageRange': ageRangeCtrl.text.trim(),
+                                'status': 'PENDING',
+                                'revisionNote': '',
+                                'summary': summaryData,
                                 'notes': notesCtrl.text.trim(),
-                                'proofUrls': proofCtrl.text
-                                    .split(',')
-                                    .map((s) => s.trim())
-                                    .where((s) => s.isNotEmpty)
-                                    .toList(),
+                                'proofKeys': proofKeys,
                               };
+
                               await saveReportApi(api, widget.thread, payload);
                               ref.invalidate(threadReportProvider(widget.thread));
                               ref.invalidate(chatMessagesProvider(widget.thread));

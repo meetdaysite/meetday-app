@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/meetday_colors.dart';
 import '../../auth/domain/account_role.dart';
 import '../../auth/state/auth_provider.dart';
+import '../../community/presentation/profile/profile_screen.dart';
 
 class MeetdaySidebarDrawer extends ConsumerStatefulWidget {
   const MeetdaySidebarDrawer({
@@ -307,7 +308,15 @@ class _MeetdaySidebarDrawerState extends ConsumerState<MeetdaySidebarDrawer> {
                             GestureDetector(
                               onTap: () {
                                 Navigator.of(context).pop();
-                                widget.onSelectTab(0);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => ProfileScreen(
+                                      initialOpenPanel: 'community',
+                                      onSelectTab: widget.onSelectTab,
+                                      currentTabIndex: widget.currentTabIndex,
+                                    ),
+                                  ),
+                                );
                               },
                               child: Container(
                                 width: double.infinity,
@@ -387,9 +396,19 @@ class _MeetdaySidebarDrawerState extends ConsumerState<MeetdaySidebarDrawer> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Bottom Profile Button / Pill
+                  // Bottom Profile Button / Pill (matches website: navigates to /community/dashboard/profile)
                   GestureDetector(
-                    onTap: () => _showSignOutDialog(context),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ProfileScreen(
+                            onSelectTab: widget.onSelectTab,
+                            currentTabIndex: widget.currentTabIndex,
+                          ),
+                        ),
+                      );
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
@@ -460,10 +479,16 @@ class _MeetdaySidebarDrawerState extends ConsumerState<MeetdaySidebarDrawer> {
                               ],
                             ),
                           ),
-                          const Icon(
-                            Icons.logout_rounded,
-                            size: 18,
-                            color: Colors.black,
+                          GestureDetector(
+                            onTap: () => _showSignOutDialog(context),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4.0),
+                              child: Icon(
+                                Icons.logout_rounded,
+                                size: 18,
+                                color: Colors.black,
+                              ),
+                            ),
                           ),
                         ],
                       ),

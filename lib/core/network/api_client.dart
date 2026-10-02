@@ -35,12 +35,114 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
+  Future<Map<String, dynamic>> getHostProfile() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/hosts/me',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> updateHostProfile(Map<String, dynamic> payload) async {
+    final response = await dio.patch<Map<String, dynamic>>(
+      '/hosts/profile',
+      data: payload,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> getHostTeamMembers() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/hosts/community/members',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> inviteHostTeamMember(String email) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/hosts/community/members',
+      data: {'email': email},
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<void> removeHostTeamMember(String memberId) async {
+    await dio.delete<void>(
+      '/hosts/community/members/$memberId',
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
+  Future<void> setHostMemberPermission(String memberId, bool canManageMembers) async {
+    await dio.patch<void>(
+      '/hosts/community/members/$memberId/permission',
+      data: {'canManageMembers': canManageMembers},
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
+  Future<void> deleteAccount({String? reason}) async {
+    await dio.delete<void>(
+      '/users/me',
+      data: reason != null && reason.isNotEmpty ? {'reason': reason} : null,
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
   Future<Map<String, dynamic>> getMe() async {
     final response = await dio.get<Map<String, dynamic>>(
       '/auth/me',
       options: Options(headers: _authHeaders()),
     );
     return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> getNotifications({
+    int page = 1,
+    int limit = 20,
+    bool? isRead,
+  }) async {
+    final query = <String, dynamic>{
+      'page': page,
+      'limit': limit,
+    };
+    if (isRead != null) query['isRead'] = isRead;
+    final response = await dio.get<Map<String, dynamic>>(
+      '/notifications',
+      queryParameters: query,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<int> getUnreadNotificationCount() async {
+    try {
+      final response = await dio.get<Map<String, dynamic>>(
+        '/notifications/unread-count',
+        options: Options(headers: _authHeaders()),
+      );
+      final data = _unwrapData(response.data);
+      return (data['count'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    await dio.patch<dynamic>(
+      '/notifications/$id/read',
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    await dio.patch<dynamic>(
+      '/notifications/read-all',
+      options: Options(headers: _authHeaders()),
+    );
   }
 
   Future<bool> checkConnection() async {
@@ -156,6 +258,60 @@ class ApiClient {
     ]);
 
     return dio;
+  }
+
+  Future<String?> uploadMediaFile({
+    required List<int> bytes,
+    required String fileName,
+    required String context,
+    String? resourceId,
+  }) async {
+    try {
+      final ext = fileName.split('.').last.toLowerCase();
+      String contentType = 'application/octet-stream';
+      if (ext == 'png') {
+        contentType = 'image/png';
+      } else if (ext == 'jpg' || ext == 'jpeg') {
+        contentType = 'image/jpeg';
+      } else if (ext == 'webp') {
+        contentType = 'image/webp';
+      } else if (ext == 'pdf') {
+        contentType = 'application/pdf';
+      }
+
+      final payload = <String, dynamic>{
+        'context': context,
+        'contentType': contentType,
+      };
+      if (resourceId != null) {
+        payload['resourceId'] = resourceId;
+      }
+
+      final res = await dio.post<dynamic>(
+        '/storage/upload-url',
+        data: payload,
+      );
+
+      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
+      final uploadUrl = (data is Map) ? (data['uploadUrl'] ?? data['url'])?.toString() : null;
+      final key = (data is Map) ? data['key']?.toString() : null;
+      if (uploadUrl != null && key != null) {
+        await Dio().put<void>(
+          uploadUrl,
+          data: Stream.fromIterable([bytes]),
+          options: Options(
+            headers: {
+              'Content-Type': contentType,
+              'Content-Length': bytes.length.toString(),
+            },
+          ),
+        );
+        return key;
+      }
+    } catch (e) {
+      debugPrint('Error uploading media: $e');
+    }
+    return null;
   }
 }
 

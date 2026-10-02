@@ -252,7 +252,7 @@ final dashboardHubsProvider = FutureProvider.autoDispose((ref) async {
 
       if (spaces.isEmpty) return [];
 
-      final result = (spaces as List)
+      final result = spaces
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
@@ -300,7 +300,7 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
 
       if (communities.isEmpty) return [];
 
-      final result = (communities as List)
+      final result = communities
           .whereType<Map>()
           .map((item) {
             final name = (item['name'] ?? item['displayName'] ?? 'Community').toString();
@@ -381,48 +381,86 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
   }
 });
 
-// Dashboard Deals/Locked Deals (from /sponsorships/billing - authenticated endpoint)
-final dashboardDealsProvider = FutureProvider.autoDispose((ref) async {
+// Dashboard Deals/Locked Deals & Reports (authenticated real data)
+final dashboardDealsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/sponsorships/billing');
-    print('=== SPONSORSHIPS/BILLING RESPONSE ===');
-    print('Status: ${response.statusCode}');
-    print('Response: ${response.data}');
-
-    if (response.statusCode == 200) {
-      // Response is { success: true, data: [...] }
-      final responseData = response.data;
-      List<dynamic> deals = [];
-
-      if (responseData is Map && responseData.containsKey('data')) {
-        final innerData = responseData['data'];
-        print('Inner data type: ${innerData.runtimeType}');
-        if (innerData is List) {
-          deals = innerData;
+    // 1. Try brand billing if user is brand
+    try {
+      final brandRes = await api.dio.get<dynamic>('/sponsorships/billing');
+      if (brandRes.statusCode == 200 && brandRes.data != null) {
+        final raw = brandRes.data is Map ? (brandRes.data['data'] ?? brandRes.data) : null;
+        if (raw is List && raw.isNotEmpty) {
+          return raw.whereType<Map>().map((d) {
+            final rawAmount = d['totalAmount'] ?? d['sponsorshipAmount'] ?? d['amount'] ?? d['payoutAmount'];
+            final paymentStatus = (d['paymentStatus'] ?? d['status'] ?? '').toString().toUpperCase();
+            return <String, dynamic>{
+              'id': d['id']?.toString() ?? '',
+              'brandName': d['brandName']?.toString() ?? d['communityName']?.toString() ?? 'Brand Sponsor',
+              'brandLogo': d['brandLogo']?.toString() ?? d['counterpartAvatarUrl']?.toString(),
+              'projectName': d['projectName']?.toString() ?? d['briefTitle']?.toString() ?? 'Sponsorship Deal',
+              'amount': _formatAmount(rawAmount),
+              'paid': paymentStatus == 'PAID' || paymentStatus == 'COMPLETED',
+              'hasReport': d['hasReport'] == true || d['reportSubmitted'] == true,
+              'sponsorshipInterestId': d['sponsorshipInterestId']?.toString() ?? d['id']?.toString() ?? '',
+            };
+          }).toList();
         }
       }
-
-      print('Deals count: ${deals.length}');
-
-      if (deals.isEmpty) return [];
-
-      final result = (deals as List)
-          .whereType<Map>()
-          .map((item) => {
-                'id': item['id'] ?? '',
-                'brandName': item['brandName'] ?? item['communityName'] ?? 'Unknown',
-                'projectName': item['projectName'] ?? item['briefTitle'] ?? 'Project',
-                'amount': _formatAmount(item['amount'] ?? item['payoutAmount']),
-                'paid': item['status'] == 'completed' || item['paymentStatus'] == 'paid',
-              })
-          .toList();
-      print('Final deals: $result');
-      return result;
+    } catch (_) {
+      // Not brand or /sponsorships/billing 403, fall through to host/community chats
     }
-    return [];
+
+    // 2. Fetch accepted sponsorship chats for host/community
+    final chatRes = await api.dio.get<dynamic>(
+      '/sponsorships/chats',
+      queryParameters: {'status': 'ACCEPTED', 'role': 'HOST'},
+    );
+    final rawChats = chatRes.data is Map ? (chatRes.data['data'] ?? chatRes.data) : null;
+    final List<dynamic> threads = rawChats is List ? rawChats : [];
+
+    if (threads.isEmpty) return [];
+
+    final dealsPromises = threads.whereType<Map>().map((thread) async {
+      final interestId = thread['id']?.toString();
+      if (interestId == null || interestId.isEmpty) return null;
+      try {
+        final dealRes = await api.dio.get<dynamic>('/sponsorships/chats/$interestId/deal');
+        final dealData = dealRes.data is Map ? (dealRes.data['data'] ?? dealRes.data) : null;
+        if (dealData is Map) {
+          final status = (dealData['status'] ?? '').toString().toUpperCase();
+          if (status == 'APPROVED' || status == 'LOCKED') {
+            bool hasReport = false;
+            try {
+              final repRes = await api.dio.get<dynamic>('/sponsorships/chats/$interestId/deal/report');
+              final repData = repRes.data is Map ? (repRes.data['data'] ?? repRes.data) : null;
+              if (repData is Map && repData.isNotEmpty) {
+                hasReport = true;
+              }
+            } catch (_) {}
+
+            final rawAmount = dealData['sponsorshipAmount'] ?? dealData['totalAmount'] ?? 0;
+            final paymentStatus = (dealData['paymentStatus'] ?? '').toString().toUpperCase();
+            return <String, dynamic>{
+              'id': dealData['id']?.toString() ?? interestId,
+              'brandName': thread['counterpartName']?.toString() ?? 'Brand Sponsor',
+              'brandLogo': thread['counterpartAvatarUrl']?.toString(),
+              'projectName': dealData['projectName']?.toString() ?? thread['proposalName']?.toString() ?? 'Sponsorship Deal',
+              'amount': _formatAmount(rawAmount),
+              'paid': paymentStatus == 'PAID',
+              'hasReport': hasReport,
+              'sponsorshipInterestId': interestId,
+            };
+          }
+        }
+      } catch (_) {}
+      return null;
+    });
+
+    final resolved = await Future.wait(dealsPromises);
+    return resolved.whereType<Map<String, dynamic>>().toList();
   } catch (e) {
-    print('Error fetching deals: $e');
+    debugPrint('Error fetching deals: $e');
     return [];
   }
 });
@@ -448,7 +486,7 @@ final supportConversationsProvider = FutureProvider.autoDispose((ref) async {
 
       if (chats.isEmpty) return [];
 
-      final result = (chats as List)
+      final result = chats
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
@@ -483,7 +521,7 @@ final allConversationsProvider = FutureProvider.autoDispose((ref) async {
 
       if (chats.isEmpty) return [];
 
-      return (chats as List)
+      return chats
           .whereType<Map>()
           .map((item) => {
                 'id': item['id'] ?? '',
@@ -502,43 +540,29 @@ final allConversationsProvider = FutureProvider.autoDispose((ref) async {
   }
 });
 
-// Notifications (can use analytics or create a dedicated endpoint)
-final notificationsProvider = FutureProvider.autoDispose((ref) async {
+// Notifications (fetches real user notifications from /notifications)
+final notificationsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.dio.get<dynamic>('/analytics');
-    if (response.statusCode == 200) {
-      return [
-        {
-          'id': '1',
-          'title': 'New sponsorship proposal received',
-          'description': 'Aster Labs posted a new sponsorship brief',
-          'type': 'proposal',
-          'timestamp': DateTime.now().toIso8601String(),
-          'read': false,
-        },
-        {
-          'id': '2',
-          'title': 'Event reminder',
-          'description': 'The Block Party starts in 2 days',
-          'type': 'event',
-          'timestamp': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(),
-          'read': false,
-        },
-        {
-          'id': '3',
-          'title': 'New member joined',
-          'description': '5 new members joined your community',
-          'type': 'member',
-          'timestamp': DateTime.now().subtract(const Duration(hours: 3)).toIso8601String(),
-          'read': true,
-        },
-      ];
+    final response = await api.getNotifications(limit: 50);
+    final raw = response['notifications'];
+    if (raw is List) {
+      return raw.whereType<Map<String, dynamic>>().toList();
     }
-    return [];
+    return <Map<String, dynamic>>[];
   } catch (e) {
-    print('Error fetching notifications: $e');
-    return [];
+    debugPrint('Error fetching notifications: $e');
+    return <Map<String, dynamic>>[];
+  }
+});
+
+// Unread notification count for top bar badge
+final unreadNotificationsCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    return await api.getUnreadNotificationCount();
+  } catch (_) {
+    return 0;
   }
 });
 

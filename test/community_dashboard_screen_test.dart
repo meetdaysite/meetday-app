@@ -5,10 +5,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meetday_app/features/auth/state/auth_provider.dart';
 import 'package:meetday_app/features/community/presentation/community_dashboard_screen.dart';
 
+import 'package:meetday_app/features/community/presentation/providers/dashboard_provider.dart';
+
 void main() {
-  testWidgets('community dashboard shows the main web tabs', (tester) async {
+  testWidgets('community dashboard shows centered logo, profile and notification icons, and dock navigation', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          dashboardProposalsProvider.overrideWith((ref) => Future.value([])),
+          dashboardHubsProvider.overrideWith((ref) => Future.value([])),
+          dashboardCommunitiesProvider.overrideWith((ref) => Future.value([])),
+          dashboardDealsProvider.overrideWith((ref) => Future.value([])),
+          publishedProposalsProvider.overrideWith((ref) => Future.value([])),
+        ],
         child: MaterialApp(
           home: CommunityDashboardScreen(
             profileFuture: Future.value({
@@ -20,20 +29,20 @@ void main() {
       ),
     );
 
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    // Open the drawer to reveal the mobile navigation items matching meetday-frontend
-    final scaffoldState = tester.firstState<ScaffoldState>(find.byType(Scaffold));
-    scaffoldState.openDrawer();
-    await tester.pump(const Duration(milliseconds: 400));
+    // Verify AppBar exists
+    expect(find.byType(AppBar), findsOneWidget);
 
-    expect(find.text('Dashboard'), findsOneWidget);
-    expect(find.text('Experience Proposals'), findsOneWidget);
-    expect(find.text('Community Hubs'), findsOneWidget);
-    expect(find.descendant(of: find.byType(Drawer), matching: find.text('Communities')), findsOneWidget);
-    expect(find.text('Locked Deals'), findsOneWidget);
-    expect(find.text('Support Chat'), findsOneWidget);
-    expect(find.text('Notifications'), findsOneWidget);
+    // Verify Notifications and Profile icons in the top bar actions
+    expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.person_rounded), findsOneWidget);
+
+    // Verify bottom navigation dock icons
+    expect(find.byIcon(Icons.groups_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.description_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.headset_mic_rounded), findsOneWidget);
   });
 
   test('auth error formatter surfaces the actual Firebase retry message', () {

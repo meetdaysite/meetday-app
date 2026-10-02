@@ -8,11 +8,12 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/meetday_colors.dart';
 import '../../auth/domain/account_role.dart';
 import '../../auth/state/auth_provider.dart';
-import '../../dashboard/presentation/meetday_sidebar_drawer.dart';
 import 'chat/community_chat_hub.dart';
 import 'community_detail_screen.dart';
+import 'profile/profile_screen.dart';
 import 'proposal_components.dart';
 import 'providers/dashboard_provider.dart';
+import 'providers/profile_provider.dart';
 import 'support/community_support_chat_view.dart';
 
 enum CommunityDashboardTab {
@@ -158,48 +159,39 @@ class _CommunityDashboardScreenState
         final approvalStatus = (profile['approvalStatus'] as String?) ??
             (profile['status'] as String?) ??
             'APPROVED';
-        final avatarUrl = profile['avatarUrl'] as String?;
+        final hostData = ref.watch(hostProfileProvider).asData?.value;
+        final commData = ref.watch(communityProfileProvider).asData?.value;
+        final unreadCount = ref.watch(unreadNotificationsCountProvider).asData?.value ?? 0;
+        final avatarUrl = (hostData?['avatarUrl'] ?? profile['avatarUrl']) as String?;
 
         return Scaffold(
           backgroundColor: const Color(0xFFFFFDFC),
-          drawer: MeetdaySidebarDrawer(
-            currentTabIndex: _currentTabIndex,
-            onSelectTab: _onTabSelected,
-            communityName: profileName,
-            avatarUrl: avatarUrl,
-            role: effectiveRole,
-          ),
           appBar: AppBar(
             backgroundColor: MeetdayColors.primaryRed,
             elevation: 0,
             scrolledUnderElevation: 0,
             toolbarHeight: 64,
-            centerTitle: false,
+            centerTitle: true,
             automaticallyImplyLeading: false,
+            leadingWidth: 64,
             shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.vertical(
                 bottom: Radius.circular(24),
               ),
             ),
-            titleSpacing: 16,
-            title: GestureDetector(
-              onTap: () => _onTabSelected(0),
-              behavior: HitTestBehavior.opaque,
-              child: SvgPicture.asset(
-                'assets/logo/meetday-white.svg',
-                height: 28,
-                fit: BoxFit.contain,
-              ),
-            ),
-            actions: [
-              Builder(
-                builder: (context) => GestureDetector(
-                  onTap: () => Scaffold.of(context).openDrawer(),
+            // Notifications icon on the top left corner
+            leading: Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Center(
+                child: GestureDetector(
+                  onTap: () => _onTabSelected(6),
                   child: Container(
-                    margin: const EdgeInsets.only(right: 16),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _currentTabIndex == 6
+                          ? MeetdayColors.accentYellow
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.black, width: 2),
                       boxShadow: const [
@@ -210,7 +202,96 @@ class _CommunityDashboardScreenState
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.menu_rounded, color: Colors.black, size: 20),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(
+                          _currentTabIndex == 6
+                              ? Icons.notifications_rounded
+                              : Icons.notifications_none_rounded,
+                          color: Colors.black,
+                          size: 20,
+                        ),
+                        if (unreadCount > 0)
+                          Positioned(
+                            top: 7,
+                            right: 7,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: MeetdayColors.primaryRed,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1.5),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            title: GestureDetector(
+              onTap: () => _onTabSelected(0),
+              behavior: HitTestBehavior.opaque,
+              child: SvgPicture.asset(
+                'assets/logo/meetday-white.svg',
+                height: 28,
+                fit: BoxFit.contain,
+              ),
+            ),
+            actions: [
+              // Profile icon on top right corner (redirects to profile page)
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ProfileScreen(
+                            onSelectTab: _onTabSelected,
+                            currentTabIndex: _currentTabIndex,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: avatarUrl != null && avatarUrl.isNotEmpty
+                            ? Image.network(
+                                avatarUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Icon(
+                                  Icons.person_rounded,
+                                  color: Colors.black,
+                                  size: 20,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.person_rounded,
+                                color: Colors.black,
+                                size: 20,
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -412,10 +493,13 @@ class _DashboardTabBody extends ConsumerWidget {
     final dealCards = dealsAsync.when(
       data: (deals) => deals
           .map((d) => _DealCardPreview(
-                brandName: d['brandName'] ?? 'Brand',
-                projectName: d['projectName'] ?? 'Project',
-                amount: d['amount'] ?? '₹0',
-                paid: d['paid'] ?? false,
+                brandName: (d['brandName'] ?? 'Brand').toString(),
+                brandLogo: d['brandLogo'] as String?,
+                projectName: (d['projectName'] ?? 'Project').toString(),
+                amount: (d['amount'] ?? '₹0').toString(),
+                paid: d['paid'] == true,
+                hasReport: d['hasReport'] == true,
+                onTap: () => onNavigateToTab(4),
               ))
           .toList(),
       loading: () => [_LoadingCard()],
@@ -646,14 +730,69 @@ class _DashboardTabBody extends ConsumerWidget {
           onActionTap: () => onNavigateToTab(4),
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          height: 155,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: dealCards.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => dealCards[index],
+        dealsAsync.when(
+          data: (deals) {
+            if (deals.isEmpty) {
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.black, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(2.5, 2.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.lock_outline_rounded, size: 32, color: Colors.black54),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No locked deals yet',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Lock terms with a brand sponsor in your chat dashboard to start earning.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: const Color(0xFF667085),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return SizedBox(
+              height: 155,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: dealCards.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (context, index) => dealCards[index],
+              ),
+            );
+          },
+          loading: () => SizedBox(
+            height: 155,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [_LoadingCard()],
+            ),
+          ),
+          error: (err, stack) => _ErrorCard(
+            onRetry: () => ref.refresh(dashboardDealsProvider),
           ),
         ),
       ],
@@ -881,155 +1020,158 @@ class _ProposalCardPreview extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1:1 Image
-            AspectRatio(
-              aspectRatio: 1.0,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8FAFC),
-                  border: Border(
-                    bottom: BorderSide(color: Colors.black, width: 2),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15.5),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1:1 Image
+              AspectRatio(
+                aspectRatio: 1.0,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.black, width: 2),
+                    ),
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      (imageUrl != null && imageUrl!.isNotEmpty)
+                          ? Image.network(
+                              imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  _fallbackThumbnail(),
+                            )
+                          : _fallbackThumbnail(),
+
+                      // Status badge on TOP LEFT
+                      if (status != null && status!.isNotEmpty)
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: _statusBadge(status!),
+                        ),
+
+                      // Cash / Barter badge on the TOP RIGHT
+                      if (hasCash || hasBarter)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (hasCash)
+                                Container(
+                                  margin: EdgeInsets.only(bottom: hasBarter ? 3 : 0),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDCFCE7),
+                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black,
+                                        offset: Offset(1, 1),
+                                        blurRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    'CASH',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              if (hasBarter)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: MeetdayColors.accentYellow,
+                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black,
+                                        offset: Offset(1, 1),
+                                        blurRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    'BARTER',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                child: Stack(
-                  fit: StackFit.expand,
+              ),
+
+              // Below 1:1 image: Title + Date
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    (imageUrl != null && imageUrl!.isNotEmpty)
-                        ? Image.network(
-                            imageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                _fallbackThumbnail(),
-                          )
-                        : _fallbackThumbnail(),
-
-                    // Status badge on TOP LEFT
-                    if (status != null && status!.isNotEmpty)
-                      Positioned(
-                        top: 6,
-                        left: 6,
-                        child: _statusBadge(status!),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111111),
                       ),
-
-                    // Cash / Barter badge on the TOP RIGHT
-                    if (hasCash || hasBarter)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (hasCash)
-                              Container(
-                                margin: EdgeInsets.only(bottom: hasBarter ? 3 : 0),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFDCFCE7),
-                                  border: Border.all(color: Colors.black, width: 1.2),
-                                  borderRadius: BorderRadius.circular(999),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Colors.black,
-                                      offset: Offset(1, 1),
-                                      blurRadius: 0,
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  'CASH',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 7.5,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ),
-                            if (hasBarter)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: MeetdayColors.accentYellow,
-                                  border: Border.all(color: Colors.black, width: 1.2),
-                                  borderRadius: BorderRadius.circular(999),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Colors.black,
-                                      offset: Offset(1, 1),
-                                      blurRadius: 0,
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  'BARTER',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 7.5,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ),
-                          ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today_rounded,
+                          size: 11,
+                          color: Color(0xFF667085),
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            dateLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF667085),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            ),
-
-            // Below 1:1 image: Title + Date
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF111111),
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today_rounded,
-                        size: 11,
-                        color: Color(0xFF667085),
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          dateLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF667085),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1141,84 +1283,87 @@ class _CommunityHubCardPreview extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1:1 Image
-            AspectRatio(
-              aspectRatio: 1.0,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEFF6FF),
-                  border: Border(
-                    bottom: BorderSide(color: Colors.black, width: 2),
-                  ),
-                ),
-                child: _fallbackThumbnail(),
-              ),
-            ),
-
-            // Below 1:1 image: Name + Members
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF111111),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15.5),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1:1 Image
+              AspectRatio(
+                aspectRatio: 1.0,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEFF6FF),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.black, width: 2),
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5C343),
-                          border: Border.all(color: Colors.black, width: 1.1),
-                          borderRadius: BorderRadius.circular(5),
-                          boxShadow: const [
-                            BoxShadow(
+                  child: _fallbackThumbnail(),
+                ),
+              ),
+
+              // Below 1:1 image: Name + Members
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5C343),
+                            border: Border.all(color: Colors.black, width: 1.1),
+                            borderRadius: BorderRadius.circular(5),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black,
+                                offset: Offset(1, 1),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            memberCount,
+                            style: GoogleFonts.poppins(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
                               color: Colors.black,
-                              offset: Offset(1, 1),
-                              blurRadius: 0,
                             ),
-                          ],
-                        ),
-                        child: Text(
-                          memberCount,
-                          style: GoogleFonts.poppins(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Members',
-                        style: GoogleFonts.poppins(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0x80000000),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Members',
+                          style: GoogleFonts.poppins(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0x80000000),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1298,90 +1443,93 @@ class _CommunityCardPreview extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1:1 Image
-            AspectRatio(
-              aspectRatio: 1.0,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFFFBEB),
-                  border: Border(
-                    bottom: BorderSide(color: Colors.black, width: 2),
-                  ),
-                ),
-                child: (imageUrl != null && imageUrl!.isNotEmpty)
-                    ? Image.network(
-                        imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _fallbackThumbnail(),
-                      )
-                    : _fallbackThumbnail(),
-              ),
-            ),
-
-            // Below 1:1 image: Name + Members
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF111111),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15.5),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1:1 Image
+              AspectRatio(
+                aspectRatio: 1.0,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFFBEB),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.black, width: 2),
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5C343),
-                          border: Border.all(color: Colors.black, width: 1.1),
-                          borderRadius: BorderRadius.circular(5),
-                          boxShadow: const [
-                            BoxShadow(
+                  child: (imageUrl != null && imageUrl!.isNotEmpty)
+                      ? Image.network(
+                          imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => _fallbackThumbnail(),
+                        )
+                      : _fallbackThumbnail(),
+                ),
+              ),
+
+              // Below 1:1 image: Name + Members
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5C343),
+                            border: Border.all(color: Colors.black, width: 1.1),
+                            borderRadius: BorderRadius.circular(5),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black,
+                                offset: Offset(1, 1),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            memberCount,
+                            style: GoogleFonts.poppins(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
                               color: Colors.black,
-                              offset: Offset(1, 1),
-                              blurRadius: 0,
                             ),
-                          ],
-                        ),
-                        child: Text(
-                          memberCount,
-                          style: GoogleFonts.poppins(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Members',
-                        style: GoogleFonts.poppins(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0x80000000),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Members',
+                          style: GoogleFonts.poppins(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0x80000000),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1413,127 +1561,182 @@ class _DealCardPreview extends StatelessWidget {
     required this.projectName,
     required this.amount,
     required this.paid,
+    this.brandLogo,
+    this.hasReport = false,
+    this.onTap,
   });
 
   final String brandName;
   final String projectName;
   final String amount;
   final bool paid;
+  final String? brandLogo;
+  final bool hasReport;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 210,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 2.5),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(2.5, 2.5),
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black, width: 1.5),
-                ),
-                child: Center(
-                  child: Text(
-                    brandName.substring(0, 1).toUpperCase(),
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 220,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2.5),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black,
+              offset: Offset(2.5, 2.5),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(13.5),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2E8F0),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black, width: 1.5),
+                      ),
+                      child: ClipOval(
+                        child: (brandLogo != null && brandLogo!.isNotEmpty)
+                            ? Image.network(
+                                brandLogo!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Center(
+                                  child: Text(
+                                    brandName.isNotEmpty
+                                        ? brandName.substring(0, 1).toUpperCase()
+                                        : 'B',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Center(
+                                child: Text(
+                                  brandName.isNotEmpty
+                                      ? brandName.substring(0, 1).toUpperCase()
+                                      : 'B',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        brandName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF111111),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: paid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                        border: Border.all(color: Colors.black, width: 1.2),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        paid ? 'PAID' : 'PENDING',
+                        style: GoogleFonts.poppins(
+                          fontSize: 7.5,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    if (hasReport) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3E8FF),
+                          border: Border.all(color: Colors.black, width: 1.2),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'REPORT',
+                          style: GoogleFonts.poppins(
+                            fontSize: 7.5,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF7C3AED),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  brandName,
+                const SizedBox(height: 6),
+                Text(
+                  projectName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.bricolageGrotesque(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF111111),
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF667085),
                   ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: paid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
-                  border: Border.all(color: Colors.black, width: 1.2),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  paid ? 'PAID' : 'PENDING',
-                  style: GoogleFonts.poppins(
-                    fontSize: 7.5,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black,
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: MeetdayColors.accentYellow,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.black, width: 1.2),
                   ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            projectName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF667085),
-            ),
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: MeetdayColors.accentYellow,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.black, width: 1.2),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Deal Value',
-                  style: GoogleFonts.poppins(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
-                Text(
-                  amount,
-                  style: GoogleFonts.poppins(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Deal Value',
+                        style: GoogleFonts.poppins(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
+                        ),
+                      ),
+                      Text(
+                        amount,
+                        style: GoogleFonts.poppins(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1553,15 +1756,15 @@ class _ProposalTabBody extends ConsumerStatefulWidget {
 class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
   String _selectedSegment = 'ALL';
 
-  void _openCreateProposalModal() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => CreateProposalModal(
-        onSuccess: () {
-          ref.invalidate(dashboardProposalsProvider);
-        },
+  void _openCreateProposalModal([Map<String, dynamic>? initialProposal]) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (ctx) => ProposalFormScreen(
+          initialProposal: initialProposal,
+          onSuccess: () {
+            ref.invalidate(dashboardProposalsProvider);
+          },
+        ),
       ),
     );
   }
@@ -1571,13 +1774,16 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
       context: context,
       builder: (ctx) => ProposalDetailDialog(
         proposal: proposal,
+        onEdit: () {
+          _openCreateProposalModal(proposal);
+        },
         onSubmitApproval: () async {
           Navigator.of(ctx).pop();
           final id = proposal['id'];
           if (id != null) {
             try {
               final api = ref.read(apiClientProvider);
-              await api.dio.post<dynamic>('/sponsorships/$id/submit');
+              await api.dio.patch<dynamic>('/sponsorships/$id/submit');
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -1890,6 +2096,86 @@ class _HubTabBody extends StatelessWidget {
   }
 }
 
+class _NeoListCard extends StatelessWidget {
+  const _NeoListCard({
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.statusColor,
+  });
+
+  final String title;
+  final String subtitle;
+  final String status;
+  final Color statusColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black, width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black,
+            offset: Offset(2.5, 2.5),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.bricolageGrotesque(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111111),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: const Color(0xFF667085),
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+            decoration: BoxDecoration(
+              color: statusColor,
+              border: Border.all(color: Colors.black, width: 1.2),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              status,
+              style: GoogleFonts.poppins(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CommunityTabBody extends ConsumerWidget {
   const _CommunityTabBody();
 
@@ -2026,131 +2312,309 @@ class _SupportTabBody extends StatelessWidget {
   }
 }
 
-class _NotificationsTabBody extends StatelessWidget {
+class _NotificationsTabBody extends ConsumerWidget {
   const _NotificationsTabBody();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notificationsAsync = ref.watch(notificationsProvider);
+    final api = ref.watch(apiClientProvider);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
       children: [
-        Text(
-          'Notifications',
-          style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF111111),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Notifications',
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111111),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Stay updated on proposals, chats, deals, and community activity.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: const Color(0xFF667085),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () async {
+                try {
+                  await api.markAllNotificationsRead();
+                  ref.invalidate(notificationsProvider);
+                  ref.invalidate(unreadNotificationsCountProvider);
+                } catch (_) {}
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.black, width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0),
+                  ],
+                ),
+                child: Text(
+                  'MARK ALL READ',
+                  style: GoogleFonts.poppins(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        notificationsAsync.when(
+          data: (notifications) {
+            if (notifications.isEmpty) {
+              return Container(
+                margin: const EdgeInsets.only(top: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.black, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(3, 3),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.notifications_none_rounded,
+                        size: 28,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No notifications yet',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "You're all caught up! When you receive proposals, deal updates, or messages, they will appear here.",
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11.5,
+                        color: const Color(0xFF667085),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              children: notifications.map((notif) {
+                final id = notif['id']?.toString() ?? '';
+                final title = (notif['title'] ?? 'Notification').toString();
+                final body = (notif['body'] ?? notif['message'] ?? notif['description'] ?? '').toString();
+                final type = notif['type']?.toString();
+                final isRead = notif['isRead'] == true || notif['read'] == true;
+                final createdAt = notif['createdAt']?.toString() ?? notif['timestamp']?.toString();
+                String timeLabel = '';
+                if (createdAt != null && createdAt.isNotEmpty) {
+                  try {
+                    final dt = DateTime.parse(createdAt).toLocal();
+                    final diff = DateTime.now().difference(dt);
+                    if (diff.inMinutes < 1) {
+                      timeLabel = 'Just now';
+                    } else if (diff.inHours < 1) {
+                      timeLabel = '${diff.inMinutes}m ago';
+                    } else if (diff.inDays < 1) {
+                      timeLabel = '${diff.inHours}h ago';
+                    } else if (diff.inDays < 7) {
+                      timeLabel = '${diff.inDays}d ago';
+                    } else {
+                      timeLabel = '${dt.day}/${dt.month}/${dt.year}';
+                    }
+                  } catch (_) {
+                    timeLabel = '';
+                  }
+                }
+
+                return GestureDetector(
+                  onTap: () async {
+                    if (!isRead && id.isNotEmpty) {
+                      try {
+                        await api.markNotificationRead(id);
+                        ref.invalidate(notificationsProvider);
+                        ref.invalidate(unreadNotificationsCountProvider);
+                      } catch (_) {}
+                    }
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isRead ? Colors.white : const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.black, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(2.5, 2.5),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          margin: const EdgeInsets.only(right: 12),
+                          decoration: BoxDecoration(
+                            color: isRead ? const Color(0xFFF1F5F9) : MeetdayColors.primaryRed,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.black, width: 1.5),
+                          ),
+                          child: Icon(
+                            _getNotificationIcon(type),
+                            size: 18,
+                            color: isRead ? Colors.black87 : Colors.white,
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: GoogleFonts.bricolageGrotesque(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF111111),
+                                      ),
+                                    ),
+                                  ),
+                                  if (!isRead) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: MeetdayColors.primaryRed,
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(color: Colors.black, width: 1),
+                                      ),
+                                      child: Text(
+                                        'NEW',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (body.isNotEmpty) ...[
+                                const SizedBox(height: 3),
+                                Text(
+                                  body,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11.5,
+                                    color: const Color(0xFF525252),
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                              if (timeLabel.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  timeLabel,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
+            ),
           ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Stay updated on proposals, chats, deals, and community activity.',
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF667085),
+          error: (err, stack) => _ErrorCard(
+            onRetry: () => ref.refresh(notificationsProvider),
           ),
-        ),
-        const SizedBox(height: 12),
-        _NeoListCard(
-          title: 'New Sponsorship Interest',
-          subtitle: 'A brand sponsor initiated collaboration on your event.',
-          status: 'New',
-          statusColor: MeetdayColors.primaryRed,
-          statusTextColor: Colors.white,
-        ),
-        _NeoListCard(
-          title: 'Profile Approved',
-          subtitle: 'Your community workspace is verified and live.',
-          status: 'Approved',
-          statusColor: const Color(0xFFDCFCE7),
         ),
       ],
     );
   }
-}
 
-class _NeoListCard extends StatelessWidget {
-  const _NeoListCard({
-    required this.title,
-    required this.subtitle,
-    required this.status,
-    required this.statusColor,
-    this.statusTextColor = Colors.black,
-  });
-
-  final String title;
-  final String subtitle;
-  final String status;
-  final Color statusColor;
-  final Color statusTextColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(2.5, 2.5),
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.bricolageGrotesque(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF111111),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: const Color(0xFF667085),
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-            decoration: BoxDecoration(
-              color: statusColor,
-              border: Border.all(color: Colors.black, width: 1.2),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              status,
-              style: GoogleFonts.poppins(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: statusTextColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  static IconData _getNotificationIcon(String? type) {
+    switch (type?.toLowerCase()) {
+      case 'sponsorship':
+      case 'proposal':
+        return Icons.handshake_rounded;
+      case 'chat':
+      case 'message':
+        return Icons.chat_bubble_rounded;
+      case 'deal':
+        return Icons.lock_rounded;
+      case 'host_approved':
+      case 'approved':
+        return Icons.check_circle_rounded;
+      default:
+        return Icons.notifications_rounded;
+    }
   }
 }
+
 
 class _MeetdayMobileBottomBar extends StatelessWidget {
   const _MeetdayMobileBottomBar({

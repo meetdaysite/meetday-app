@@ -264,13 +264,16 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         ],
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: (logoUrl != null && logoUrl.isNotEmpty)
-                          ? Image.network(
-                              logoUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => _fallbackLogo(name),
-                            )
-                          : _fallbackLogo(name),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(15.5),
+                        child: (logoUrl != null && logoUrl.isNotEmpty)
+                            ? Image.network(
+                                logoUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => _fallbackLogo(name),
+                              )
+                            : _fallbackLogo(name),
+                      ),
                     ),
 
                     const SizedBox(width: 14),
@@ -546,17 +549,19 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   ],
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  children: [
-                    AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: Image.network(
-                        secondaryImageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(21),
+                  child: Stack(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: Image.network(
+                          secondaryImageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                        ),
                       ),
-                    ),
-                    Positioned(
+                      Positioned(
                       bottom: 10,
                       right: 10,
                       child: Container(
@@ -594,6 +599,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                 ),
               ),
             ),
+          ),
           ],
 
           // Past Experiences Gallery
@@ -664,9 +670,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         ],
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(15.5),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                           Expanded(
                             child: Container(
                               color: const Color(0xFFF1F5F9),
@@ -718,7 +726,8 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         ],
                       ),
                     ),
-                  );
+                  ),
+                );
                 },
               ),
             ),

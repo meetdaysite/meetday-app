@@ -23,6 +23,23 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
+  Future<Map<String, dynamic>> getHostProfile() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/hosts/me',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> updateHostProfile(Map<String, dynamic> payload) async {
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/hosts/profile',
+      data: payload,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
   final Dio _dio;
   String? _idToken;
 

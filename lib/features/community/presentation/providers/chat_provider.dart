@@ -804,6 +804,11 @@ final threadReportProvider = FutureProvider.autoDispose.family<Map<String, dynam
       final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);
+    } else if (thread.kind == 'SPACE_HOST') {
+      final res = await api.dio.get<dynamic>('/space-host/chats/$id/deal/report');
+      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
     }
   } catch (e) {
     debugPrint('Error fetching report: $e');
@@ -866,6 +871,29 @@ Future<void> saveReportApi(ApiClient api, UnifiedActiveThread thread, Map<String
     await api.dio.put<dynamic>('/spaces/chats/$id/deal/report', data: payload);
   } else if (thread.kind == 'SPACE_HOST') {
     await api.dio.put<dynamic>('/space-host/chats/$id/deal/report', data: payload);
+  }
+}
+
+Future<void> approveDealApi(ApiClient api, UnifiedActiveThread thread) async {
+  final id = thread.id;
+  if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
+    await api.dio.post<dynamic>('/sponsorships/chats/$id/deal/approve');
+  } else if (thread.kind == 'SPACE_INTEREST') {
+    await api.dio.post<dynamic>('/spaces/chats/$id/deal/approve');
+  } else if (thread.kind == 'SPACE_HOST') {
+    await api.dio.post<dynamic>('/space-host/chats/$id/deal/approve');
+  }
+}
+
+Future<void> requestDealChangesApi(ApiClient api, UnifiedActiveThread thread, {String? note}) async {
+  final id = thread.id;
+  final body = note != null && note.trim().isNotEmpty ? {'note': note.trim()} : <String, dynamic>{};
+  if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
+    await api.dio.post<dynamic>('/sponsorships/chats/$id/deal/request-changes', data: body);
+  } else if (thread.kind == 'SPACE_INTEREST') {
+    await api.dio.post<dynamic>('/spaces/chats/$id/deal/request-changes', data: body);
+  } else if (thread.kind == 'SPACE_HOST') {
+    await api.dio.post<dynamic>('/space-host/chats/$id/deal/request-changes', data: body);
   }
 }
 

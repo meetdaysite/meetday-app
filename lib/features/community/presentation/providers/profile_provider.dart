@@ -1,34 +1,45 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
 
+/// Fetches the authenticated host's own profile (the Community Representative profile: /hosts/me)
+final hostProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    return await api.getHostProfile();
+  } catch (e) {
+    // If hosts/me fails or is empty, return empty map so UI can gracefully display placeholders
+    return <String, dynamic>{};
+  }
+});
+
+/// Fetches the host's community profile (the Community itself: /hosts/community)
 final communityProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.getRequest('/profile');
-    return response as Map<String, dynamic>;
+    return await api.getHostCommunityProfile();
   } catch (e) {
-    throw Exception('Failed to fetch profile: $e');
+    return <String, dynamic>{};
   }
 });
 
-final updateProfileProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, Map<String, dynamic>>((ref, data) async {
+/// Fetches the team members of the host's community (/hosts/community/members)
+final teamMembersProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
-    final response = await api.putRequest('/profile', data);
-    ref.invalidate(communityProfileProvider);
-    return response as Map<String, dynamic>;
+    return await api.getHostTeamMembers();
   } catch (e) {
-    throw Exception('Failed to update profile: $e');
+    return <String, dynamic>{
+      'members': <dynamic>[],
+      'viewerCanManage': false,
+      'viewerIsOwner': false,
+    };
   }
 });
 
-final uploadProfileImageProvider = FutureProvider.autoDispose.family<String, String>((ref, imagePath) async {
+/// Mutation to update the host profile
+final updateHostProfileProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, Map<String, dynamic>>((ref, data) async {
   final api = ref.watch(apiClientProvider);
-  try {
-    final response = await api.uploadFile('/profile/image', imagePath);
-    ref.invalidate(communityProfileProvider);
-    return response['url'] as String;
-  } catch (e) {
-    throw Exception('Failed to upload profile image: $e');
-  }
+  final response = await api.updateHostProfile(data);
+  ref.invalidate(hostProfileProvider);
+  return response;
 });
