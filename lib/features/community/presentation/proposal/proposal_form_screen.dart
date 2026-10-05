@@ -325,10 +325,15 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                   controller: promptController,
                   maxLines: 4,
                   style: GoogleFonts.poppins(fontSize: 12),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     hintText: 'e.g. Creator meetup and panel discussion for 200 video creators in Mumbai...',
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.all(10),
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    filled: false,
+                    contentPadding: EdgeInsets.all(10),
                   ),
                 ),
               ),
@@ -486,6 +491,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                 decoration: const InputDecoration(
                   hintText: 'https://...',
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  filled: false,
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
               ),
@@ -607,6 +617,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                 decoration: const InputDecoration(
                   hintText: 'Sponsorship_Deck.pdf',
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  filled: false,
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
               ),
@@ -626,6 +641,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                 decoration: const InputDecoration(
                   hintText: 'https://.../deck.pdf',
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  filled: false,
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
               ),
@@ -909,7 +929,19 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('MMM d, yyyy');
 
-    return Scaffold(
+    return Theme(
+      data: Theme.of(context).copyWith(
+        inputDecorationTheme: const InputDecorationTheme(
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          filled: false,
+        ),
+      ),
+      child: Scaffold(
       backgroundColor: const Color(0xFFFFFDFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -1326,6 +1358,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                     hintText: 'Venue (e.g. Palace Grounds)',
                                     hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
                                     border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    disabledBorder: InputBorder.none,
+                                    errorBorder: InputBorder.none,
+                                    filled: false,
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     isDense: true,
                                   ),
@@ -1349,6 +1386,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                     hintText: 'City (e.g. Bengaluru)',
                                     hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
                                     border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    disabledBorder: InputBorder.none,
+                                    errorBorder: InputBorder.none,
+                                    filled: false,
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                     isDense: true,
                                   ),
@@ -1391,6 +1433,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                 hintText: 'e.g. Founders, College Students',
                                 hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
                                 border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                errorBorder: InputBorder.none,
+                                filled: false,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                 isDense: true,
                               ),
@@ -1638,6 +1685,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                       hintText: 'Slot Name (e.g. Title Partner)',
                                       hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
                                       border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      disabledBorder: InputBorder.none,
+                                      errorBorder: InputBorder.none,
+                                      filled: false,
                                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                       isDense: true,
                                     ),
@@ -1669,6 +1721,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                             hintText: '50,000',
                                             hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
                                             border: InputBorder.none,
+                                            enabledBorder: InputBorder.none,
+                                            focusedBorder: InputBorder.none,
+                                            disabledBorder: InputBorder.none,
+                                            errorBorder: InputBorder.none,
+                                            filled: false,
                                             contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
                                             isDense: true,
                                           ),
@@ -1767,8 +1824,9 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ── Helper Widgets ─────────────────────────────────────────────────────────
 
@@ -1813,6 +1871,12 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
           hintText: hint,
           hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          filled: false,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
       ),

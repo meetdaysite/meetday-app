@@ -1,28 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/meetday_colors.dart';
+import 'community_dashboard_screen.dart';
+import 'profile/profile_screen.dart';
 import 'proposal_components.dart';
+import 'providers/dashboard_provider.dart';
+import 'providers/profile_provider.dart';
 
-class CommunityDetailScreen extends StatefulWidget {
+class CommunityDetailScreen extends ConsumerStatefulWidget {
   const CommunityDetailScreen({
     super.key,
     required this.community,
     this.activeProposals = const [],
     this.onProposalClick,
+    this.isBrandPreview = false,
+    this.onSelectTab,
+    this.currentTabIndex = 2,
   });
 
   final Map<String, dynamic> community;
   final List<Map<String, dynamic>> activeProposals;
   final ValueChanged<String>? onProposalClick;
+  final bool isBrandPreview;
+  final ValueChanged<int>? onSelectTab;
+  final int currentTabIndex;
 
   @override
-  State<CommunityDetailScreen> createState() => _CommunityDetailScreenState();
+  ConsumerState<CommunityDetailScreen> createState() => _CommunityDetailScreenState();
 }
 
-class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
+class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
   void _openImageDialog(String imageUrl, String? title, String? description) {
     showDialog<void>(
       context: context,
@@ -157,42 +168,134 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final pastEvents = (c['pastEvents'] as List?)?.whereType<Map>().toList() ?? [];
     final brandsWorkedWith = (c['brandsWorkedWith'] as List?)?.whereType<Map>().toList() ?? [];
 
+    final hostData = ref.watch(hostProfileProvider).asData?.value;
+    final commData = ref.watch(communityProfileProvider).asData?.value;
+    final unreadCount = ref.watch(unreadNotificationsCountProvider).asData?.value ?? 0;
+    final avatarUrl = (hostData?['avatarUrl'] ?? commData?['logoUrl']) as String?;
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDFC),
       appBar: AppBar(
         backgroundColor: MeetdayColors.primaryRed,
         elevation: 0,
         scrolledUnderElevation: 0,
+        toolbarHeight: 64,
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+        leadingWidth: 64,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            bottom: Radius.circular(24),
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        ),
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Center(
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ProfileScreen(
+                      onSelectTab: widget.onSelectTab,
+                      currentTabIndex: widget.currentTabIndex,
+                    ),
+                  ),
+                );
+              },
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.black, width: 2),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: avatarUrl != null && avatarUrl.isNotEmpty
+                      ? Image.network(
+                          avatarUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const Icon(Icons.person_rounded, size: 20),
+                        )
+                      : const Icon(Icons.person_rounded, size: 20),
+                ),
+              ),
+            ),
           ),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
+        title: GestureDetector(
+          onTap: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+            widget.onSelectTab?.call(0);
+          },
+          behavior: HitTestBehavior.opaque,
+          child: SvgPicture.asset(
+            'assets/logo/meetday-white.svg',
+            height: 28,
+            fit: BoxFit.contain,
           ),
         ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
-              child: SvgPicture.asset(
-                'assets/logo/meetday-white.svg',
-                height: 20,
+              child: GestureDetector(
+                onTap: () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                  widget.onSelectTab?.call(6);
+                },
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                    ],
+                  ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(Icons.notifications_none_rounded, color: Colors.black, size: 20),
+                      if (unreadCount > 0)
+                        Positioned(
+                          top: 7,
+                          right: 7,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.primaryRed,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1.5),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ],
+      ),
+      bottomNavigationBar: MeetdayMobileBottomBar(
+        currentIndex: widget.isBrandPreview ? -1 : widget.currentTabIndex,
+        onTap: (tabIndex) {
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+          widget.onSelectTab?.call(tabIndex);
+        },
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 36),
@@ -211,7 +314,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  'Back to Communities',
+                  widget.isBrandPreview ? 'Back to Profile' : 'Back to Communities',
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -221,6 +324,67 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
               ],
             ),
           ),
+
+          if (widget.isBrandPreview) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF9E5),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.black, width: 2.5),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Brand Preview Mode',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'BRAND VIEW',
+                      style: GoogleFonts.poppins(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: MeetdayColors.accentYellow,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const SizedBox(height: 14),
 
@@ -734,110 +898,125 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           ],
 
           // Active Proposals Section
-          const SizedBox(height: 24),
-          Text(
-            'Active Proposals',
-            style: GoogleFonts.bricolageGrotesque(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF111111),
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (widget.activeProposals.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.black26, width: 2, strokeAlign: BorderSide.strokeAlignCenter),
-              ),
-              child: Center(
-                child: Text(
-                  'No active proposals from this community yet.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black45,
-                  ),
-                ),
-              ),
-            )
-          else
-            ...widget.activeProposals.map((p) {
-              final title = (p['title'] ?? p['name'] ?? 'Proposal').toString();
-              final dateLabel = (p['dateLabel'] ?? '').toString();
-              final hasCash = p['hasCash'] == true;
-              final hasBarter = p['hasBarter'] == true;
-              final propId = (p['id'] ?? '').toString();
-              return GestureDetector(
-                onTap: () {
-                  if (widget.onProposalClick != null) {
-                    widget.onProposalClick!(propId);
-                  } else {
-                    showDialog<void>(
-                      context: context,
-                      builder: (ctx) => ProposalDetailDialog(proposal: p),
-                    );
-                  }
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.black, width: 2.2),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black,
-                        offset: Offset(2.5, 2.5),
-                        blurRadius: 0,
-                      ),
-                    ],
-                  ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: GoogleFonts.bricolageGrotesque(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF111111),
-                            ),
-                          ),
-                          if (dateLabel.isNotEmpty) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              dateLabel,
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                color: const Color(0xFF667085),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+          // Proposals section: ONLY displayed in Brand View mode, fetching approved proposals
+          if (widget.isBrandPreview) ...[
+            Builder(builder: (context) {
+              final approvedProposals = widget.activeProposals.where((p) {
+                final status = (p['status'] ?? '').toString().toUpperCase();
+                return status == 'PUBLISHED' || status == 'APPROVED';
+              }).toList();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 24),
+                  Text(
+                    'Active Proposals',
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111111),
                     ),
-                    if (hasCash) ...[
-                      const SizedBox(width: 4),
-                      _badgeTag('CASH', const Color(0xFFDCFCE7), Colors.black),
-                    ],
-                    if (hasBarter) ...[
-                      const SizedBox(width: 4),
-                      _badgeTag('BARTER', MeetdayColors.accentYellow, Colors.black),
-                    ],
-                  ],
-                ),
-              ),
-            );
-          }),
+                  ),
+                  const SizedBox(height: 8),
+                  if (approvedProposals.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.black26, width: 2, strokeAlign: BorderSide.strokeAlignCenter),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'No approved proposals from this community yet.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black45,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...approvedProposals.map((p) {
+                      final title = (p['title'] ?? p['name'] ?? 'Proposal').toString();
+                      final dateLabel = (p['dateLabel'] ?? '').toString();
+                      final hasCash = p['hasCash'] == true;
+                      final hasBarter = p['hasBarter'] == true;
+                      final propId = (p['id'] ?? '').toString();
+                      return GestureDetector(
+                        onTap: () {
+                          if (widget.onProposalClick != null) {
+                            widget.onProposalClick!(propId);
+                          } else {
+                            showDialog<void>(
+                              context: context,
+                              builder: (ctx) => ProposalDetailDialog(proposal: p),
+                            );
+                          }
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.black, width: 2.2),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black,
+                                offset: Offset(2.5, 2.5),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      title,
+                                      style: GoogleFonts.bricolageGrotesque(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF111111),
+                                      ),
+                                    ),
+                                    if (dateLabel.isNotEmpty) ...[
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        dateLabel,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          color: const Color(0xFF667085),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              if (hasCash) ...[
+                                const SizedBox(width: 4),
+                                _badgeTag('CASH', const Color(0xFFDCFCE7), Colors.black),
+                              ],
+                              if (hasBarter) ...[
+                                const SizedBox(width: 4),
+                                _badgeTag('BARTER', MeetdayColors.accentYellow, Colors.black),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                ],
+              );
+            }),
+          ],
         ],
       ),
     );

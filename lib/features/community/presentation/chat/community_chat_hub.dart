@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,35 @@ import '../../../../core/theme/meetday_colors.dart';
 import '../providers/chat_provider.dart';
 
 // ─── Format Helpers ──────────────────────────────────────────────────────────
+
+String _formatIndianCurrency(dynamic amount) {
+  if (amount == null) return '₹0';
+  final clean = amount.toString().replaceAll(RegExp(r'[^0-9.]'), '');
+  final numVal = num.tryParse(clean) ?? 0;
+  final str = numVal.toStringAsFixed(0);
+  if (str.length <= 3) return '₹$str';
+  final last3 = str.substring(str.length - 3);
+  final remaining = str.substring(0, str.length - 3);
+  final parts = <String>[];
+  var pos = remaining.length;
+  while (pos > 0) {
+    final start = (pos - 2).clamp(0, pos);
+    parts.insert(0, remaining.substring(start, pos));
+    pos -= 2;
+  }
+  return '₹${parts.join(',')},$last3';
+}
+
+String _formatDateString(String? dateStr) {
+  if (dateStr == null || dateStr.isEmpty) return '—';
+  try {
+    final dt = DateTime.parse(dateStr).toLocal();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+  } catch (_) {
+    return dateStr.split('T').first;
+  }
+}
 
 String _timeAgo(String? iso) {
   if (iso == null || iso.isEmpty) return '';
@@ -331,17 +361,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
               color: Colors.black,
             ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            'Select a category to view active conversations, or manage your requests below.',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Colors.black54,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
           // ─── Chat Categories Section ─────────────────────────────────────────
           Row(
@@ -544,7 +564,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
           // ─── The Requests Box Container (Exact Website Styling) ──────────────
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFFFAFAFA),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: Colors.black, width: 3),
               boxShadow: const [
@@ -555,125 +575,135 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                 ),
               ],
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Top Toolbar: Category Pills & Search Input
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFAFAFA),
-                    border: Border(bottom: BorderSide(color: Colors.black, width: 2)),
-                  ),
-                  child: Column(
-                    children: [
-                      // Horizontal Category Filter Pills
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _filterPill('ALL', 'All', _categoryFilter == 'ALL', data.allRequests),
-                            _filterPill('sponsorships', 'Sponsorships', _categoryFilter == 'sponsorships', data.allRequests),
-                            _filterPill('spaces', 'Hubs', _categoryFilter == 'spaces', data.allRequests),
-                            _filterPill('communities', 'Communities', _categoryFilter == 'communities', data.allRequests),
-                            _filterPill('brands', 'Brands', _categoryFilter == 'brands', data.allRequests),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Search requests… input
-                      Container(
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0x33000000), width: 2),
-                        ),
-                        child: Row(
-                          children: [
-                            const SizedBox(width: 8),
-                            const Icon(Icons.search_rounded, size: 16, color: Colors.black38),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: TextField(
-                                onChanged: (val) {
-                                  setState(() {
-                                    _landingSearchQuery = val;
-                                  });
-                                },
-                                style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
-                                decoration: InputDecoration(
-                                  hintText: 'Search requests…',
-                                  hintStyle: GoogleFonts.poppins(fontSize: 11, color: Colors.black38),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                                ),
-                              ),
-                            ),
-                            if (_landingSearchQuery.isNotEmpty)
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _landingSearchQuery = '';
-                                  });
-                                },
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 8),
-                                  child: Icon(Icons.close_rounded, size: 14, color: Colors.black45),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Request Cards Feed
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: filteredRequests.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _activeQueue == 'INCOMING'
-                                      ? 'No incoming requests pending'
-                                      : 'No sent requests in this category',
-                                  style: GoogleFonts.bricolageGrotesque(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.black,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _activeQueue == 'INCOMING'
-                                      ? 'When counterparts reach out, their requests will appear here.'
-                                      : 'Any requests you have sent will be tracked here.',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black45,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(19),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Top Toolbar: Category Pills & Search Input
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFAFAFA),
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(19)),
+                      border: Border(bottom: BorderSide(color: Colors.black, width: 2)),
+                    ),
+                    child: Column(
+                      children: [
+                        // Horizontal Category Filter Pills
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _filterPill('ALL', 'All', _categoryFilter == 'ALL', data.allRequests),
+                              _filterPill('sponsorships', 'Sponsorships', _categoryFilter == 'sponsorships', data.allRequests),
+                              _filterPill('campaigns', 'Campaigns', _categoryFilter == 'campaigns', data.allRequests),
+                              _filterPill('spaces', 'Hubs', _categoryFilter == 'spaces', data.allRequests),
+                              _filterPill('communities', 'Communities', _categoryFilter == 'communities', data.allRequests),
+                              _filterPill('brands', 'Brands', _categoryFilter == 'brands', data.allRequests),
+                            ],
                           ),
-                        )
-                      : Column(
-                          children: filteredRequests.map((req) => _buildRequestCard(req)).toList(),
                         ),
-                ),
-              ],
+                        const SizedBox(height: 10),
+
+                        // Search requests… input
+                        Container(
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0x33000000), width: 2),
+                          ),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 8),
+                              const Icon(Icons.search_rounded, size: 16, color: Colors.black38),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: TextField(
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _landingSearchQuery = val;
+                                    });
+                                  },
+                                  style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search requests…',
+                                    hintStyle: GoogleFonts.poppins(fontSize: 11, color: Colors.black38),
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    errorBorder: InputBorder.none,
+                                    disabledBorder: InputBorder.none,
+                                    filled: false,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                  ),
+                                ),
+                              ),
+                              if (_landingSearchQuery.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _landingSearchQuery = '';
+                                    });
+                                  },
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 8),
+                                    child: Icon(Icons.close_rounded, size: 14, color: Colors.black45),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Request Cards Feed
+                  Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.all(12),
+                    child: filteredRequests.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _activeQueue == 'INCOMING'
+                                        ? 'No incoming requests pending'
+                                        : 'No sent requests in this category',
+                                    style: GoogleFonts.bricolageGrotesque(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.black,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _activeQueue == 'INCOMING'
+                                        ? 'When counterparts reach out, their requests will appear here.'
+                                        : 'Any requests you have sent will be tracked here.',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.black45,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : Column(
+                            children: filteredRequests.map((req) => _buildRequestCard(req)).toList(),
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -693,6 +723,11 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
         iconBg = MeetdayColors.accentYellow;
         iconCol = Colors.black;
         iconData = Icons.description_outlined;
+        break;
+      case 'campaigns':
+        iconBg = MeetdayColors.primaryRed;
+        iconCol = Colors.white;
+        iconData = Icons.rocket_launch_outlined;
         break;
       case 'spaces':
         iconBg = Colors.black;
@@ -716,158 +751,160 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(22),
-          onTap: () => _openCategory(cat.key),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.black, width: 3),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black,
-                  offset: Offset(4, 4),
-                  blurRadius: 0,
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Row: Icon Box + Title & Subtitle + Red Unread Badge
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: iconBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.black, width: 2.5),
-                      ),
-                      child: Center(
-                        child: Icon(iconData, size: 22, color: iconCol),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            cat.label,
-                            style: GoogleFonts.bricolageGrotesque(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.black,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            cat.description,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0x99000000), // text-black/60
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    if (hasUnread)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: MeetdayColors.primaryRed,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.black, width: 2),
-                        ),
-                        child: Text(
-                          cat.badgeCount > 9 ? '9+' : '${cat.badgeCount}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                // Bottom Meta Row: Green Live Dot + Active Count | Pending Pill or "Open →"
-                Container(
-                  padding: const EdgeInsets.only(top: 10),
-                  decoration: const BoxDecoration(
-                    border: Border(top: BorderSide(color: Color(0x1F000000), width: 1.2)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.black, width: 3),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black,
+            offset: Offset(4, 4),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(19),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _openCategory(cat.key),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top Row: Icon Box + Title & Subtitle + Red Unread Badge
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF22C55E),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0x4D000000), width: 1),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: iconBg,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.black, width: 2.5),
+                        ),
+                        child: Center(
+                          child: Icon(iconData, size: 22, color: iconCol),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              cat.label,
+                              style: GoogleFonts.bricolageGrotesque(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black,
+                                letterSpacing: -0.2,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${cat.activeCount} active conversation${cat.activeCount == 1 ? '' : 's'}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xCC000000), // text-black/80
+                            const SizedBox(height: 1),
+                            Text(
+                              cat.description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0x99000000), // text-black/60
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
 
-                      if (hasPending)
+                      if (hasUnread)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                           decoration: BoxDecoration(
-                            color: MeetdayColors.accentYellow,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.black, width: 1.5),
+                            color: MeetdayColors.primaryRed,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.black, width: 2),
                           ),
                           child: Text(
-                            '${cat.pendingRequestsCount} pending',
+                            cat.badgeCount > 9 ? '9+' : '${cat.badgeCount}',
                             style: GoogleFonts.poppins(
-                              fontSize: 10.5,
+                              fontSize: 10,
                               fontWeight: FontWeight.w900,
-                              color: Colors.black,
+                              color: Colors.white,
                             ),
-                          ),
-                        )
-                      else
-                        Text(
-                          'Open →',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0x99000000),
                           ),
                         ),
                     ],
                   ),
-                ),
-              ],
+
+                  const SizedBox(height: 12),
+
+                  // Bottom Meta Row: Green Live Dot + Active Count | Pending Pill or "Open →"
+                  Container(
+                    padding: const EdgeInsets.only(top: 10),
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: Color(0x1F000000), width: 1.2)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0x4D000000), width: 1),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${cat.activeCount} active conversation${cat.activeCount == 1 ? '' : 's'}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xCC000000), // text-black/80
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (hasPending)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.accentYellow,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.black, width: 1.5),
+                            ),
+                            child: Text(
+                              '${cat.pendingRequestsCount} pending',
+                              style: GoogleFonts.poppins(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black,
+                              ),
+                            ),
+                          )
+                        else
+                          Text(
+                            'Open →',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0x99000000),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -897,6 +934,13 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
           borderColor = Colors.black;
           badgeBg = Colors.black;
           badgeText = Colors.white;
+          break;
+        case 'campaigns':
+          pillBg = MeetdayColors.primaryRed;
+          textColor = Colors.white;
+          borderColor = Colors.black;
+          badgeBg = Colors.white;
+          badgeText = MeetdayColors.primaryRed;
           break;
         case 'brands':
           pillBg = MeetdayColors.primaryRed;
@@ -980,6 +1024,11 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
         badgeBg = MeetdayColors.accentYellow;
         badgeText = Colors.black;
         badgeBorder = const Color(0x33000000);
+        break;
+      case 'campaigns':
+        badgeBg = const Color(0x26EE2C2C);
+        badgeText = MeetdayColors.primaryRed;
+        badgeBorder = const Color(0x4DEE2C2C);
         break;
       case 'spaces':
         badgeBg = const Color(0x1F000000);
@@ -1238,6 +1287,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
         headingTitle = 'Sponsorship Chats';
         headingSubtitle = 'Talk to brands interested in your proposals.';
         break;
+      case 'campaigns':
+        headingTitle = 'Campaign Chats';
+        headingSubtitle = 'Collaborate with brands on active campaign briefs.';
+        break;
       case 'spaces':
         headingTitle = 'Hubs Chats';
         headingSubtitle = 'Collaborate with Community Hubs and manage your requests.';
@@ -1335,6 +1388,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                             badgeBg = Colors.black;
                             badgeTextColor = Colors.white;
                             break;
+                          case 'campaigns':
                           case 'brands':
                             tabBg = MeetdayColors.primaryRed;
                             tabText = Colors.white;
@@ -1426,7 +1480,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFFFAFAFA),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: Colors.black, width: 3),
                 boxShadow: const [
@@ -1437,110 +1491,121 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                   ),
                 ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  // Search Header
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFAFAFA),
-                      border: Border(bottom: BorderSide(color: Color(0x1F000000), width: 2)),
-                    ),
-                    child: Container(
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0x33000000), width: 2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(21),
+                child: Column(
+                  children: [
+                    // Search Header
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFAFAFA),
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
+                        border: Border(bottom: BorderSide(color: Color(0x1F000000), width: 2)),
                       ),
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 10),
-                          const Icon(Icons.search_rounded, size: 16, color: Colors.black38),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: TextField(
-                              onChanged: (val) {
-                                setState(() {
-                                  _activeSearchQuery = val;
-                                });
-                              },
-                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
-                              decoration: InputDecoration(
-                                hintText: 'Search conversations…',
-                                hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Container(
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0x33000000), width: 2),
+                        ),
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 10),
+                            const Icon(Icons.search_rounded, size: 16, color: Colors.black38),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: TextField(
+                                onChanged: (val) {
+                                  setState(() {
+                                    _activeSearchQuery = val;
+                                  });
+                                },
+                                style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                                decoration: InputDecoration(
+                                  hintText: 'Search conversations…',
+                                  hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  errorBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  filled: false,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                ),
                               ),
                             ),
-                          ),
-                          if (_activeSearchQuery.isNotEmpty)
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _activeSearchQuery = '';
-                                });
-                              },
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 8),
-                                child: Icon(Icons.close_rounded, size: 14, color: Colors.black45),
+                            if (_activeSearchQuery.isNotEmpty)
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _activeSearchQuery = '';
+                                  });
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 8),
+                                  child: Icon(Icons.close_rounded, size: 14, color: Colors.black45),
+                                ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
 
-                  // Conversations List
-                  Expanded(
-                    child: filteredThreads.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(32),
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _activeSearchQuery.isNotEmpty
-                                        ? 'No matching conversations found.'
-                                        : 'No active conversations in this category yet.',
-                                    style: GoogleFonts.bricolageGrotesque(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.black,
-                                    ),
-                                    textAlign: TextAlign.center,
+                    // Conversations List
+                    Expanded(
+                      child: Container(
+                        color: Colors.white,
+                        child: filteredThreads.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.all(32),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _activeSearchQuery.isNotEmpty
+                                            ? 'No matching conversations found.'
+                                            : 'No active conversations in this category yet.',
+                                        style: GoogleFonts.bricolageGrotesque(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.black,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Accepted inquiries will automatically show up here.',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.black45,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Accepted inquiries will automatically show up here.',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.black45,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: filteredThreads.length,
+                                separatorBuilder: (_, _) => const Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: Color(0x1F000000),
+                                ),
+                                itemBuilder: (context, index) {
+                                  final thread = filteredThreads[index];
+                                  return _buildActiveThreadRow(thread);
+                                },
                               ),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: filteredThreads.length,
-                            separatorBuilder: (_, _) => const Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: Color(0x1F000000),
-                            ),
-                            itemBuilder: (context, index) {
-                              final thread = filteredThreads[index];
-                              return _buildActiveThreadRow(thread);
-                            },
-                          ),
-                  ),
-                ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2271,6 +2336,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                               : 'Type a message to ${widget.thread.counterpartName}…',
                           hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          filled: false,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         ),
                       ),
@@ -2511,7 +2581,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 children: [
                   // View Deal Button
                   GestureDetector(
-                    onTap: () => _showDealDetailsDialog(context, deal, report),
+                    onTap: () => _showDealDetailsDialog(context, initialDeal: deal),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
@@ -2573,7 +2643,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     ),
                   ] else ...[
                     GestureDetector(
-                      onTap: () => _showDealReportDialog(context, existingReport: report, deal: deal),
+                      onTap: () => _showDealReportModal(context, initialReport: report, deal: deal),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
@@ -2873,7 +2943,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
     return Dismissible(
       key: ValueKey('msg_${msg.id}_${msg.createdAt}'),
-      direction: isMe ? DismissDirection.startToEnd : DismissDirection.endToStart,
+      direction: DismissDirection.startToEnd,
       confirmDismiss: (direction) async {
         HapticFeedback.mediumImpact();
         setState(() {
@@ -2882,24 +2952,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         });
         return false;
       },
-      background: isMe
-          ? Container(
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.only(left: 16),
-              child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
-            )
-          : Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 16),
-              child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
-            ),
-      secondaryBackground: !isMe
-          ? Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 16),
-              child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
-            )
-          : const SizedBox.shrink(),
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 16),
+        child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
+      ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         alignment: alignment,
@@ -3675,13 +3732,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     );
   }
 
-  // ─── Deal Details Dialog ───────────────────────────────────────────────────
+  // ─── Deal Details Modal Bottom Sheet ───────────────────────────────────────
 
-  void _showDealDetailsDialog(BuildContext context, Map<String, dynamic> deal, Map<String, dynamic>? report) {
-    final dealStatus = (deal['status'] ?? 'PENDING').toString().toUpperCase();
-    final isLocked = dealStatus == 'APPROVED';
-    final isReviewer = widget.thread.category == 'brands' && widget.thread.kind == 'SPONSORSHIP';
-
+  void _showDealDetailsDialog(BuildContext context, {Map<String, dynamic>? initialDeal}) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3690,152 +3743,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         side: BorderSide(color: Colors.black, width: 2.5),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Deal Details',
-                  style: GoogleFonts.bricolageGrotesque(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(ctx).pop()),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _infoRow('Project', deal['projectName']?.toString() ?? '-'),
-            _infoRow('Amount', '₹${deal['sponsorshipAmount'] ?? deal['amount'] ?? '0'}'),
-            _infoRow('Status', dealStatus),
-            _infoRow('Payment', (deal['paymentStatus'] ?? 'UNPAID').toString().toUpperCase()),
-            _infoRow('Venue', deal['venue']?.toString() ?? '-'),
-            _infoRow('Date', deal['startDate']?.toString().split('T').first ?? '-'),
-            if (deal['deliverables'] != null && deal['deliverables'].toString().isNotEmpty)
-              _infoRow('Deliverables', deal['deliverables'].toString()),
-            if (deal['additionalNotes'] != null && deal['additionalNotes'].toString().isNotEmpty)
-              _infoRow('Notes', deal['additionalNotes'].toString()),
-            const SizedBox(height: 16),
-
-            // Deal Actions: Approve / Request Changes / Edit Deal
-            if (!isLocked) ...[
-              if (isReviewer) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF10B981),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.black, width: 2),
-                          ),
-                          elevation: 0,
-                        ),
-                        onPressed: () async {
-                          Navigator.of(ctx).pop();
-                          try {
-                            final api = ref.read(apiClientProvider);
-                            await approveDealApi(api, widget.thread);
-                            ref.invalidate(threadDealProvider(widget.thread));
-                            ref.invalidate(chatMessagesProvider(widget.thread));
-                            ref.invalidate(chatHubProvider);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Deal approved and locked!'), backgroundColor: Color(0xFF10B981)),
-                              );
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to approve deal: $e'), backgroundColor: MeetdayColors.primaryRed),
-                              );
-                            }
-                          }
-                        },
-                        child: Text('Approve & Lock', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: MeetdayColors.accentYellow,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.black, width: 2),
-                          ),
-                          elevation: 0,
-                        ),
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          _showRequestDealChangesDialog(context);
-                        },
-                        child: Text('Request Changes', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
-                      ),
-                    ),
-                  ],
-                ),
-              ] else ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: MeetdayColors.accentYellow,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: const BorderSide(color: Colors.black, width: 2),
-                      ),
-                      elevation: 0,
-                    ),
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      _showDealFormDialog(context, existingDeal: deal);
-                    },
-                    child: Text('Edit Deal Terms', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
-                  ),
-                ),
-              ],
-            ] else ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: Colors.black, width: 2),
-                    ),
-                    elevation: 0,
-                  ),
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _showDealReportDialog(context, existingReport: report, deal: deal);
-                  },
-                  child: Text('View Deliverables Report', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
-                ),
-              ),
-            ],
-          ],
-        ),
+      builder: (ctx) => _DealDetailsModalSheet(
+        thread: widget.thread,
+        initialDeal: initialDeal,
+        onEditDeal: (d) {
+          Navigator.of(ctx).pop();
+          _showDealFormDialog(context, existingDeal: d);
+        },
+        onRequestChanges: () {
+          Navigator.of(ctx).pop();
+          _showRequestDealChangesDialog(context);
+        },
       ),
     );
   }
@@ -3855,6 +3773,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             hintText: 'Describe changes needed on the deal terms…',
             hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2.5)),
+            filled: false,
           ),
         ),
         actions: [
@@ -3887,47 +3808,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     );
   }
 
-  // ─── Deal Report Dialog ────────────────────────────────────────────────────
+  // ─── Deal Report Modal Bottom Sheet ────────────────────────────────────────
 
-  void _showDealReportDialog(
-      BuildContext context, {Map<String, dynamic>? existingReport, Map<String, dynamic>? deal}) {
-    // Parse summary if stored as JSON (matching meetday-frontend DealPanel.tsx)
-    Map<String, dynamic> parsedSummary = {};
-    if (existingReport != null && existingReport['summary'] != null) {
-      try {
-        final decoded = jsonDecode(existingReport['summary'].toString());
-        if (decoded is Map) parsedSummary = Map<String, dynamic>.from(decoded);
-      } catch (_) {}
-    }
-
-    final projectName = parsedSummary['projectName'] ?? existingReport?['projectName'] ?? deal?['projectName'] ?? widget.thread.title;
-    final eventDate = parsedSummary['date'] ?? existingReport?['eventDate'] ?? deal?['startDate']?.toString().split('T').first ?? '';
-    final venue = parsedSummary['venue'] ?? existingReport?['venue'] ?? deal?['venue'] ?? '';
-    final time = parsedSummary['time'] ?? existingReport?['time'] ?? '';
-    final guestCount = parsedSummary['guestCount'] ?? existingReport?['guestCount'] ?? '';
-    final ageRange = parsedSummary['ageRange'] ?? existingReport?['ageRange'] ?? '';
-    final summaryText = parsedSummary['summary'] ?? existingReport?['summary'] ?? '';
-    final status = (existingReport?['status'] ?? parsedSummary['status'] ?? 'PENDING').toString().toUpperCase();
-    final revisionNote = (existingReport?['revisionNote'] ?? parsedSummary['revisionNote'] ?? '').toString();
-
-    final nameCtrl = TextEditingController(text: projectName.toString());
-    final dateCtrl = TextEditingController(text: eventDate.toString());
-    final venueCtrl = TextEditingController(text: venue.toString());
-    final timeCtrl = TextEditingController(text: time.toString());
-    final guestCountCtrl = TextEditingController(text: guestCount.toString());
-    final ageRangeCtrl = TextEditingController(text: ageRange.toString());
-    final summaryCtrl = TextEditingController(text: summaryText.isNotEmpty && !summaryText.startsWith('{') ? summaryText : '');
-    final notesCtrl = TextEditingController(text: existingReport?['notes']?.toString() ?? '');
-
-    final initialProofKeys = <String>[];
-    if (existingReport?['proofKeys'] is List) {
-      initialProofKeys.addAll((existingReport!['proofKeys'] as List).map((e) => e.toString()));
-    }
-
-    final proofKeys = List<String>.from(initialProofKeys);
-    bool isSaving = false;
-    bool isUploadingProof = false;
-
+  void _showDealReportModal(
+      BuildContext context, {Map<String, dynamic>? initialReport, Map<String, dynamic>? deal}) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3936,249 +3820,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         side: BorderSide(color: Colors.black, width: 2.5),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      existingReport != null ? 'Deliverables Report' : 'Submit Deliverables Report',
-                      style: GoogleFonts.bricolageGrotesque(fontSize: 19, fontWeight: FontWeight.w900),
-                    ),
-                    IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(ctx).pop()),
-                  ],
-                ),
-                if (status == 'REVISION_REQUESTED' && revisionNote.isNotEmpty) ...[
-                  Container(
-                    margin: const EdgeInsets.only(top: 8, bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Revision Requested:', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w900, color: const Color(0xFF92400E))),
-                        const SizedBox(height: 2),
-                        Text(revisionNote, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF92400E))),
-                      ],
-                    ),
-                  ),
-                ],
-                Text(
-                  'Share execution proof, photos, video links, or attendee counts.',
-                  style: GoogleFonts.poppins(fontSize: 11, color: Colors.black54),
-                ),
-                const SizedBox(height: 14),
-                _fieldLabel('PROJECT / EVENT NAME'),
-                _formInput(nameCtrl, 'Project Name'),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel('EVENT DATE'),
-                          _formInput(dateCtrl, 'YYYY-MM-DD'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel('TIME'),
-                          _formInput(timeCtrl, 'e.g. 5:00 PM'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _fieldLabel('VENUE'),
-                _formInput(venueCtrl, 'Event Venue'),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel('GUEST COUNT'),
-                          _formInput(guestCountCtrl, 'e.g. 150'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel('AGE RANGE'),
-                          _formInput(ageRangeCtrl, 'e.g. 18-35'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _fieldLabel('EVENT HIGHLIGHTS & SUMMARY'),
-                _formInput(summaryCtrl, 'Overview of how deliverables were fulfilled…', maxLines: 3),
-                const SizedBox(height: 10),
-                _fieldLabel('PROOF PHOTOS & FILES (${proofKeys.length} attached)'),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        foregroundColor: Colors.black,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: const BorderSide(color: Colors.black, width: 1.5),
-                        ),
-                      ),
-                      onPressed: isUploadingProof
-                          ? null
-                          : () async {
-                              final picker = ImagePicker();
-                              final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-                              if (picked == null) return;
-
-                              setModalState(() => isUploadingProof = true);
-                              try {
-                                final bytes = await picked.readAsBytes();
-                                final api = ref.read(apiClientProvider);
-                                final key = await api.uploadMediaFile(
-                                  bytes: bytes,
-                                  fileName: picked.name,
-                                  context: widget.thread.kind == 'SPACE_INTEREST' || widget.thread.kind == 'SPACE_HOST'
-                                      ? 'SPACE_DEAL_REPORT_MEDIA'
-                                      : 'SPONSORSHIP_DEAL_REPORT_MEDIA',
-                                  resourceId: widget.thread.id,
-                                );
-                                if (key != null) {
-                                  setModalState(() => proofKeys.add(key));
-                                }
-                              } catch (e) {
-                                debugPrint('Error uploading proof: $e');
-                              } finally {
-                                setModalState(() => isUploadingProof = false);
-                              }
-                            },
-                      icon: isUploadingProof
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.add_photo_alternate_rounded, size: 16),
-                      label: Text('Attach Proof from Phone', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _fieldLabel('ADDITIONAL NOTES'),
-                _formInput(notesCtrl, 'Any further notes or details for review', maxLines: 2),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: MeetdayColors.accentYellow,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: const BorderSide(color: Colors.black, width: 2),
-                      ),
-                      elevation: 0,
-                    ),
-                    onPressed: isSaving
-                        ? null
-                        : () async {
-                            setModalState(() => isSaving = true);
-                            try {
-                              final api = ref.read(apiClientProvider);
-                              final summaryData = jsonEncode({
-                                'projectName': nameCtrl.text.trim(),
-                                'date': dateCtrl.text.trim(),
-                                'venue': venueCtrl.text.trim(),
-                                'time': timeCtrl.text.trim(),
-                                'guestCount': guestCountCtrl.text.trim(),
-                                'ageRange': ageRangeCtrl.text.trim(),
-                                'summary': summaryCtrl.text.trim(),
-                                'status': 'PENDING',
-                                'revisionNote': '',
-                              });
-
-                              final payload = {
-                                'projectName': nameCtrl.text.trim(),
-                                'eventDate': dateCtrl.text.trim(),
-                                'venue': venueCtrl.text.trim(),
-                                'time': timeCtrl.text.trim(),
-                                'guestCount': guestCountCtrl.text.trim(),
-                                'ageRange': ageRangeCtrl.text.trim(),
-                                'status': 'PENDING',
-                                'revisionNote': '',
-                                'summary': summaryData,
-                                'notes': notesCtrl.text.trim(),
-                                'proofKeys': proofKeys,
-                              };
-
-                              await saveReportApi(api, widget.thread, payload);
-                              ref.invalidate(threadReportProvider(widget.thread));
-                              ref.invalidate(chatMessagesProvider(widget.thread));
-                              ref.invalidate(chatHubProvider);
-
-                              if (ctx.mounted) Navigator.of(ctx).pop();
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Deliverables report submitted successfully!'),
-                                    backgroundColor: Color(0xFF10B981),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text('Failed to submit report: $e'),
-                                      backgroundColor: MeetdayColors.primaryRed),
-                                );
-                              }
-                            } finally {
-                              if (ctx.mounted) setModalState(() => isSaving = false);
-                            }
-                          },
-                    child: Text(
-                      isSaving
-                          ? 'Submitting…'
-                          : (existingReport != null ? 'Update Report' : 'Submit Deliverables Report'),
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 13),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      builder: (ctx) => _DealReportModalSheet(
+        thread: widget.thread,
+        initialReport: initialReport,
+        deal: deal,
       ),
     );
   }
@@ -4218,33 +3863,1731 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           hintText: hint,
           hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          filled: false,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
       ),
     );
   }
+}
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── Deal Details Modal Bottom Sheet Widget (Frontend-aligned) ───────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DealDetailsModalSheet extends ConsumerStatefulWidget {
+  final UnifiedActiveThread thread;
+  final Map<String, dynamic>? initialDeal;
+  final ValueChanged<Map<String, dynamic>> onEditDeal;
+  final VoidCallback onRequestChanges;
+
+  const _DealDetailsModalSheet({
+    required this.thread,
+    this.initialDeal,
+    required this.onEditDeal,
+    required this.onRequestChanges,
+  });
+
+  @override
+  ConsumerState<_DealDetailsModalSheet> createState() => _DealDetailsModalSheetState();
+}
+
+class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> {
+  Map<String, dynamic>? deal;
+  bool isLoading = true;
+  bool isApproving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    deal = widget.initialDeal;
+    _fetchDeal();
+  }
+
+  Future<void> _fetchDeal() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final id = widget.thread.id;
+      final res = widget.thread.kind == 'SPACE_INTEREST'
+          ? await api.dio.get<dynamic>('/spaces/chats/$id/deal')
+          : widget.thread.kind == 'SPACE_HOST'
+              ? await api.dio.get<dynamic>('/space-host/chats/$id/deal')
+              : await api.dio.get<dynamic>('/sponsorships/chats/$id/deal');
+      final raw = res.data is Map ? (res.data['data'] ?? res.data) : null;
+      if (raw is Map && mounted) {
+        setState(() {
+          deal = Map<String, dynamic>.from(raw);
+          isLoading = false;
+        });
+        return;
+      }
+    } catch (e) {
+      debugPrint('Error fetching fresh deal: $e');
+    }
+    if (mounted) setState(() => isLoading = false);
+  }
+
+  Widget _badge(String text, {required Color bg, required Color textCol, Color? borderCol}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: borderCol ?? Colors.black, width: 1.5),
+        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0)],
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: textCol),
+      ),
+    );
+  }
+
+  Widget _itemBox(String label, String value, {bool multiline = false}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x26000000), width: 1.5),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
+          Text(
+            label,
+            style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w900, color: Colors.black45, letterSpacing: 0.3),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value.isNotEmpty ? value : '—',
+            style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.black, height: 1.3),
+            maxLines: multiline ? null : 1,
+            overflow: multiline ? null : TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _twoCol(String label1, String val1, String label2, String val2) {
+    return Row(
+      children: [
+        Expanded(child: _itemBox(label1, val1)),
+        const SizedBox(width: 8),
+        Expanded(child: _itemBox(label2, val2)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curDeal = deal;
+    final dealStatus = (curDeal?['status'] ?? 'PENDING').toString().toUpperCase();
+    final isLocked = dealStatus == 'APPROVED';
+    final isChangesRequested = dealStatus == 'CHANGES_REQUESTED';
+    final isCampaign = widget.thread.kind == 'CAMPAIGN';
+
+    final isHost = widget.thread.kind != 'BRAND' && widget.thread.category != 'brands';
+    final canApproveOrRequestChanges = isCampaign ? isHost : !isHost;
+
+    final projectName = (curDeal?['projectName'] ?? widget.thread.title).toString();
+    final startDateStr = _formatDateString(curDeal?['startDate']?.toString());
+    final endDateStr = _formatDateString(curDeal?['endDate']?.toString());
+    final venueStr = (curDeal?['venue'] ?? '—').toString();
+    final timeStr = (curDeal?['time'] ?? '—').toString();
+    final amountVal = curDeal?['sponsorshipAmount'] ?? curDeal?['amount'];
+    final cashAmountStr = _formatIndianCurrency(amountVal);
+    final barterStr = (curDeal?['barterElements'] ?? 'None').toString();
+    final deliverablesStr = (curDeal?['deliverables'] ?? '').toString();
+    final notesStr = (curDeal?['additionalNotes'] ?? curDeal?['otherTerms'] ?? '').toString();
+    final changeNote = (curDeal?['changeRequestNote'] ?? '').toString();
+    final versionNum = curDeal?['version'] ?? 1;
+
+    final paymentStatus = (curDeal?['paymentStatus'] ?? 'UNPAID').toString().toUpperCase();
+    final isPaid = paymentStatus == 'PAID';
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 14, 20, MediaQuery.of(context).padding.bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4.5,
+              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(3)),
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black),
+          const SizedBox(height: 12),
+
+          // Header: Title + Status Badge + Close
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    isCampaign ? 'Campaign Deal' : 'Deal Details',
+                    style: GoogleFonts.bricolageGrotesque(fontSize: 19, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(width: 8),
+                  if (isLocked)
+                    _badge('🔒 Locked', bg: Colors.black, textCol: Colors.white)
+                  else if (isChangesRequested)
+                    _badge('Changes Requested', bg: MeetdayColors.primaryRed, textCol: Colors.white)
+                  else
+                    _badge('Pending Approval', bg: MeetdayColors.accentYellow, textCol: Colors.black),
+                ],
+              ),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.close_rounded, size: 20, color: Colors.black87),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Content Box
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isLoading && curDeal == null)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5)),
+                    )
+                  else ...[
+                    _itemBox(isCampaign ? 'CAMPAIGN NAME' : 'PROJECT NAME', projectName),
+                    const SizedBox(height: 8),
+
+                    _twoCol('START DATE', startDateStr, 'END DATE', endDateStr),
+                    const SizedBox(height: 8),
+
+                    _twoCol(isCampaign ? 'CITY / REGION' : 'VENUE', venueStr, 'TIME', timeStr),
+                    const SizedBox(height: 8),
+
+                    _twoCol('CASH AMOUNT', cashAmountStr, 'BARTER ELEMENTS', barterStr),
+                    const SizedBox(height: 8),
+
+                    if (deliverablesStr.isNotEmpty) ...[
+                      _itemBox('KEY DELIVERABLES', deliverablesStr, multiline: true),
+                      const SizedBox(height: 8),
+                    ],
+
+                    if (notesStr.isNotEmpty) ...[
+                      _itemBox('OTHER INFORMATION', notesStr, multiline: true),
+                      const SizedBox(height: 8),
+                    ],
+
+                    if (changeNote.isNotEmpty) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: MeetdayColors.primaryRed, width: 2),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'CHANGES REQUESTED',
+                              style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: MeetdayColors.primaryRed),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              changeNote,
+                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // Payment Breakdown Card (Matching frontend DealDetailsModal)
+                    if (isLocked && (num.tryParse(amountVal?.toString() ?? '0') ?? 0) > 0) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF9FAFB),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.black, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('PAYMENT BREAKDOWN', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                                _badge(
+                                  isPaid ? 'PAID' : 'PENDING',
+                                  bg: isPaid ? const Color(0xFF10B981) : const Color(0xFFE5E7EB),
+                                  textCol: isPaid ? Colors.white : Colors.black87,
+                                  borderCol: Colors.black,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _paymentRow('Sponsorship Amount', cashAmountStr),
+                            if (curDeal?['platformFeeAmount'] != null)
+                              _paymentRow('Platform Fee (5%)', _formatIndianCurrency(curDeal!['platformFeeAmount'])),
+                            if (curDeal?['transactionFeeAmount'] != null)
+                              _paymentRow('Transaction Fee (3%)', _formatIndianCurrency(curDeal!['transactionFeeAmount'])),
+                            if (curDeal?['taxAmount'] != null)
+                              _paymentRow('GST', _formatIndianCurrency(curDeal!['taxAmount'])),
+                            const Divider(height: 12, thickness: 1, color: Color(0x26000000)),
+                            _paymentRow(
+                              'Total Amount',
+                              _formatIndianCurrency(curDeal?['totalAmount'] ?? amountVal),
+                              isBold: true,
+                            ),
+                            if (isPaid && curDeal?['paidAt'] != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Paid on ${_formatDateString(curDeal!['paidAt'].toString())}',
+                                style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.black45),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+
+                    Text(
+                      'Version $versionNum',
+                      style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.black38),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Actions at bottom
+          if (!isLocked && curDeal != null) ...[
+            if (canApproveOrRequestChanges) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MeetdayColors.primaryRed,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Colors.black, width: 2),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: widget.onRequestChanges,
+                      child: Text('Request Changes', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MeetdayColors.accentYellow,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Colors.black, width: 2),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: isApproving
+                          ? null
+                          : () async {
+                              setState(() => isApproving = true);
+                              try {
+                                final api = ref.read(apiClientProvider);
+                                await approveDealApi(api, widget.thread);
+                                ref.invalidate(threadDealProvider(widget.thread));
+                                ref.invalidate(chatMessagesProvider(widget.thread));
+                                ref.invalidate(chatHubProvider);
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('🎉 Deal approved and locked!'), backgroundColor: Color(0xFF10B981)),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to approve deal: $e'), backgroundColor: MeetdayColors.primaryRed),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) setState(() => isApproving = false);
+                              }
+                            },
+                      child: Text(
+                        isApproving ? 'Approving…' : 'Approve & Lock',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MeetdayColors.accentYellow,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: Colors.black, width: 2),
+                    ),
+                    elevation: 0,
+                  ),
+                  onPressed: () => widget.onEditDeal(curDeal),
+                  child: Text('Edit Deal Terms', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 13)),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _paymentRow(String label, String amount, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: isBold ? 12 : 11,
+              fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
+              color: isBold ? Colors.black : Colors.black54,
+            ),
+          ),
+          Text(
+            amount,
+            style: GoogleFonts.poppins(
+              fontSize: isBold ? 13 : 11.5,
+              fontWeight: isBold ? FontWeight.w900 : FontWeight.w700,
+              color: Colors.black,
             ),
           ),
         ],
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── Deal Report Modal Bottom Sheet Widget (Frontend DealReportModal) ────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DealReportModalSheet extends ConsumerStatefulWidget {
+  final UnifiedActiveThread thread;
+  final Map<String, dynamic>? initialReport;
+  final Map<String, dynamic>? deal;
+
+  const _DealReportModalSheet({
+    required this.thread,
+    this.initialReport,
+    this.deal,
+  });
+
+  @override
+  ConsumerState<_DealReportModalSheet> createState() => _DealReportModalSheetState();
+}
+
+class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
+  bool isLoading = true;
+  bool isEditing = false;
+  bool isSaving = false;
+  bool isUploadingProof = false;
+  bool showRevisionInput = false;
+
+  Map<String, dynamic>? report;
+  Map<String, dynamic>? deal;
+
+  late TextEditingController nameCtrl;
+  late TextEditingController dateCtrl;
+  late TextEditingController venueCtrl;
+  late TextEditingController timeCtrl;
+  late TextEditingController guestCountCtrl;
+  late TextEditingController ageRangeCtrl;
+  late TextEditingController summaryCtrl;
+  late TextEditingController notesCtrl;
+  late TextEditingController brandRevisionCtrl;
+
+  List<Map<String, dynamic>> deliverablesList = [];
+  List<String> videoLinks = [];
+  List<String> socialLinks = [];
+  List<String> proofKeys = [];
+  List<String> proofUrls = [];
+  String reportStatus = 'PENDING';
+  String revisionNote = '';
+
+  @override
+  void initState() {
+    super.initState();
+    nameCtrl = TextEditingController();
+    dateCtrl = TextEditingController();
+    venueCtrl = TextEditingController();
+    timeCtrl = TextEditingController();
+    guestCountCtrl = TextEditingController();
+    ageRangeCtrl = TextEditingController();
+    summaryCtrl = TextEditingController();
+    notesCtrl = TextEditingController();
+    brandRevisionCtrl = TextEditingController();
+
+    deal = widget.deal;
+    report = widget.initialReport;
+    if (report != null) {
+      _populateFromReport(report!);
+      isEditing = false;
+    } else {
+      _prefillFromDeal(deal);
+      isEditing = true;
+    }
+    _fetchReport();
+  }
+
+  @override
+  void dispose() {
+    nameCtrl.dispose();
+    dateCtrl.dispose();
+    venueCtrl.dispose();
+    timeCtrl.dispose();
+    guestCountCtrl.dispose();
+    ageRangeCtrl.dispose();
+    summaryCtrl.dispose();
+    notesCtrl.dispose();
+    brandRevisionCtrl.dispose();
+    super.dispose();
+  }
+
+  void _prefillFromDeal(Map<String, dynamic>? d) {
+    nameCtrl.text = (d?['projectName'] ?? widget.thread.title).toString();
+    dateCtrl.text = (d?['startDate']?.toString().split('T').first ?? '').toString();
+    venueCtrl.text = (d?['venue'] ?? '').toString();
+    timeCtrl.text = (d?['time'] ?? '').toString();
+    guestCountCtrl.text = '';
+    ageRangeCtrl.text = '';
+    summaryCtrl.text = '';
+    notesCtrl.text = '';
+
+    deliverablesList = [];
+    if (d?['deliverables'] != null) {
+      final items = d!['deliverables'].toString().split(RegExp(r',|\n')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      deliverablesList = items.map((t) => {'text': t, 'checked': false}).toList();
+    }
+  }
+
+  void _populateFromReport(Map<String, dynamic> rep) {
+    Map<String, dynamic> summary = {};
+    if (rep['summary'] != null) {
+      try {
+        final decoded = jsonDecode(rep['summary'].toString());
+        if (decoded is Map) summary = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+
+    nameCtrl.text = (summary['projectName'] ?? rep['projectName'] ?? deal?['projectName'] ?? widget.thread.title).toString();
+    dateCtrl.text = (summary['date'] ?? rep['eventDate'] ?? deal?['startDate']?.toString().split('T').first ?? '').toString();
+    venueCtrl.text = (summary['venue'] ?? rep['venue'] ?? deal?['venue'] ?? '').toString();
+    timeCtrl.text = (summary['time'] ?? rep['time'] ?? deal?['time'] ?? '').toString();
+    guestCountCtrl.text = (summary['guestCount'] ?? rep['guestCount'] ?? '').toString();
+    ageRangeCtrl.text = (summary['ageRange'] ?? rep['ageRange'] ?? '').toString();
+    summaryCtrl.text = (summary['summary'] ?? rep['summary'] ?? '').toString();
+    if (summaryCtrl.text.startsWith('{')) summaryCtrl.text = '';
+    notesCtrl.text = (rep['notes'] ?? '').toString();
+
+    reportStatus = (rep['status'] ?? summary['status'] ?? 'PENDING').toString().toUpperCase();
+    revisionNote = (rep['revisionNote'] ?? summary['revisionNote'] ?? '').toString();
+
+    deliverablesList = [];
+    final rawDelivs = summary['deliverables'] ?? rep['deliverables'];
+    if (rawDelivs is List) {
+      for (final item in rawDelivs) {
+        if (item is Map) {
+          deliverablesList.add({
+            'text': (item['text'] ?? '').toString(),
+            'checked': item['checked'] == true,
+          });
+        } else if (item != null) {
+          deliverablesList.add({'text': item.toString(), 'checked': false});
+        }
+      }
+    } else if (deal?['deliverables'] != null) {
+      final items = deal!['deliverables'].toString().split(RegExp(r',|\n')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      deliverablesList = items.map((t) => {'text': t, 'checked': false}).toList();
+    }
+
+    videoLinks = [];
+    final vLinks = summary['videoLinks'] ?? rep['videoLinks'];
+    if (vLinks is List) {
+      videoLinks = vLinks.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+    }
+
+    socialLinks = [];
+    final sLinks = summary['socialLinks'] ?? rep['socialLinks'];
+    if (sLinks is List) {
+      socialLinks = sLinks.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+    }
+
+    proofKeys = [];
+    if (rep['proofKeys'] is List) {
+      proofKeys = (rep['proofKeys'] as List).map((e) => e.toString()).toList();
+    }
+
+    proofUrls = [];
+    if (rep['proofUrls'] is List) {
+      proofUrls = (rep['proofUrls'] as List).map((e) => e.toString()).toList();
+    }
+  }
+
+  Future<void> _fetchReport() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final id = widget.thread.id;
+      final res = widget.thread.kind == 'SPACE_INTEREST'
+          ? await api.dio.get<dynamic>('/spaces/chats/$id/deal/report')
+          : widget.thread.kind == 'SPACE_HOST'
+              ? await api.dio.get<dynamic>('/space-host/chats/$id/deal/report')
+              : await api.dio.get<dynamic>('/sponsorships/chats/$id/deal/report');
+      final raw = res.data is Map ? (res.data['data'] ?? res.data) : null;
+      if (raw is Map && mounted) {
+        final rep = Map<String, dynamic>.from(raw);
+        setState(() {
+          report = rep;
+          _populateFromReport(rep);
+          isEditing = false;
+          isLoading = false;
+        });
+        return;
+      }
+    } catch (e) {
+      debugPrint('Error fetching fresh report: $e');
+    }
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+        final isReviewer = widget.thread.category == 'brands' && widget.thread.kind == 'SPONSORSHIP';
+        isEditing = !isReviewer;
+      });
+    }
+  }
+
+  Future<void> _pickAndUploadProofPhoto() async {
+    if (proofKeys.length >= 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Up to 5 proof photos allowed.')),
+      );
+      return;
+    }
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+
+    setState(() => isUploadingProof = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      final api = ref.read(apiClientProvider);
+      final key = await api.uploadMediaFile(
+        bytes: bytes,
+        fileName: picked.name,
+        context: widget.thread.kind == 'SPACE_INTEREST' || widget.thread.kind == 'SPACE_HOST'
+            ? 'SPACE_DEAL_REPORT_MEDIA'
+            : 'SPONSORSHIP_DEAL_REPORT_MEDIA',
+        resourceId: widget.thread.id,
+      );
+      if (key != null && mounted) {
+        setState(() {
+          proofKeys.add(key);
+          proofUrls.add(picked.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error uploading proof photo: $e');
+    } finally {
+      if (mounted) setState(() => isUploadingProof = false);
+    }
+  }
+
+  Future<void> _handleSaveReport() async {
+    if (nameCtrl.text.trim().isEmpty || dateCtrl.text.trim().isEmpty || venueCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in Project Name, Date, and Venue.'), backgroundColor: MeetdayColors.primaryRed),
+      );
+      return;
+    }
+    setState(() => isSaving = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      final summaryData = jsonEncode({
+        'projectName': nameCtrl.text.trim(),
+        'date': dateCtrl.text.trim(),
+        'venue': venueCtrl.text.trim(),
+        'time': timeCtrl.text.trim(),
+        'guestCount': guestCountCtrl.text.trim(),
+        'ageRange': ageRangeCtrl.text.trim(),
+        'deliverables': deliverablesList,
+        'videoLinks': videoLinks.where((l) => l.trim().isNotEmpty).toList(),
+        'socialLinks': socialLinks.where((l) => l.trim().isNotEmpty).toList(),
+        'status': 'PENDING',
+        'revisionNote': '',
+      });
+
+      final payload = {
+        'projectName': nameCtrl.text.trim(),
+        'eventDate': dateCtrl.text.trim(),
+        'venue': venueCtrl.text.trim(),
+        'time': timeCtrl.text.trim(),
+        'guestCount': guestCountCtrl.text.trim(),
+        'ageRange': ageRangeCtrl.text.trim(),
+        'deliverables': deliverablesList,
+        'videoLinks': videoLinks.where((l) => l.trim().isNotEmpty).toList(),
+        'socialLinks': socialLinks.where((l) => l.trim().isNotEmpty).toList(),
+        'status': 'PENDING',
+        'revisionNote': '',
+        'summary': summaryData,
+        'notes': notesCtrl.text.trim(),
+        'proofKeys': proofKeys,
+      };
+
+      await saveReportApi(api, widget.thread, payload);
+      ref.invalidate(threadReportProvider(widget.thread));
+      ref.invalidate(chatMessagesProvider(widget.thread));
+      ref.invalidate(chatHubProvider);
+
+      if (mounted) {
+        setState(() {
+          reportStatus = 'PENDING';
+          revisionNote = '';
+          isEditing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(report != null ? 'Report resubmitted for review!' : 'Report submitted for review!'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save report: $e'), backgroundColor: MeetdayColors.primaryRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isSaving = false);
+    }
+  }
+
+  Future<void> _handleBrandAction(String status) async {
+    setState(() => isSaving = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      final note = status == 'REVISION_REQUESTED' ? brandRevisionCtrl.text.trim() : '';
+      final summaryData = jsonEncode({
+        'projectName': nameCtrl.text.trim(),
+        'date': dateCtrl.text.trim(),
+        'venue': venueCtrl.text.trim(),
+        'time': timeCtrl.text.trim(),
+        'guestCount': guestCountCtrl.text.trim(),
+        'ageRange': ageRangeCtrl.text.trim(),
+        'deliverables': deliverablesList,
+        'videoLinks': videoLinks,
+        'socialLinks': socialLinks,
+        'status': status,
+        'revisionNote': note,
+      });
+
+      final payload = {
+        'projectName': nameCtrl.text.trim(),
+        'eventDate': dateCtrl.text.trim(),
+        'venue': venueCtrl.text.trim(),
+        'time': timeCtrl.text.trim(),
+        'guestCount': guestCountCtrl.text.trim(),
+        'ageRange': ageRangeCtrl.text.trim(),
+        'deliverables': deliverablesList,
+        'videoLinks': videoLinks,
+        'socialLinks': socialLinks,
+        'status': status,
+        'revisionNote': note,
+        'summary': summaryData,
+        'notes': note,
+        'proofKeys': proofKeys,
+      };
+
+      await saveReportApi(api, widget.thread, payload);
+      ref.invalidate(threadReportProvider(widget.thread));
+      ref.invalidate(chatMessagesProvider(widget.thread));
+      ref.invalidate(chatHubProvider);
+
+      if (mounted) {
+        setState(() {
+          reportStatus = status;
+          revisionNote = note;
+          showRevisionInput = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(status == 'APPROVED' ? 'Report approved! Deal closed.' : 'Revision request sent.'),
+            backgroundColor: status == 'APPROVED' ? const Color(0xFF10B981) : MeetdayColors.primaryRed,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update report status: $e'), backgroundColor: MeetdayColors.primaryRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isSaving = false);
+    }
+  }
+
+  Widget _badge(String text, {required Color bg, required Color textCol, Color? borderCol}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: borderCol ?? Colors.black, width: 1.5),
+        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0)],
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: textCol),
+      ),
+    );
+  }
+
+  Widget _inputBox(TextEditingController ctrl, String hint, {int maxLines = 1, bool enabled = true}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: enabled ? const Color(0xFFF9FAFB) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.black, width: 2),
+        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+      ),
+      child: TextField(
+        controller: ctrl,
+        enabled: enabled,
+        maxLines: maxLines,
+        style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          filled: false,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+      ),
+    );
+  }
+
+  Widget _itemBox(String label, String value, {bool multiline = false}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x26000000), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w900, color: Colors.black45, letterSpacing: 0.3),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value.isNotEmpty ? value : '—',
+            style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.black, height: 1.3),
+            maxLines: multiline ? null : 1,
+            overflow: multiline ? null : TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isReviewer = widget.thread.category == 'brands' && widget.thread.kind == 'SPONSORSHIP';
+    final isHost = !isReviewer;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 14, 20, MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4.5,
+              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(3)),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Header: Title + Status Pill + Close
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    isEditing ? 'Submit Report' : 'Deliverables Report',
+                    style: GoogleFonts.bricolageGrotesque(fontSize: 19, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(width: 8),
+                  if (report != null && !isEditing) ...[
+                    if (reportStatus == 'APPROVED')
+                      _badge('Approved', bg: const Color(0xFF10B981), textCol: Colors.white)
+                    else if (reportStatus == 'REVISION_REQUESTED')
+                      _badge('Revision Requested', bg: MeetdayColors.primaryRed, textCol: Colors.white)
+                    else
+                      _badge('Pending Approval', bg: MeetdayColors.accentYellow, textCol: Colors.black),
+                  ],
+                ],
+              ),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.close_rounded, size: 20, color: Colors.black87),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Body
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isLoading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5)),
+                    )
+                  else if (!isEditing && report == null && isReviewer) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+                      child: Center(
+                        child: Text(
+                          'The community has not submitted a deliverables report yet.',
+                          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black45),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ] else if (!isEditing) ...[
+                    // ─── VIEW MODE ───
+                    if (reportStatus == 'REVISION_REQUESTED' && revisionNote.isNotEmpty) ...[
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: MeetdayColors.primaryRed, width: 2),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Revision Requested By Brand:',
+                              style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w900, color: MeetdayColors.primaryRed),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              revisionNote,
+                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    Row(
+                      children: [
+                        Expanded(child: _itemBox('PROJECT NAME', nameCtrl.text)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _itemBox('DATE', dateCtrl.text)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    Row(
+                      children: [
+                        Expanded(child: _itemBox('VENUE', venueCtrl.text)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _itemBox('TIME', timeCtrl.text)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    Row(
+                      children: [
+                        Expanded(child: _itemBox('GUEST COUNT', guestCountCtrl.text)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _itemBox('AGE RANGE', ageRangeCtrl.text)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Deliverables Met Checklist
+                    if (deliverablesList.isNotEmpty) ...[
+                      Text('DELIVERABLES MET', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFAFAFA),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.black, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+                        ),
+                        child: Column(
+                          children: deliverablesList.map((item) {
+                            final checked = item['checked'] == true;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3.5),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    checked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    size: 16,
+                                    color: checked ? const Color(0xFF10B981) : Colors.black38,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      (item['text'] ?? '').toString(),
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        fontWeight: checked ? FontWeight.w700 : FontWeight.w500,
+                                        color: checked ? Colors.black : Colors.black54,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    // Proof Photos (tap opens full size)
+                    if (proofUrls.isNotEmpty) ...[
+                      Text('PROOF PHOTOS (${proofUrls.length})', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: proofUrls.map((url) {
+                          return GestureDetector(
+                            onTap: () => _showImagePreviewDialog(context, url),
+                            child: Container(
+                              width: 68,
+                              height: 68,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3F4F6),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.black, width: 2),
+                                boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0)],
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: url.startsWith('http')
+                                  ? Image.network(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 24))
+                                  : Image.file(File(url), fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.image, size: 24)),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    // Video Links
+                    if (videoLinks.isNotEmpty) ...[
+                      Text('VIDEO LINKS', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      const SizedBox(height: 4),
+                      Column(
+                        children: videoLinks.map((link) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFAFAFA),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0x33000000), width: 1.5),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.play_circle_fill_rounded, size: 16, color: MeetdayColors.primaryRed),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(link, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blue.shade800), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    // Social Links
+                    if (socialLinks.isNotEmpty) ...[
+                      Text('SOCIAL LINKS', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      const SizedBox(height: 4),
+                      Column(
+                        children: socialLinks.map((link) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFAFAFA),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0x33000000), width: 1.5),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.link_rounded, size: 16, color: Colors.black87),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(link, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blue.shade800), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    if (summaryCtrl.text.isNotEmpty) ...[
+                      _itemBox('EVENT HIGHLIGHTS & SUMMARY', summaryCtrl.text, multiline: true),
+                      const SizedBox(height: 8),
+                    ],
+
+                    if (notesCtrl.text.isNotEmpty) ...[
+                      _itemBox('ADDITIONAL NOTES', notesCtrl.text, multiline: true),
+                      const SizedBox(height: 8),
+                    ],
+                  ] else ...[
+                    // ─── EDIT MODE ───
+                    _fieldHeader('PROJECT / EVENT NAME'),
+                    _inputBox(nameCtrl, 'Project Name'),
+                    const SizedBox(height: 10),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldHeader('EVENT DATE'),
+                              _inputBox(dateCtrl, 'YYYY-MM-DD'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldHeader('TIME'),
+                              _inputBox(timeCtrl, 'e.g. 5:00 PM'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    _fieldHeader('VENUE'),
+                    _inputBox(venueCtrl, 'Event Venue'),
+                    const SizedBox(height: 10),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldHeader('GUEST COUNT'),
+                              _inputBox(guestCountCtrl, 'e.g. 150'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldHeader('AGE RANGE'),
+                              _inputBox(ageRangeCtrl, 'e.g. 18-35'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Deliverables Checklist (Interactive)
+                    if (deliverablesList.isNotEmpty) ...[
+                      _fieldHeader('DELIVERABLES MET (TICK MARK)'),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFAFAFA),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.black, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+                        ),
+                        child: Column(
+                          children: deliverablesList.asMap().entries.map((entry) {
+                            final idx = entry.key;
+                            final item = entry.value;
+                            final checked = item['checked'] == true;
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  deliverablesList[idx]['checked'] = !checked;
+                                });
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      checked ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                      size: 18,
+                                      color: checked ? MeetdayColors.primaryRed : Colors.black45,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        (item['text'] ?? '').toString(),
+                                        style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    // Proof Photos with Upload
+                    _fieldHeader('PROOF PHOTOS (UP TO 5)'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ...proofUrls.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final url = entry.value;
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 64,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF3F4F6),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.black, width: 2),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: url.startsWith('http')
+                                    ? Image.network(url, fit: BoxFit.cover)
+                                    : Image.file(File(url), fit: BoxFit.cover),
+                              ),
+                              Positioned(
+                                top: -4,
+                                right: -4,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      proofUrls.removeAt(i);
+                                      if (i < proofKeys.length) proofKeys.removeAt(i);
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
+                                    child: const Icon(Icons.close_rounded, size: 12, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
+                        if (proofKeys.length < 5)
+                          GestureDetector(
+                            onTap: isUploadingProof ? null : _pickAndUploadProofPhoto,
+                            child: Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF9FAFB),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.black45, width: 2, strokeAlign: BorderSide.strokeAlignInside),
+                              ),
+                              child: Center(
+                                child: isUploadingProof
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                                    : Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.add_photo_alternate_rounded, size: 20, color: Colors.black54),
+                                          const SizedBox(height: 2),
+                                          Text('+ Add', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.black54)),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Video Links Inputs
+                    _fieldHeader('VIDEO LINKS (UP TO 5)'),
+                    ...videoLinks.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF9FAFB),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.black, width: 2),
+                                ),
+                                child: TextField(
+                                  controller: TextEditingController(text: entry.value)..selection = TextSelection.collapsed(offset: entry.value.length),
+                                  onChanged: (val) => videoLinks[i] = val,
+                                  style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w500),
+                                  decoration: const InputDecoration(
+                                    hintText: 'https://youtube.com/...',
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    filled: false,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => setState(() => videoLinks.removeAt(i)),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.black, width: 1.5)),
+                                child: const Icon(Icons.delete_outline_rounded, size: 16, color: MeetdayColors.primaryRed),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    if (videoLinks.length < 5)
+                      GestureDetector(
+                        onTap: () => setState(() => videoLinks.add('')),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.black, width: 1.5),
+                          ),
+                          child: Text('+ Add Video Link', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black)),
+                        ),
+                      ),
+                    const SizedBox(height: 6),
+
+                    // Social Links Inputs
+                    _fieldHeader('SOCIAL LINKS (UP TO 5)'),
+                    ...socialLinks.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF9FAFB),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.black, width: 2),
+                                ),
+                                child: TextField(
+                                  controller: TextEditingController(text: entry.value)..selection = TextSelection.collapsed(offset: entry.value.length),
+                                  onChanged: (val) => socialLinks[i] = val,
+                                  style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w500),
+                                  decoration: const InputDecoration(
+                                    hintText: 'https://instagram.com/...',
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    filled: false,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => setState(() => socialLinks.removeAt(i)),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.black, width: 1.5)),
+                                child: const Icon(Icons.delete_outline_rounded, size: 16, color: MeetdayColors.primaryRed),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    if (socialLinks.length < 5)
+                      GestureDetector(
+                        onTap: () => setState(() => socialLinks.add('')),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.black, width: 1.5),
+                          ),
+                          child: Text('+ Add Social Link', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black)),
+                        ),
+                      ),
+                    const SizedBox(height: 6),
+
+                    _fieldHeader('EVENT HIGHLIGHTS & SUMMARY'),
+                    _inputBox(summaryCtrl, 'Overview of how deliverables were fulfilled…', maxLines: 3),
+                    const SizedBox(height: 10),
+
+                    _fieldHeader('ADDITIONAL NOTES'),
+                    _inputBox(notesCtrl, 'Any further notes or details for review', maxLines: 2),
+                    const SizedBox(height: 14),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Actions
+          if (!isLoading) ...[
+            if (isEditing) ...[
+              Row(
+                children: [
+                  if (report != null) ...[
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: Colors.black, width: 2),
+                          ),
+                          elevation: 0,
+                        ),
+                        onPressed: () => setState(() => isEditing = false),
+                        child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MeetdayColors.accentYellow,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Colors.black, width: 2),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: isSaving ? null : _handleSaveReport,
+                      child: Text(
+                        isSaving ? 'Submitting…' : (report != null ? 'Resubmit Report' : 'Submit Report'),
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              if (isHost && reportStatus != 'APPROVED') ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MeetdayColors.accentYellow,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Colors.black, width: 2),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: () => setState(() => isEditing = true),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.edit_rounded, size: 14, color: Colors.black),
+                        const SizedBox(width: 6),
+                        Text('Edit Report', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else if (isReviewer && reportStatus != 'APPROVED') ...[
+                if (showRevisionInput) ...[
+                  Column(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF9FAFB),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.black, width: 2),
+                        ),
+                        child: TextField(
+                          controller: brandRevisionCtrl,
+                          maxLines: 2,
+                          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500),
+                          decoration: const InputDecoration(
+                            hintText: 'Describe requested revisions or missing items…',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: false,
+                            contentPadding: EdgeInsets.all(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(vertical: 11),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: const BorderSide(color: Colors.black, width: 2),
+                                ),
+                                elevation: 0,
+                              ),
+                              onPressed: () => setState(() => showRevisionInput = false),
+                              child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: MeetdayColors.primaryRed,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 11),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: const BorderSide(color: Colors.black, width: 2),
+                                ),
+                                elevation: 0,
+                              ),
+                              onPressed: isSaving ? null : () => _handleBrandAction('REVISION_REQUESTED'),
+                              child: Text('Send Request', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: MeetdayColors.primaryRed,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: Colors.black, width: 2),
+                            ),
+                            elevation: 0,
+                          ),
+                          onPressed: () => setState(() => showRevisionInput = true),
+                          child: Text('Request Revision', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: MeetdayColors.accentYellow,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: Colors.black, width: 2),
+                            ),
+                            elevation: 0,
+                          ),
+                          onPressed: isSaving ? null : () => _handleBrandAction('APPROVED'),
+                          child: Text('Approve Report', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _fieldHeader(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        label,
+        style: GoogleFonts.poppins(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
+          color: Colors.black54,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── Image Zoom Preview Dialog ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _showImagePreviewDialog(BuildContext context, String imageUrl) {
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          InteractiveViewer(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: imageUrl.startsWith('http')
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => Container(
+                        color: Colors.black,
+                        padding: const EdgeInsets.all(32),
+                        child: const Text('Failed to load image', style: TextStyle(color: Colors.white)),
+                      ),
+                    )
+                  : Image.file(
+                      File(imageUrl),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => Container(
+                        color: Colors.black,
+                        padding: const EdgeInsets.all(32),
+                        child: const Text('Failed to load image', style: TextStyle(color: Colors.white)),
+                      ),
+                    ),
+            ),
+          ),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: GestureDetector(
+              onTap: () => Navigator.of(ctx).pop(),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
+                child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

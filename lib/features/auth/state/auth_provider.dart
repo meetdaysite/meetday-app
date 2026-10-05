@@ -136,26 +136,36 @@ class AuthController extends Notifier<AuthState> {
 
   @override
   AuthState build() {
+    Future.microtask(() => initialize());
     return const AuthState(status: AuthStatus.unknown);
   }
 
   AuthState get debugState => state;
 
   Future<void> initialize() async {
-    final token = await _storage.read(key: 'firebase_id_token');
-    final userId = await _storage.read(key: 'user_id');
+    String? token = await _storage.read(key: 'firebase_id_token');
+    String? userId = await _storage.read(key: 'user_id');
     final roleName = await _storage.read(key: 'account_role');
-    final role = AccountRole.values.cast<AccountRole?>().firstWhere(
+    var role = AccountRole.values.cast<AccountRole?>().firstWhere(
       (value) => value?.name == roleName,
       orElse: () => null,
     );
 
+    final fbUser = FirebaseAuth.instance.currentUser;
+    if (fbUser != null) {
+      token ??= await fbUser.getIdToken();
+      userId ??= fbUser.uid;
+      role ??= AccountRole.community;
+    }
+
+    final isAuthenticated = (token != null && token.isNotEmpty) || fbUser != null;
+
     state = AuthState(
-      status: token != null && token.isNotEmpty
+      status: isAuthenticated
           ? AuthStatus.authenticated
           : AuthStatus.unauthenticated,
-      uid: userId,
-      role: role,
+      uid: userId ?? fbUser?.uid,
+      role: role ?? AccountRole.community,
     );
   }
 

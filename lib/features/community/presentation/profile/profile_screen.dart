@@ -8,6 +8,8 @@ import '../../../../core/theme/meetday_colors.dart';
 import '../../../auth/state/auth_provider.dart';
 import '../providers/profile_provider.dart';
 import '../providers/dashboard_provider.dart';
+import '../community_dashboard_screen.dart';
+import '../community_detail_screen.dart';
 
 const Map<String, String> _genderLabels = {
   'MALE': 'Male',
@@ -55,6 +57,51 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ref.invalidate(teamMembersProvider);
   }
 
+  void _openBrandPreview() {
+    final communityAsync = ref.read(communityProfileProvider);
+    final hostAsync = ref.read(hostProfileProvider);
+    final community = Map<String, dynamic>.from(communityAsync.asData?.value ?? <String, dynamic>{});
+    final host = Map<String, dynamic>.from(hostAsync.asData?.value ?? <String, dynamic>{});
+
+    final mergedCommunity = <String, dynamic>{
+      ...community,
+      'name': community['name'] ?? host['communityName'] ?? host['displayName'] ?? 'Community',
+      'logoUrl': community['logoUrl'] ?? host['avatarUrl'],
+      'secondaryImageUrl': community['secondaryImageUrl'],
+      'about': community['about'] ?? host['bio'] ?? '',
+      'size': community['size'] ?? '1,000 - 5,000',
+      'avgGuestCount': community['avgGuestCount'] ?? '0',
+      'experiencesPerYear': community['experiencesPerYear'] ?? '0',
+      'operatingCities': host['operatingCities'] ?? community['operatingCities'] ?? [],
+      'socialLinks': host['socialLinks'] ?? community['socialLinks'] ?? {},
+      'categories': community['categories'] ?? [],
+      'pastEvents': community['pastEvents'] ?? [],
+      'brandsWorkedWith': community['brandsWorkedWith'] ?? [],
+    };
+
+    final published = ref.read(publishedProposalsProvider).asData?.value ?? [];
+    final myProps = ref.read(dashboardProposalsProvider).asData?.value ?? [];
+    final combined = [...myProps, ...published];
+    final matching = getCommunityMatchingProposals(mergedCommunity, combined);
+    final allProposals = matching.isNotEmpty ? matching : myProps;
+    final approvedProposals = allProposals.where((p) {
+      final status = (p['status'] ?? '').toString().toUpperCase();
+      return status == 'PUBLISHED' || status == 'APPROVED';
+    }).toList();
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CommunityDetailScreen(
+          community: mergedCommunity,
+          activeProposals: approvedProposals,
+          isBrandPreview: true,
+          onSelectTab: widget.onSelectTab,
+          currentTabIndex: -1,
+        ),
+      ),
+    );
+  }
+
   void _openCommunityDetails() {
     final communityAsync = ref.read(communityProfileProvider);
     final hostAsync = ref.read(hostProfileProvider);
@@ -72,6 +119,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Navigator.of(context).pop();
           _openEditProfile();
         },
+        onBrandPreview: _openBrandPreview,
       ),
     );
   }
@@ -363,53 +411,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         leading: Padding(
           padding: const EdgeInsets.only(left: 16),
           child: Center(
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                }
-                widget.onSelectTab?.call(6);
-              },
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.black, width: 2),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(2, 2),
-                      blurRadius: 0,
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    const Icon(
-                      Icons.notifications_none_rounded,
-                      color: Colors.black,
-                      size: 20,
-                    ),
-                    if (unreadCount > 0)
-                      Positioned(
-                        top: 7,
-                        right: 7,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: MeetdayColors.primaryRed,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 1.5),
-                          ),
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.black, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? Image.network(
+                        avatarUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const Icon(
+                          Icons.person_rounded,
+                          color: Colors.black,
+                          size: 20,
                         ),
+                      )
+                    : const Icon(
+                        Icons.person_rounded,
+                        color: Colors.black,
+                        size: 20,
                       ),
-                  ],
-                ),
               ),
             ),
           ),
@@ -432,34 +461,53 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.black, width: 2),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: avatarUrl != null && avatarUrl.isNotEmpty
-                      ? Image.network(
-                          avatarUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const Icon(
-                            Icons.person_rounded,
-                            color: Colors.black,
-                            size: 20,
+              child: GestureDetector(
+                onTap: () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                  widget.onSelectTab?.call(6);
+                },
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black,
+                        offset: Offset(2, 2),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(
+                        Icons.notifications_none_rounded,
+                        color: Colors.black,
+                        size: 20,
+                      ),
+                      if (unreadCount > 0)
+                        Positioned(
+                          top: 7,
+                          right: 7,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.primaryRed,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1.5),
+                            ),
                           ),
-                        )
-                      : const Icon(
-                          Icons.person_rounded,
-                          color: Colors.black,
-                          size: 20,
                         ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -782,47 +830,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: MeetdayColors.primaryRed,
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(24),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: SafeArea(
-          top: false,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildBottomBarItem(
-                index: 3,
-                icon: Icons.groups_rounded,
-                label: 'Communities',
-              ),
-              _buildBottomBarItem(
-                index: 2,
-                icon: Icons.calendar_today_rounded,
-                label: 'Hubs',
-              ),
-              _buildBottomBarItem(
-                index: 1,
-                icon: Icons.description_rounded,
-                label: 'Proposals',
-              ),
-              _buildBottomBarItem(
-                index: 4,
-                svgAsset: 'assets/icons/chat.svg',
-                label: 'Chats',
-              ),
-              _buildBottomBarItem(
-                index: 5,
-                icon: Icons.headset_mic_rounded,
-                label: 'Support',
-              ),
-            ],
-          ),
-        ),
+      bottomNavigationBar: MeetdayMobileBottomBar(
+        currentIndex: widget.currentTabIndex,
+        onTap: (index) {
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+          widget.onSelectTab?.call(index);
+        },
       ),
     );
   }
@@ -918,41 +933,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
   }
-
-  Widget _buildBottomBarItem({
-    required int index,
-    IconData? icon,
-    String? svgAsset,
-    required String label,
-  }) {
-    return GestureDetector(
-      onTap: () {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-        widget.onSelectTab?.call(index);
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: const BoxDecoration(color: Colors.transparent),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (svgAsset != null)
-              SvgPicture.asset(
-                svgAsset,
-                width: 20,
-                height: 20,
-                colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-              )
-            else if (icon != null)
-              Icon(icon, size: 20, color: Colors.white),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -963,11 +943,13 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
     required this.community,
     required this.hostProfile,
     required this.onEdit,
+    required this.onBrandPreview,
   });
 
   final Map<String, dynamic> community;
   final Map<String, dynamic> hostProfile;
   final VoidCallback onEdit;
+  final VoidCallback onBrandPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -1061,14 +1043,63 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Community Profile',
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black,
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Community Profile',
+                            style: GoogleFonts.bricolageGrotesque(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            onBrandPreview();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.accentYellow,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.black, width: 2),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(2, 2),
+                                  blurRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Brand preview',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                const Icon(Icons.arrow_forward_rounded, size: 12, color: Colors.black),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(

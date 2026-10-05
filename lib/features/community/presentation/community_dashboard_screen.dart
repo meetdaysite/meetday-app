@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/meetday_colors.dart';
 import '../../auth/domain/account_role.dart';
 import '../../auth/state/auth_provider.dart';
+import 'campaigns/campaigns_screen.dart';
 import 'chat/community_chat_hub.dart';
 import 'community_detail_screen.dart';
 import 'profile/profile_screen.dart';
@@ -162,7 +163,7 @@ class _CommunityDashboardScreenState
         final hostData = ref.watch(hostProfileProvider).asData?.value;
         final commData = ref.watch(communityProfileProvider).asData?.value;
         final unreadCount = ref.watch(unreadNotificationsCountProvider).asData?.value ?? 0;
-        final avatarUrl = (hostData?['avatarUrl'] ?? profile['avatarUrl']) as String?;
+        final avatarUrl = (hostData?['avatarUrl'] ?? commData?['logoUrl'] ?? profile['avatarUrl']) as String?;
 
         return Scaffold(
           backgroundColor: const Color(0xFFFFFDFC),
@@ -179,19 +180,26 @@ class _CommunityDashboardScreenState
                 bottom: Radius.circular(24),
               ),
             ),
-            // Notifications icon on the top left corner
+            // Profile button on the top left corner
             leading: Padding(
               padding: const EdgeInsets.only(left: 16),
               child: Center(
                 child: GestureDetector(
-                  onTap: () => _onTabSelected(6),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ProfileScreen(
+                          onSelectTab: _onTabSelected,
+                          currentTabIndex: _currentTabIndex,
+                        ),
+                      ),
+                    );
+                  },
                   child: Container(
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: _currentTabIndex == 6
-                          ? MeetdayColors.accentYellow
-                          : Colors.white,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.black, width: 2),
                       boxShadow: const [
@@ -202,32 +210,23 @@ class _CommunityDashboardScreenState
                         ),
                       ],
                     ),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(
-                          _currentTabIndex == 6
-                              ? Icons.notifications_rounded
-                              : Icons.notifications_none_rounded,
-                          color: Colors.black,
-                          size: 20,
-                        ),
-                        if (unreadCount > 0)
-                          Positioned(
-                            top: 7,
-                            right: 7,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: MeetdayColors.primaryRed,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 1.5),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: avatarUrl != null && avatarUrl.isNotEmpty
+                          ? Image.network(
+                              avatarUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const Icon(
+                                Icons.person_rounded,
+                                color: Colors.black,
+                                size: 20,
                               ),
+                            )
+                          : const Icon(
+                              Icons.person_rounded,
+                              color: Colors.black,
+                              size: 20,
                             ),
-                          ),
-                      ],
                     ),
                   ),
                 ),
@@ -243,26 +242,19 @@ class _CommunityDashboardScreenState
               ),
             ),
             actions: [
-              // Profile icon on top right corner (redirects to profile page)
+              // Notifications icon on top right corner
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: Center(
                   child: GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ProfileScreen(
-                            onSelectTab: _onTabSelected,
-                            currentTabIndex: _currentTabIndex,
-                          ),
-                        ),
-                      );
-                    },
+                    onTap: () => _onTabSelected(6),
                     child: Container(
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _currentTabIndex == 6
+                            ? MeetdayColors.accentYellow
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
@@ -273,23 +265,32 @@ class _CommunityDashboardScreenState
                           ),
                         ],
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: avatarUrl != null && avatarUrl.isNotEmpty
-                            ? Image.network(
-                                avatarUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => const Icon(
-                                  Icons.person_rounded,
-                                  color: Colors.black,
-                                  size: 20,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            _currentTabIndex == 6
+                                ? Icons.notifications_rounded
+                                : Icons.notifications_none_rounded,
+                            color: Colors.black,
+                            size: 20,
+                          ),
+                          if (unreadCount > 0)
+                            Positioned(
+                              top: 7,
+                              right: 7,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: MeetdayColors.primaryRed,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 1.5),
                                 ),
-                              )
-                            : const Icon(
-                                Icons.person_rounded,
-                                color: Colors.black,
-                                size: 20,
                               ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -315,14 +316,19 @@ class _CommunityDashboardScreenState
                       onNavigateToTab: _onTabSelected,
                     ),
                     _ProposalTabBody(role: effectiveRole),
-                    const _HubTabBody(),
-                    const _CommunityTabBody(),
+                    _ExploreTabBody(
+                      role: effectiveRole,
+                      onNavigateToTab: _onTabSelected,
+                    ),
+                    _CommunityTabBody(
+                      onNavigateToTab: _onTabSelected,
+                    ),
                     const CommunityChatHubScreen(),
                     const _SupportTabBody(),
                     const _NotificationsTabBody(),
                   ],
                 ),
-          bottomNavigationBar: _MeetdayMobileBottomBar(
+          bottomNavigationBar: MeetdayMobileBottomBar(
             currentIndex: _currentTabIndex,
             onTap: _onTabSelected,
           ),
@@ -353,6 +359,7 @@ class _DashboardTabBody extends ConsumerWidget {
 
     // Fetch data from backend
     final proposalsAsync = ref.watch(dashboardProposalsProvider);
+    final campaignsAsync = ref.watch(dashboardCampaignsProvider);
     final hubsAsync = ref.watch(dashboardHubsProvider);
     final communitiesAsync = ref.watch(dashboardCommunitiesProvider);
     final dealsAsync = ref.watch(dashboardDealsProvider);
@@ -397,12 +404,31 @@ class _DashboardTabBody extends ConsumerWidget {
       ],
     );
 
+    // Build campaign cards from data
+    final campaignCards = campaignsAsync.when(
+      data: (campaigns) => campaigns
+          .map((c) => _CampaignCardPreview(
+                campaign: c,
+                onTap: () {
+                  showCampaignDetailModal(context, c);
+                },
+              ))
+          .toList(),
+      loading: () => [_LoadingCard()],
+      error: (err, stack) => [
+        _ErrorCard(
+          onRetry: () => ref.refresh(dashboardCampaignsProvider),
+        ),
+      ],
+    );
+
     // Build hub cards from data
     final hubCards = hubsAsync.when(
       data: (hubs) => hubs
           .map((h) => _CommunityHubCardPreview(
                 title: h['title'] ?? 'Hub',
                 memberCount: h['memberCount'] ?? '0',
+                imageUrl: h['logoUrl'] as String?,
                 onTap: () => onNavigateToTab(2),
               ))
           .toList(),
@@ -572,14 +598,14 @@ class _DashboardTabBody extends ConsumerWidget {
 
         _ActionCard(
           title: isBrand ? 'Launch a Campaign' : 'Explore Campaigns',
-          badge: isBrand ? 'LIVE' : 'SOON',
+          badge: 'LIVE',
           body: isBrand
               ? 'Share your offline marketing requirements with active communities and get matched instantly.'
               : 'Browse active marketing and sponsorship campaign briefs posted by brands, review requirements, and contact them to collaborate.',
-          buttonLabel: isBrand ? 'POST A BRIEF ➔' : 'EXPLORE CAMPAIGNS Soon',
-          accent: isBrand ? MeetdayColors.accentYellow : const Color(0xFFE5E7EB),
-          disabled: !isBrand,
-          onTap: isBrand ? () => onNavigateToTab(1) : null,
+          buttonLabel: isBrand ? 'POST A BRIEF ➔' : 'EXPLORE CAMPAIGNS ➔',
+          accent: MeetdayColors.accentYellow,
+          disabled: false,
+          onTap: () => onNavigateToTab(2),
         ),
 
         const SizedBox(height: 20),
@@ -665,13 +691,75 @@ class _DashboardTabBody extends ConsumerWidget {
                 ),
               )
             : SizedBox(
-                height: 210,
+                height: 215,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
                   itemCount: proposalCards.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 12),
                   itemBuilder: (context, index) => proposalCards[index],
+                ),
+              ),
+
+        const SizedBox(height: 22),
+
+        // Section: Brand Campaigns
+        _SectionHeaderRow(
+          title: 'Brand Campaigns',
+          subtitle: 'Active brand briefs seeking community partnerships & sponsorships.',
+          actionLabel: 'View All Campaigns >',
+          onActionTap: () => onNavigateToTab(2),
+        ),
+        const SizedBox(height: 10),
+        campaignCards.isEmpty
+            ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.black, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(2.5, 2.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.rocket_launch_outlined, size: 32, color: Colors.black54),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No active brand campaigns yet',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Brand campaigns and sponsorship briefs will appear here.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: const Color(0xFF667085),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : SizedBox(
+                height: 215,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: campaignCards.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) => campaignCards[index],
                 ),
               ),
 
@@ -686,16 +774,57 @@ class _DashboardTabBody extends ConsumerWidget {
           onActionTap: () => onNavigateToTab(2),
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          height: 210,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: hubCards.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => hubCards[index],
-          ),
-        ),
+        hubCards.isEmpty
+            ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.black, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(2.5, 2.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.apartment_outlined, size: 32, color: Colors.black54),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No active hubs',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Partner venues and physical spaces will appear here.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: const Color(0xFF667085),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : SizedBox(
+                height: 210,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: hubCards.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) => hubCards[index],
+                ),
+              ),
 
         const SizedBox(height: 22),
 
@@ -1253,15 +1382,256 @@ class _ProposalCardPreview extends StatelessWidget {
   }
 }
 
+class _CampaignCardPreview extends StatelessWidget {
+  const _CampaignCardPreview({
+    required this.campaign,
+    this.onTap,
+  });
+
+  final Map<String, dynamic> campaign;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (campaign['name'] ?? 'Brand Campaign').toString();
+    final brandName = (campaign['brandName'] ?? 'Brand').toString();
+    final brandLogo = campaign['brandLogo'] as String?;
+    final offerType = (campaign['offerType'] ?? 'CASH').toString().toUpperCase();
+    final hasCash = offerType == 'CASH' || offerType == 'BOTH';
+    final hasBarter = offerType == 'BARTER' || offerType == 'BOTH';
+    final budgetAmount = campaign['budgetAmount'];
+    final budgetCurrency = (campaign['budgetCurrency'] ?? '₹').toString();
+
+    String budgetText = '';
+    if (budgetAmount != null && budgetAmount != 0) {
+      budgetText = '$budgetCurrency$budgetAmount';
+    } else if (hasBarter) {
+      budgetText = 'Barter';
+    } else {
+      budgetText = 'Brand Brief';
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 148,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2.5),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black,
+              offset: Offset(3, 3),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15.5),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1:1 Image / Monogram
+              AspectRatio(
+                aspectRatio: 1.0,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFF1F2),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.black, width: 2),
+                    ),
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (brandLogo != null && brandLogo.isNotEmpty)
+                        Image.network(
+                          brandLogo,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => _fallbackMonogram(brandName),
+                        )
+                      else
+                        _fallbackMonogram(brandName),
+
+                      // Status badge on TOP LEFT
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: MeetdayColors.primaryRed,
+                            border: Border.all(color: Colors.black, width: 1.1),
+                            borderRadius: BorderRadius.circular(999),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black,
+                                offset: Offset(1, 1),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            'CAMPAIGN',
+                            style: GoogleFonts.poppins(
+                              fontSize: 7.5,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // CASH / BARTER badge on TOP RIGHT
+                      if (hasCash || hasBarter)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (hasCash)
+                                Container(
+                                  margin: EdgeInsets.only(bottom: hasBarter ? 3 : 0),
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDCFCE7),
+                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    'CASH',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              if (hasBarter)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: MeetdayColors.accentYellow,
+                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    'BARTER',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Below 1:1 image: Title + Brand & Budget (single metadata line identical to proposals)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.business_outlined,
+                          size: 11,
+                          color: Color(0xFF667085),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '$brandName • $budgetText',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF667085),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackMonogram(String name) {
+    final initials = name.trim().isNotEmpty ? name.trim().substring(0, 1).toUpperCase() : 'B';
+    return Center(
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: MeetdayColors.accentYellow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.black, width: 2),
+          boxShadow: const [
+            BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            initials,
+            style: GoogleFonts.bricolageGrotesque(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Colors.black,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CommunityHubCardPreview extends StatelessWidget {
   const _CommunityHubCardPreview({
     required this.title,
     required this.memberCount,
+    this.imageUrl,
     this.onTap,
   });
 
   final String title;
   final String memberCount;
+  final String? imageUrl;
   final VoidCallback? onTap;
 
   @override
@@ -1298,7 +1668,13 @@ class _CommunityHubCardPreview extends StatelessWidget {
                       bottom: BorderSide(color: Colors.black, width: 2),
                     ),
                   ),
-                  child: _fallbackThumbnail(),
+                  child: (imageUrl != null && imageUrl!.isNotEmpty)
+                      ? Image.network(
+                          imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => _fallbackThumbnail(),
+                        )
+                      : _fallbackThumbnail(),
                 ),
               ),
 
@@ -2053,45 +2429,348 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
   }
 }
 
-class _HubTabBody extends StatelessWidget {
-  const _HubTabBody();
+// ─── Explore Tab Body (3 Option Cards: Communities, Hubs, Campaigns) ─────────
+
+class _ExploreTabBody extends StatefulWidget {
+  const _ExploreTabBody({
+    required this.role,
+    required this.onNavigateToTab,
+  });
+
+  final AccountRole role;
+  final ValueChanged<int> onNavigateToTab;
+
+  @override
+  State<_ExploreTabBody> createState() => _ExploreTabBodyState();
+}
+
+class _ExploreTabBodyState extends State<_ExploreTabBody> {
+  // 'menu', 'communities', 'hubs', 'campaigns'
+  String _subView = 'menu';
 
   @override
   Widget build(BuildContext context) {
+    if (_subView == 'communities') {
+      return _CommunityTabBody(
+        onBack: () => setState(() => _subView = 'menu'),
+        onNavigateToTab: widget.onNavigateToTab,
+      );
+    }
+    if (_subView == 'hubs') {
+      return _HubTabBody(
+        onBack: () => setState(() => _subView = 'menu'),
+      );
+    }
+    if (_subView == 'campaigns') {
+      return CampaignsScreen(
+        onBack: () => setState(() => _subView = 'menu'),
+      );
+    }
+
+    // Default 'menu' with 3 Neo-Brutalist Option Cards
     return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
+        // Explore Header
         Text(
-          'Community Hubs',
+          'Explore',
           style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
             color: const Color(0xFF111111),
           ),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: 2),
         Text(
-          'Discover offline partner venues and physical spaces for events.',
+          'Discover creator communities, event hubs, and brand campaigns.',
           style: GoogleFonts.poppins(
-            fontSize: 11,
+            fontSize: 11.5,
             fontWeight: FontWeight.w500,
             color: const Color(0xFF667085),
           ),
         ),
-        const SizedBox(height: 12),
-        _NeoListCard(
-          title: 'Design & Culture Hub',
-          subtitle: '3 spaces · 12 active members',
-          status: 'Open',
-          statusColor: const Color(0xFFDBEAFE),
+        const SizedBox(height: 18),
+
+        // Card 1: Communities
+        _buildExploreCard(
+          icon: Icons.groups_rounded,
+          iconBg: MeetdayColors.accentYellow,
+          iconColor: Colors.black,
+          title: 'Communities',
+          description: 'Browse, partner, and co-host with verified creator & host communities.',
+          onTap: () => setState(() => _subView = 'communities'),
         ),
-        _NeoListCard(
-          title: 'Startup Circle Hub',
-          subtitle: '2 spaces · 8 active members',
-          status: 'Open',
-          statusColor: const Color(0xFFDCFCE7),
+        const SizedBox(height: 14),
+
+        // Card 2: Hubs (black background)
+        _buildExploreCard(
+          icon: Icons.apartment_rounded,
+          iconBg: Colors.black,
+          iconColor: Colors.white,
+          title: 'Hubs',
+          description: 'Discover partner venues, studios, and physical spaces for events.',
+          onTap: () => setState(() => _subView = 'hubs'),
+        ),
+        const SizedBox(height: 14),
+
+        // Card 3: Campaigns (red background)
+        _buildExploreCard(
+          icon: Icons.rocket_launch_rounded,
+          iconBg: MeetdayColors.primaryRed,
+          iconColor: Colors.white,
+          title: 'Campaigns',
+          description: 'Browse active brand campaigns, apply with your community, and secure deals.',
+          onTap: () => setState(() => _subView = 'campaigns'),
         ),
       ],
+    );
+  }
+
+  Widget _buildExploreCard({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String title,
+    required String description,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.black, width: 2.5),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black,
+              offset: Offset(3, 3),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.black, width: 2),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black,
+                    offset: Offset(2, 2),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Icon(icon, color: iconColor, size: 24),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF111111),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: const Color(0xFF667085),
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.black, width: 1.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black,
+                    offset: Offset(1.5, 1.5),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 13,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HubTabBody extends ConsumerWidget {
+  const _HubTabBody({this.onBack});
+
+  final VoidCallback? onBack;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hubsAsync = ref.watch(dashboardHubsProvider);
+
+    return RefreshIndicator(
+      color: MeetdayColors.primaryRed,
+      onRefresh: () async => ref.refresh(dashboardHubsProvider),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+        children: [
+          if (onBack != null) ...[
+            GestureDetector(
+              onTap: onBack,
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 13,
+                    color: Color(0x99000000),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Back to Explore',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0x99000000),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          Text(
+            'Community Hubs',
+            style: GoogleFonts.bricolageGrotesque(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF111111),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Discover offline partner venues and physical spaces for events.',
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF667085),
+            ),
+          ),
+          const SizedBox(height: 16),
+          hubsAsync.when(
+            data: (hubs) {
+              if (hubs.isEmpty) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.black, width: 2.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black,
+                        offset: Offset(3, 3),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.apartment_outlined, size: 40, color: Colors.black54),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No active hubs',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF111111),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'There are currently no active partner venues or community spaces listed.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF667085),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Column(
+                children: hubs.map((h) {
+                  final title = (h['title'] ?? 'Hub').toString();
+                  final memberCount = (h['memberCount'] ?? '0').toString();
+                  final locations = (h['locations'] as List?)?.join(', ') ?? '';
+                  final subtitle = locations.isNotEmpty
+                      ? '$memberCount capacity · $locations'
+                      : '$memberCount capacity';
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _NeoListCard(
+                      title: title,
+                      subtitle: subtitle,
+                      status: 'Active',
+                      statusColor: const Color(0xFFDCFCE7),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
+              ),
+            ),
+            error: (err, stack) => _ErrorCard(
+              onRetry: () => ref.refresh(dashboardHubsProvider),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2177,7 +2856,10 @@ class _NeoListCard extends StatelessWidget {
 }
 
 class _CommunityTabBody extends ConsumerWidget {
-  const _CommunityTabBody();
+  const _CommunityTabBody({this.onBack, this.onNavigateToTab});
+
+  final VoidCallback? onBack;
+  final ValueChanged<int>? onNavigateToTab;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2219,6 +2901,32 @@ class _CommunityTabBody extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
           children: [
+            if (onBack != null) ...[
+              GestureDetector(
+                onTap: onBack,
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 13,
+                      color: Color(0x99000000),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Back to Explore',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0x99000000),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             Text(
               'Communities',
               style: GoogleFonts.bricolageGrotesque(
@@ -2266,6 +2974,8 @@ class _CommunityTabBody extends ConsumerWidget {
                         builder: (_) => CommunityDetailScreen(
                           community: c,
                           activeProposals: matchingProposals,
+                          onSelectTab: onNavigateToTab,
+                          currentTabIndex: 2,
                         ),
                       ),
                     );
@@ -2616,8 +3326,9 @@ class _NotificationsTabBody extends ConsumerWidget {
 }
 
 
-class _MeetdayMobileBottomBar extends StatelessWidget {
-  const _MeetdayMobileBottomBar({
+class MeetdayMobileBottomBar extends StatelessWidget {
+  const MeetdayMobileBottomBar({
+    super.key,
     required this.currentIndex,
     required this.onTap,
   });
@@ -2627,10 +3338,9 @@ class _MeetdayMobileBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 5 primary dock destinations: Communities (3), Hubs (2), Proposals (1 - Center), Chats (4), Support (5)
+    // 4 primary dock destinations: Explore (2), Proposals (1), Chats (4), Support (5)
     final items = [
-      (3, Icons.groups_rounded, null, null, 'Communities'),
-      (2, Icons.calendar_today_rounded, null, null, 'Hubs'),
+      (2, Icons.explore_rounded, null, null, 'Explore'),
       (1, Icons.description_rounded, null, null, 'Proposals'),
       (4, null, 'assets/icons/chat.svg', 'assets/icons/chat-filled.svg', 'Chats'),
       (5, Icons.headset_mic_rounded, null, null, 'Support'),
@@ -2654,7 +3364,7 @@ class _MeetdayMobileBottomBar extends StatelessWidget {
             final svgOutlined = item.$3;
             final svgFilled = item.$4;
             final label = item.$5;
-            final isSelected = currentIndex == index;
+            final isSelected = currentIndex == index || (index == 2 && currentIndex == 3);
             final itemColor = isSelected ? Colors.black : Colors.white;
 
             return GestureDetector(

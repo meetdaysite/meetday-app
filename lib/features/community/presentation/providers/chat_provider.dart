@@ -358,15 +358,16 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   // 2. Aggregate Active Threads
   final activeMap = <String, List<UnifiedActiveThread>>{
     'sponsorships': [],
+    'campaigns': [],
     'spaces': [],
     'communities': [],
     'brands': [],
   };
 
-  // Sponsorships Accepted
+  // Sponsorships & Campaigns Accepted
   for (final t in sponsorshipAccepted) {
     final isCampaign = t['campaignId'] != null;
-    const catKey = 'sponsorships';
+    final catKey = isCampaign ? 'campaigns' : 'sponsorships';
     final deal = t['deal'] is Map ? (t['deal'] as Map) : null;
     final dealStatus = (t['dealStatus'] ?? deal?['status'] ?? '').toString().toUpperCase();
     final paymentStatus = (t['paymentStatus'] ?? deal?['paymentStatus'] ?? '').toString().toUpperCase();
@@ -537,7 +538,7 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
       requests.add(
         UnifiedRequestItem(
           id: (t['id'] ?? '').toString(),
-          category: 'sponsorships',
+          category: 'campaigns',
           kind: 'CAMPAIGN',
           direction: 'OUTGOING',
           status: 'REQUESTED',
@@ -662,11 +663,13 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
 
   // Calculate unread & pending counts per category
   final spUnread = activeMap['sponsorships']!.fold<int>(0, (s, t) => s + t.unreadCount);
+  final campUnread = activeMap['campaigns']!.fold<int>(0, (s, t) => s + t.unreadCount);
   final spcUnread = activeMap['spaces']!.fold<int>(0, (s, t) => s + t.unreadCount);
   final comUnread = activeMap['communities']!.fold<int>(0, (s, t) => s + t.unreadCount);
   final brUnread = activeMap['brands']!.fold<int>(0, (s, t) => s + t.unreadCount);
 
   final spPending = requests.where((r) => r.category == 'sponsorships' && r.direction == 'INCOMING').length;
+  final campPending = requests.where((r) => r.category == 'campaigns' && r.direction == 'INCOMING').length;
   final spcPending = requests.where((r) => r.category == 'spaces' && r.direction == 'INCOMING').length;
   final comPending = requests.where((r) => r.category == 'communities' && r.direction == 'INCOMING').length;
   final brPending = requests.where((r) => r.category == 'brands' && r.direction == 'INCOMING').length;
@@ -679,6 +682,14 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
       badgeCount: spUnread,
       activeCount: activeMap['sponsorships']!.length,
       pendingRequestsCount: spPending,
+    ),
+    CategoryDefinition(
+      key: 'campaigns',
+      label: 'Campaigns',
+      description: 'Collaborate with brands on active campaign briefs.',
+      badgeCount: campUnread,
+      activeCount: activeMap['campaigns']!.length,
+      pendingRequestsCount: campPending,
     ),
     CategoryDefinition(
       key: 'spaces',

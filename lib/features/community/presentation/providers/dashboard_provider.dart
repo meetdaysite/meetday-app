@@ -227,46 +227,61 @@ List<Map<String, dynamic>> getCommunityMatchingProposals(
 }
 
 // Dashboard Hubs/Spaces (from /spaces/community/browse - authenticated endpoint)
-final dashboardHubsProvider = FutureProvider.autoDispose((ref) async {
+final dashboardHubsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.watch(apiClientProvider);
   try {
     final response = await api.dio.get<dynamic>('/spaces/community/browse');
-    print('=== SPACES/COMMUNITY/BROWSE RESPONSE ===');
-    print('Status: ${response.statusCode}');
-    print('Response: ${response.data}');
 
-    if (response.statusCode == 200) {
-      // Response is { success: true, data: { spaces: [...], total: number } }
+    if (response.statusCode == 200 && response.data != null) {
       final responseData = response.data;
       List<dynamic> spaces = [];
 
-      if (responseData is Map && responseData.containsKey('data')) {
-        final innerData = responseData['data'];
-        print('Inner data type: ${innerData.runtimeType}');
-        if (innerData is Map && innerData.containsKey('spaces')) {
-          spaces = innerData['spaces'] ?? [];
+      if (responseData is List) {
+        spaces = responseData;
+      } else if (responseData is Map) {
+        if (responseData.containsKey('data')) {
+          final innerData = responseData['data'];
+          if (innerData is List) {
+            spaces = innerData;
+          } else if (innerData is Map && innerData.containsKey('spaces')) {
+            final sp = innerData['spaces'];
+            if (sp is List) spaces = sp;
+          }
+        } else if (responseData.containsKey('spaces')) {
+          final sp = responseData['spaces'];
+          if (sp is List) spaces = sp;
         }
       }
 
-      print('Spaces/Hubs count: ${spaces.length}');
-
-      if (spaces.isEmpty) return [];
+      if (spaces.isEmpty) return <Map<String, dynamic>>[];
 
       final result = spaces
           .whereType<Map>()
-          .map((item) => {
-                'id': item['id'] ?? '',
-                'title': item['name'] ?? item['spaceName'] ?? 'Untitled Space',
-                'memberCount': (item['capacity'] ?? item['memberCount'] ?? 0).toString(),
-              })
+          .map((item) {
+            final m = Map<String, dynamic>.from(item);
+            final locations = (m['activeLocations'] as List?)?.map((e) => e.toString()).toList()
+                ?? (m['operatingCities'] as List?)?.map((e) => e.toString()).toList()
+                ?? <String>[];
+            final capacity = m['venueCapacity'] ?? m['capacity'] ?? m['communitySize'] ?? m['memberCount'] ?? '0';
+            return <String, dynamic>{
+              'id': (m['id'] ?? '').toString(),
+              'title': (m['name'] ?? m['businessName'] ?? m['spaceName'] ?? 'Untitled Hub').toString(),
+              'memberCount': capacity.toString(),
+              'venueCapacity': capacity.toString(),
+              'numberOfVenues': (m['numberOfVenues'] ?? '1').toString(),
+              'logoUrl': m['logoUrl'] ?? m['posterUrl'] as String?,
+              'locations': locations,
+              'about': (m['about'] ?? '').toString(),
+              'raw': m,
+            };
+          })
           .toList();
-      print('Final hubs: $result');
       return result;
     }
-    return [];
+    return <Map<String, dynamic>>[];
   } catch (e) {
-    print('Error fetching hubs: $e');
-    return [];
+    debugPrint('Error fetching hubs from /spaces/community/browse: $e');
+    return <Map<String, dynamic>>[];
   }
 });
 
@@ -377,6 +392,54 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
     return [];
   } catch (e) {
     print('Error fetching communities: $e');
+    return [];
+  }
+});
+
+// Published Brand Campaigns (from /campaigns/published)
+final dashboardCampaignsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    final response = await api.dio.get<dynamic>('/campaigns/published');
+    if (response.statusCode == 200 && response.data != null) {
+      final responseData = response.data;
+      List<dynamic> list = [];
+      if (responseData is List) {
+        list = responseData;
+      } else if (responseData is Map && responseData.containsKey('data')) {
+        final inner = responseData['data'];
+        if (inner is List) {
+          list = inner;
+        } else if (inner is Map && inner.containsKey('campaigns')) {
+          list = inner['campaigns'] ?? [];
+        }
+      }
+      return list.whereType<Map>().map((item) {
+        final m = Map<String, dynamic>.from(item);
+        final bp = m['brandProfile'] is Map ? Map<String, dynamic>.from(m['brandProfile'] as Map) : null;
+        return <String, dynamic>{
+          'id': (m['id'] ?? '').toString(),
+          'name': (m['name'] ?? 'Brand Campaign').toString(),
+          'goal': (m['goal'] ?? '').toString(),
+          'locations': (m['locations'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+          'audience': (m['audience'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+          'startDate': (m['startDate'] ?? '').toString(),
+          'endDate': (m['endDate'] ?? '').toString(),
+          'offerType': (m['offerType'] ?? 'CASH').toString().toUpperCase(),
+          'budgetAmount': m['budgetAmount'] ?? 0,
+          'budgetCurrency': (m['budgetCurrency'] ?? '₹').toString(),
+          'barterElements': m['barterElements'] as String?,
+          'description': m['description'] as String?,
+          'status': (m['status'] ?? 'PUBLISHED').toString(),
+          'brandName': (bp?['brandName'] ?? 'Brand').toString(),
+          'brandLogo': bp?['logoUrl'] as String?,
+          'brandProfile': bp,
+        };
+      }).toList();
+    }
+    return [];
+  } catch (e) {
+    debugPrint('Error fetching /campaigns/published: $e');
     return [];
   }
 });
