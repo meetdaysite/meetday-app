@@ -325,9 +325,8 @@ class _CommunityDashboardScreenState
                     CampaignsScreen(
                       onBack: () => _onTabSelected(0),
                     ),
-                    _ExploreTabBody(
-                      role: effectiveRole,
-                      onNavigateToTab: _onTabSelected,
+                    _HubTabBody(
+                      onBack: () => _onTabSelected(0),
                     ),
                     _CommunityTabBody(
                       onNavigateToTab: _onTabSelected,
