@@ -17,12 +17,24 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  bool _isSignUp = false;
+  bool _agreedToTerms = false;
+  bool _isSubmitting = false;
+
   Future<void> _signInWithGoogle() async {
+    if (_isSignUp && !_agreedToTerms) {
+      _showError('Agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     setState(() => _isSubmitting = true);
     try {
-      await ref
-          .read(authControllerProvider.notifier)
-          .signInWithGoogle(role: widget.role);
+      final controller = ref.read(authControllerProvider.notifier);
+      if (widget.role == AccountRole.brand && _isSignUp) {
+        final started = await controller.beginBrandSignupWithGoogle();
+        if (started && mounted) context.go('/brand-onboarding');
+      } else {
+        await controller.signInWithGoogle(role: widget.role);
+      }
     } on AuthException catch (error) {
       if (mounted) _showError(error.message);
     } catch (error) {
@@ -38,8 +50,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
-
-  bool _isSubmitting = false;
 
   void _showError(String message) {
     ScaffoldMessenger.of(context)
@@ -75,7 +85,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           const SizedBox(height: 18),
           Text(
-            'Log In',
+            _isSignUp ? 'Create Account' : 'Log In',
             style: GoogleFonts.bricolageGrotesque(
               fontSize: 32,
               fontWeight: FontWeight.w800,
@@ -84,7 +94,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Welcome back! Sign in to your ${widget.role.label.toLowerCase()} workspace.',
+            _isSignUp
+                ? 'First time here? Sign up with Google to start onboarding!'
+                : 'Welcome back! Sign in to your ${widget.role.label.toLowerCase()} workspace.',
             style: GoogleFonts.poppins(
               color: const Color(0xFF667085),
               fontSize: 14.5,
@@ -94,7 +106,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           const SizedBox(height: 28),
           ElevatedButton.icon(
-            onPressed: _isSubmitting ? null : _signInWithGoogle,
+            onPressed: _isSubmitting || (_isSignUp && !_agreedToTerms)
+                ? null
+                : _signInWithGoogle,
             icon: const _GoogleMark(),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFC940),
@@ -113,7 +127,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Text(
-                    'Continue with Google',
+                  !_agreedToTerms && _isSignUp
+                    ? 'Agree to terms to continue'
+                    : 'Continue with Google',
                     style: GoogleFonts.poppins(
                       fontSize: 15.5,
                       fontWeight: FontWeight.w700,
@@ -121,15 +137,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
           ),
-          const SizedBox(height: 18),
+          if (_isSignUp) ...[
+            const SizedBox(height: 16),
+            CheckboxListTile(
+              value: _agreedToTerms,
+              onChanged: _isSubmitting
+                  ? null
+                  : (value) => setState(() => _agreedToTerms = value ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text.rich(
+                TextSpan(
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: const Color(0xFF667085),
+                  ),
+                  children: const [
+                    TextSpan(text: 'I agree to the Terms of Service and Privacy Policy.'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
           Center(
             child: TextButton(
-              onPressed: () => _showError('Sign up flow is coming next.'),
+              onPressed: _isSubmitting
+                  ? null
+                  : () => setState(() {
+                        _isSignUp = !_isSignUp;
+                        _agreedToTerms = false;
+                      }),
               child: Text(
-                'Create a new account',
+                _isSignUp
+                    ? 'Already have an account? Log in'
+                    : 'New to Meetday? Create an account',
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                   color: Colors.black87,
                 ),
               ),

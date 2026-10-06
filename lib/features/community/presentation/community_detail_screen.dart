@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/meetday_colors.dart';
+import '../../auth/domain/account_role.dart';
+import '../../auth/state/auth_provider.dart';
 import 'community_dashboard_screen.dart';
+import 'providers/chat_provider.dart';
 import 'profile/profile_screen.dart';
 import 'proposal_components.dart';
 import 'providers/dashboard_provider.dart';
@@ -34,6 +38,8 @@ class CommunityDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
+  bool _isSendingCollaboration = false;
+
   void _openImageDialog(String imageUrl, String? title, String? description) {
     showDialog<void>(
       context: context,
@@ -151,6 +157,46 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     );
   }
 
+  Future<void> _sendCollaborationRequest(String targetCommunityId) async {
+    if (_isSendingCollaboration) return;
+    setState(() => _isSendingCollaboration = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      final response = await api.dio.post<dynamic>(
+        '/community-collaboration/interest/$targetCommunityId',
+      );
+      final responseData = response.data is Map
+          ? (response.data['data'] is Map ? response.data['data'] : response.data)
+          : null;
+      final alreadyInterested = responseData is Map && responseData['alreadyInterested'] == true;
+
+      ref.invalidate(chatHubProvider);
+      ref.invalidate(communityCollaborationCommunitiesProvider);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(alreadyInterested
+              ? 'A collaboration request or channel already exists. Check your chat hub.'
+              : 'Collaboration request sent. The community can accept it in their chat hub.'),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+      Navigator.of(context).pop();
+      widget.onSelectTab?.call(5);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not send collaboration request: $error'),
+          backgroundColor: MeetdayColors.primaryRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSendingCollaboration = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.community;
@@ -161,6 +207,8 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     final size = (c['size'] ?? c['memberCount'] ?? '—').toString();
     final avgGuestCount = (c['avgGuestCount'] ?? '').toString();
     final experiencesPerYear = (c['experiencesPerYear'] ?? '').toString();
+    final canCollaborate = !widget.isBrandPreview &&
+      ref.watch(authControllerProvider).role == AccountRole.community;
 
     final categories = (c['categories'] as List?)?.whereType<Map>().toList() ?? [];
     final operatingCities = (c['operatingCities'] as List?)?.map((e) => e.toString()).toList() ?? [];
@@ -503,6 +551,36 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                         fontWeight: FontWeight.w500,
                         height: 1.45,
                         color: const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                ],
+
+                if (canCollaborate) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSendingCollaboration
+                          ? null
+                          : () => _sendCollaborationRequest((c['id'] ?? '').toString()),
+                      icon: _isSendingCollaboration
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.handshake_rounded, size: 18),
+                      label: Text(_isSendingCollaboration ? 'Sending...' : 'COLLABORATE'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MeetdayColors.primaryRed,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: const BorderSide(color: Colors.black, width: 2),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 0,
                       ),
                     ),
                   ),

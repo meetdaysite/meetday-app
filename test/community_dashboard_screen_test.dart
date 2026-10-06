@@ -4,18 +4,36 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meetday_app/features/auth/state/auth_provider.dart';
 import 'package:meetday_app/features/community/presentation/community_dashboard_screen.dart';
+import 'package:meetday_app/features/community/presentation/messages/messages_screen.dart';
 import 'package:meetday_app/features/community/presentation/proposal_components.dart';
 import 'package:meetday_app/features/community/presentation/widgets/google_venue_autocomplete_field.dart';
 
 import 'package:meetday_app/features/community/presentation/providers/dashboard_provider.dart';
 
 void main() {
+  testWidgets('message conversation rows fit a phone-width viewport', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: MessagesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('community dashboard shows profile, notifications, and updated dock navigation', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           dashboardProposalsProvider.overrideWith((ref) => Future.value([])),
           dashboardHubsProvider.overrideWith((ref) => Future.value([])),
+          communityCollaborationCommunitiesProvider.overrideWith((ref) => Future.value([])),
           dashboardCommunitiesProvider.overrideWith((ref) => Future.value([])),
           dashboardDealsProvider.overrideWith((ref) => Future.value([])),
           publishedProposalsProvider.overrideWith((ref) => Future.value([])),

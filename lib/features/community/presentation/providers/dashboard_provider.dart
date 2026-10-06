@@ -306,6 +306,25 @@ final dashboardHubsProvider = FutureProvider.autoDispose<List<Map<String, dynami
   }
 });
 
+final communityCollaborationCommunitiesProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    final response = await api.dio.get<dynamic>('/community-collaboration/communities');
+    dynamic payload = response.data;
+    if (payload is Map && payload['data'] != null) payload = payload['data'];
+    final rawCommunities = payload is Map ? payload['communities'] : payload;
+    if (rawCommunities is! List) return <Map<String, dynamic>>[];
+    return rawCommunities
+        .whereType<Map>()
+        .map((community) => Map<String, dynamic>.from(community))
+        .toList();
+  } catch (e) {
+    debugPrint('Error fetching collaboration communities: $e');
+    return <Map<String, dynamic>>[];
+  }
+});
+
 // Dashboard Communities (from /sponsorships/communities - authenticated endpoint with real data)
 final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.watch(apiClientProvider);

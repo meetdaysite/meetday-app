@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
 
-import '../../../config/environment.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/account_role.dart';
 
@@ -31,7 +32,7 @@ class FlutterSecureStorageAdapter implements AppSecureStorage {
   Future<void> delete({required String key}) => _storage.delete(key: key);
 }
 
-enum AuthStatus { unknown, authenticated, unauthenticated }
+enum AuthStatus { unknown, authenticated, unauthenticated, onboarding }
 
 class AuthState {
   const AuthState({required this.status, this.uid, this.role});
@@ -61,6 +62,7 @@ class AuthController extends Notifier<AuthState> {
   final AppSecureStorage _storage;
   final ApiClient? _api;
   final GoogleSignIn _googleSignIn;
+  StreamSubscription<User?>? _idTokenSubscription;
 
   static String formatLoginError(
     Object error, {
@@ -136,6 +138,12 @@ class AuthController extends Notifier<AuthState> {
 
   @override
   AuthState build() {
+    _listenForIdTokenChanges();
+    ref.onDispose(() {
+      final subscription = _idTokenSubscription;
+      _idTokenSubscription = null;
+      if (subscription != null) unawaited(subscription.cancel());
+    });
     Future.microtask(() => initialize());
     return const AuthState(status: AuthStatus.unknown);
   }
@@ -146,16 +154,45 @@ class AuthController extends Notifier<AuthState> {
     String? token = await _storage.read(key: 'firebase_id_token');
     String? userId = await _storage.read(key: 'user_id');
     final roleName = await _storage.read(key: 'account_role');
+    final pendingBrandSignup = await _storage.read(key: 'brand_signup_pending');
     var role = AccountRole.values.cast<AccountRole?>().firstWhere(
       (value) => value?.name == roleName,
       orElse: () => null,
     );
+    if (!ref.mounted) return;
 
-    final fbUser = FirebaseAuth.instance.currentUser;
+    User? fbUser;
+    try {
+      fbUser = await FirebaseAuth.instance.authStateChanges().first;
+    } catch (_) {
+      // Firebase may not be configured in tests or platform bootstrap.
+    }
+    if (!ref.mounted) return;
+
     if (fbUser != null) {
-      token ??= await fbUser.getIdToken();
+      try {
+        token = await fbUser.getIdToken(true) ?? token;
+      } catch (_) {
+        token ??= await fbUser.getIdToken();
+      }
       userId ??= fbUser.uid;
       role ??= AccountRole.community;
+    }
+    if (!ref.mounted) return;
+
+    final api = _api ?? ApiClient.instance;
+    api.setIdToken(token);
+    if (token != null && token.isNotEmpty) {
+      await _storage.write(key: 'firebase_id_token', value: token);
+    }
+
+    if (pendingBrandSignup == 'true' && fbUser != null) {
+      state = AuthState(
+        status: AuthStatus.onboarding,
+        uid: fbUser.uid,
+        role: AccountRole.brand,
+      );
+      return;
     }
 
     final isAuthenticated = (token != null && token.isNotEmpty) || fbUser != null;
@@ -167,6 +204,30 @@ class AuthController extends Notifier<AuthState> {
       uid: userId ?? fbUser?.uid,
       role: role ?? AccountRole.community,
     );
+  }
+
+  void _listenForIdTokenChanges() {
+    if (_idTokenSubscription != null) return;
+    try {
+      _idTokenSubscription = FirebaseAuth.instance.idTokenChanges().listen(
+        (user) {
+          if (user != null) unawaited(_syncFirebaseToken(user));
+        },
+      );
+    } catch (_) {
+      // Firebase may not be configured in tests or platform bootstrap.
+    }
+  }
+
+  Future<void> _syncFirebaseToken(User user) async {
+    try {
+      final token = await user.getIdToken();
+      if (token == null || token.isEmpty) return;
+      (_api ?? ApiClient.instance).setIdToken(token);
+      await _storage.write(key: 'firebase_id_token', value: token);
+    } catch (_) {
+      // A later Firebase token event or auth restoration will retry this sync.
+    }
   }
 
   Future<void> signIn({required String uid, AccountRole? role}) async {
@@ -196,7 +257,7 @@ class AuthController extends Notifier<AuthState> {
         throw const AuthException('Could not verify your session.');
       }
 
-      final api = _api ?? ApiClient(config: AppConfig.fromEnvironment());
+      final api = _api ?? ApiClient.instance;
       api.setIdToken(token);
       Map<String, dynamic> profile;
       try {
@@ -235,6 +296,124 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  Future<bool> beginBrandSignupWithGoogle() async {
+    try {
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return false;
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final result = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = result.user;
+      if (user == null) throw const AuthException('Google account was not found.');
+
+      final token = await user.getIdToken(true);
+      if (token == null || token.isEmpty) {
+        throw const AuthException('Could not verify your Google account.');
+      }
+
+      final api = _api ?? ApiClient.instance;
+      api.setIdToken(token);
+      try {
+        final profile = await api.getMe();
+        if (_hasRoleAccess(profile, AccountRole.brand)) {
+          await FirebaseAuth.instance.signOut();
+          await _googleSignIn.signOut();
+          api.setIdToken(null);
+          throw const AuthException('A brand account already exists. Log in instead.');
+        }
+      } on DioException catch (error) {
+        if (error.response?.statusCode != 404) rethrow;
+      }
+
+      await _storage.write(key: 'firebase_id_token', value: token);
+      await _storage.write(key: 'user_id', value: user.uid);
+      await _storage.write(key: 'account_role', value: AccountRole.brand.name);
+      await _storage.write(key: 'brand_signup_pending', value: 'true');
+      state = AuthState(
+        status: AuthStatus.onboarding,
+        uid: user.uid,
+        role: AccountRole.brand,
+      );
+      return true;
+    } on FirebaseAuthException catch (error) {
+      throw AuthException(_firebaseMessage(error.code));
+    }
+  }
+
+  Future<void> completeBrandSignup({
+    required String brandName,
+    List<String> categoryIds = const [],
+    String? website,
+    String? instagram,
+    String? linkedin,
+    String? companyType,
+    String? industry,
+    String? aboutCompany,
+    String? workEmail,
+    String? contactPhone,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw const AuthException('Sign in with Google to continue.');
+
+    final token = await user.getIdToken(true);
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Could not verify your Google account.');
+    }
+
+    final api = _api ?? ApiClient.instance;
+    api.setIdToken(token);
+    try {
+      await api.dio.post<dynamic>(
+        '/auth/register',
+        data: {
+          'firstName': 'Brand',
+          'lastName': brandName.trim(),
+          'accountType': 'BRAND',
+          'brandName': brandName.trim(),
+          'categoryIds': categoryIds,
+          'socialLinks': {
+            if (website?.trim().isNotEmpty == true) 'website': website!.trim(),
+            if (instagram?.trim().isNotEmpty == true) 'instagram': instagram!.trim(),
+            if (linkedin?.trim().isNotEmpty == true) 'linkedin': linkedin!.trim(),
+          },
+        },
+      );
+    } on DioException catch (error) {
+      if (error.response?.statusCode != 409) rethrow;
+      final profile = await api.getMe();
+      if (!_hasRoleAccess(profile, AccountRole.brand)) rethrow;
+    }
+
+    final profileUpdates = <String, dynamic>{
+      if (companyType?.isNotEmpty == true) 'companyType': companyType,
+      if (industry?.trim().isNotEmpty == true) 'industry': industry!.trim(),
+      if (aboutCompany?.trim().isNotEmpty == true)
+        'aboutCompany': aboutCompany!.trim(),
+      if (workEmail?.trim().isNotEmpty == true) 'workEmail': workEmail!.trim(),
+      if (contactPhone?.trim().isNotEmpty == true)
+        'contactPhone': contactPhone!.trim(),
+    };
+    if (profileUpdates.isNotEmpty) {
+      try {
+        await api.dio.patch<dynamic>('/brands/me', data: profileUpdates);
+      } on DioException catch (error) {
+        if (error.response?.statusCode != 400) rethrow;
+      }
+    }
+
+    final profile = await api.getMe();
+    if (!_hasRoleAccess(profile, AccountRole.brand)) {
+      throw const AuthException('Brand profile setup is not complete.');
+    }
+
+    await _storage.delete(key: 'brand_signup_pending');
+    await _persistAuthenticatedUser(user.uid, token, AccountRole.brand);
+  }
+
   Future<void> signInWithGoogle({required AccountRole role}) async {
     try {
       print('=== GOOGLE SIGNIN START ===');
@@ -266,7 +445,7 @@ class AuthController extends Notifier<AuthState> {
       }
       print('✅ ID token obtained (${token.length} chars)');
 
-      final api = _api ?? ApiClient(config: AppConfig.fromEnvironment());
+      final api = _api ?? ApiClient.instance;
       api.setIdToken(token);
       print('✅ API client token set');
 
@@ -280,6 +459,14 @@ class AuthController extends Notifier<AuthState> {
         print('❌ Profile fetch error: $e');
         // User doesn't exist yet, register them
         if (e.toString().contains('404')) {
+          if (role == AccountRole.brand) {
+            await FirebaseAuth.instance.signOut();
+            await _googleSignIn.signOut();
+            api.setIdToken(null);
+            throw const AuthException(
+              'No brand account found for this Google account. Please sign up.',
+            );
+          }
           final names = (user.displayName ?? '').split(' ');
           final firstName = names.isNotEmpty ? names[0] : 'User';
           final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
@@ -380,8 +567,10 @@ class AuthController extends Notifier<AuthState> {
     await _storage.delete(key: 'firebase_id_token');
     await _storage.delete(key: 'user_id');
     await _storage.delete(key: 'account_role');
+    await _storage.delete(key: 'brand_signup_pending');
     await FirebaseAuth.instance.signOut();
     await _googleSignIn.signOut();
+    (_api ?? ApiClient.instance).setIdToken(null);
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }

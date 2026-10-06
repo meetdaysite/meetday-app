@@ -150,20 +150,32 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  conv['name'] as String,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF111111),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    conv['name'] as String,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF111111),
+                                    ),
                                   ),
                                 ),
-                                Text(
-                                  conv['time'] as String,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF667085),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  flex: 2,
+                                  child: Text(
+                                    conv['time'] as String,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.end,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF667085),
+                                    ),
                                   ),
                                 ),
                               ],

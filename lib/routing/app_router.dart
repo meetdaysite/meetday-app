@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/domain/account_role.dart';
+import '../features/auth/presentation/brand_onboarding_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/role_selection_screen.dart';
 import '../features/auth/state/auth_provider.dart';
@@ -43,6 +44,10 @@ class AppRouter {
         },
       ),
       GoRoute(
+        path: '/brand-onboarding',
+        builder: (context, state) => const BrandOnboardingScreen(),
+      ),
+      GoRoute(
         path: '/dashboard',
         builder: (context, state) => const HomeShell(),
       ),
@@ -58,7 +63,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final router = AppRouter.router;
 
   ref.listen<AuthState>(authControllerProvider, (_, next) {
-    if (next.status == AuthStatus.authenticated) {
+    if (next.status == AuthStatus.onboarding && next.role == AccountRole.brand) {
+      router.go('/brand-onboarding');
+    } else if (next.status == AuthStatus.authenticated) {
       final destination = next.role == AccountRole.community
           ? '/community-dashboard'
           : '/dashboard';

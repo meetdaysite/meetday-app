@@ -4,6 +4,12 @@ import '../../../../core/network/api_client.dart';
 import '../../../auth/domain/account_role.dart';
 import '../../../auth/state/auth_provider.dart';
 
+String _spaceAccountRole(AccountRole? role) {
+  if (role == AccountRole.brand) return 'BRAND';
+  if (role == AccountRole.space) return 'SPACE';
+  return 'COMMUNITY';
+}
+
 // ─── Data Models ─────────────────────────────────────────────────────────────
 
 enum ChatRole { community, brand, space }
@@ -187,11 +193,14 @@ class UnifiedChatMessage {
     );
   }
 
-  factory UnifiedChatMessage.fromSpace(Map<String, dynamic> m) {
+  factory UnifiedChatMessage.fromSpace(
+    Map<String, dynamic> m, {
+    String currentRole = 'COMMUNITY',
+  }) {
     final senderType = (m['senderType'] ?? 'COMMUNITY')
         .toString()
         .toUpperCase();
-    final isMe = senderType == 'COMMUNITY';
+    final isMe = senderType == currentRole.toUpperCase();
     final isSys = isSystemMessage(m);
     final msgType = isSys
         ? 'SYSTEM'
@@ -368,6 +377,7 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   final api = ref.watch(apiClientProvider);
   final accountRole = ref.watch(authControllerProvider).role;
   final sponsorshipRole = accountRole == AccountRole.brand ? 'BRAND' : 'HOST';
+  final spaceRole = _spaceAccountRole(accountRole);
 
   // 1. Fetch raw data across all 5 endpoints in parallel
   List<Map<String, dynamic>> sponsorshipAccepted = [];
@@ -396,7 +406,7 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
         'status': 'REQUESTED',
         'role': sponsorshipRole,
       }),
-      safeGet('/spaces/chats', {'role': 'COMMUNITY'}),
+      safeGet('/spaces/chats', {'role': spaceRole}),
       safeGet('/space-host/chats', {'role': 'HOST'}),
       safeGet('/community-collaboration/chats'),
       safeGet('/brand-community-collaboration/chats', {'asRole': 'COMMUNITY'}),
@@ -664,6 +674,7 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   }
 
   // Space Requests
+  final isSpacePartner = accountRole == AccountRole.space;
   for (final t in spaceThreads) {
     if (t['chatStatus'] == 'REQUESTED') {
       requests.add(
@@ -671,16 +682,18 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           id: (t['id'] ?? '').toString(),
           category: 'spaces',
           kind: 'SPACE_INTEREST',
-          direction: 'OUTGOING',
+          direction: isSpacePartner ? 'INCOMING' : 'OUTGOING',
           status: 'REQUESTED',
           counterpartName: (t['counterpartName'] ?? 'Hub Partner').toString(),
           counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
           counterpartType: 'SPACE',
           title: (t['counterpartName'] ?? 'Hub Booking').toString(),
-          description: 'You sent a booking inquiry to this hub.',
+            description: isSpacePartner
+              ? 'This community sent a booking inquiry to your hub.'
+              : 'You sent a booking inquiry to this hub.',
           createdAt: t['createdAt'] as String?,
           lastMessagePreview: t['lastMessagePreview'] as String?,
-          isIncoming: false,
+          isIncoming: isSpacePartner,
           rawItem: t,
         ),
       );
@@ -897,10 +910,18 @@ final chatMessagesProvider = FutureProvider.autoDispose
           case 'SPACE_INTEREST':
             final res = await api.dio.get<dynamic>(
               '/spaces/chats/$id/messages',
-              queryParameters: {'role': 'COMMUNITY'},
+              queryParameters: {'role': _spaceAccountRole(accountRole)},
             );
             final list = _extractList(res.data);
-            return list.map((m) => UnifiedChatMessage.fromSpace(m)).toList();
+            final spaceRole = _spaceAccountRole(accountRole);
+            return list
+                .map(
+                  (m) => UnifiedChatMessage.fromSpace(
+                    m,
+                    currentRole: spaceRole,
+                  ),
+                )
+                .toList();
           case 'SPACE_HOST':
             final res = await api.dio.get<dynamic>(
               '/space-host/chats/$id/messages',
@@ -980,6 +1001,7 @@ final threadDealProvider = FutureProvider.autoDispose
 final threadReportProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>?, UnifiedActiveThread>((ref, thread) async {
       final api = ref.watch(apiClientProvider);
+  final accountRole = ref.watch(authControllerProvider).role;
       final id = thread.id;
 
       try {
@@ -993,6 +1015,9 @@ final threadReportProvider = FutureProvider.autoDispose
         } else if (thread.kind == 'SPACE_INTEREST') {
           final res = await api.dio.get<dynamic>(
             '/spaces/chats/$id/deal/report',
+            queryParameters: {
+              'role': _spaceAccountRole(accountRole),
+            },
           );
           final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
           if (data is Map<String, dynamic>) return data;
@@ -1053,6 +1078,7 @@ Future<void> saveDealApi(
   UnifiedActiveThread thread,
   Map<String, dynamic> payload, {
   bool isUpdate = false,
+  AccountRole? role,
 }) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
@@ -1069,9 +1095,15 @@ Future<void> saveDealApi(
     }
   } else if (thread.kind == 'SPACE_INTEREST') {
     if (isUpdate) {
-      await api.dio.put<dynamic>('/spaces/chats/$id/deal', data: payload);
+      await api.dio.put<dynamic>(
+        '/spaces/chats/$id/deal',
+        data: {...payload, 'asRole': _spaceAccountRole(role)},
+      );
     } else {
-      await api.dio.post<dynamic>('/spaces/chats/$id/deal', data: payload);
+      await api.dio.post<dynamic>(
+        '/spaces/chats/$id/deal',
+        data: {...payload, 'asRole': _spaceAccountRole(role)},
+      );
     }
   } else if (thread.kind == 'SPACE_HOST') {
     if (isUpdate) {
@@ -1085,7 +1117,9 @@ Future<void> saveDealApi(
 Future<void> saveReportApi(
   ApiClient api,
   UnifiedActiveThread thread,
-  Map<String, dynamic> payload,
+  Map<String, dynamic> payload, {
+  AccountRole? role,
+}
 ) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
@@ -1094,7 +1128,10 @@ Future<void> saveReportApi(
       data: payload,
     );
   } else if (thread.kind == 'SPACE_INTEREST') {
-    await api.dio.put<dynamic>('/spaces/chats/$id/deal/report', data: payload);
+    await api.dio.put<dynamic>(
+      '/spaces/chats/$id/deal/report',
+      data: {...payload, 'asRole': _spaceAccountRole(role)},
+    );
   } else if (thread.kind == 'SPACE_HOST') {
     await api.dio.put<dynamic>(
       '/space-host/chats/$id/deal/report',
@@ -1102,24 +1139,39 @@ Future<void> saveReportApi(
     );
   }
 }
-Future<void> approveDealApi(ApiClient api, UnifiedActiveThread thread) async {
+Future<void> approveDealApi(
+  ApiClient api,
+  UnifiedActiveThread thread, {
+  AccountRole? role,
+}) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
     await api.dio.post<dynamic>('/sponsorships/chats/$id/deal/approve');
   } else if (thread.kind == 'SPACE_INTEREST') {
-    await api.dio.post<dynamic>('/spaces/chats/$id/deal/approve');
+    await api.dio.post<dynamic>(
+      '/spaces/chats/$id/deal/approve',
+      queryParameters: {'role': _spaceAccountRole(role)},
+    );
   } else if (thread.kind == 'SPACE_HOST') {
     await api.dio.post<dynamic>('/space-host/chats/$id/deal/approve');
   }
 }
 
-Future<void> requestDealChangesApi(ApiClient api, UnifiedActiveThread thread, {String? note}) async {
+Future<void> requestDealChangesApi(
+  ApiClient api,
+  UnifiedActiveThread thread, {
+  String? note,
+  AccountRole? role,
+}) async {
   final id = thread.id;
   final body = note != null && note.trim().isNotEmpty ? {'note': note.trim()} : <String, dynamic>{};
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
     await api.dio.post<dynamic>('/sponsorships/chats/$id/deal/request-changes', data: body);
   } else if (thread.kind == 'SPACE_INTEREST') {
-    await api.dio.post<dynamic>('/spaces/chats/$id/deal/request-changes', data: body);
+    await api.dio.post<dynamic>(
+      '/spaces/chats/$id/deal/request-changes',
+      data: {...body, 'asRole': _spaceAccountRole(role)},
+    );
   } else if (thread.kind == 'SPACE_HOST') {
     await api.dio.post<dynamic>('/space-host/chats/$id/deal/request-changes', data: body);
   }

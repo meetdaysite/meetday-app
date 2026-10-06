@@ -44,9 +44,11 @@ class CampaignsScreen extends ConsumerStatefulWidget {
   const CampaignsScreen({
     super.key,
     this.onBack,
+    this.onInterestSent,
   });
 
   final VoidCallback? onBack;
+  final VoidCallback? onInterestSent;
 
   @override
   ConsumerState<CampaignsScreen> createState() => _CampaignsScreenState();
@@ -57,7 +59,7 @@ class _CampaignsScreenState extends ConsumerState<CampaignsScreen> {
   String _searchQuery = '';
 
   void _openCampaignDetails(Map<String, dynamic> campaign) {
-    showCampaignDetailModal(context, campaign);
+    showCampaignDetailModal(context, campaign, onInterestSent: widget.onInterestSent);
   }
 
   @override
@@ -625,19 +627,27 @@ class CampaignListItemCard extends StatelessWidget {
 
 // ─── Campaign Detail Modal Bottom Sheet ──────────────────────────────────────
 
-void showCampaignDetailModal(BuildContext context, Map<String, dynamic> campaign) {
+void showCampaignDetailModal(
+  BuildContext context,
+  Map<String, dynamic> campaign, {
+  VoidCallback? onInterestSent,
+}) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (ctx) => _CampaignDetailModalSheet(campaign: campaign),
+    builder: (ctx) => _CampaignDetailModalSheet(
+      campaign: campaign,
+      onInterestSent: onInterestSent,
+    ),
   );
 }
 
 class _CampaignDetailModalSheet extends ConsumerStatefulWidget {
-  const _CampaignDetailModalSheet({required this.campaign});
+  const _CampaignDetailModalSheet({required this.campaign, this.onInterestSent});
 
   final Map<String, dynamic> campaign;
+  final VoidCallback? onInterestSent;
 
   @override
   ConsumerState<_CampaignDetailModalSheet> createState() => _CampaignDetailModalSheetState();
@@ -665,7 +675,8 @@ class _CampaignDetailModalSheetState extends ConsumerState<_CampaignDetailModalS
         Navigator.of(context).pop();
         ref.invalidate(chatHubProvider);
 
-        final isAlready = res.data is Map && res.data['alreadyInterested'] == true;
+        final responseData = res.data is Map ? (res.data['data'] ?? res.data) : null;
+        final isAlready = responseData is Map && responseData['alreadyInterested'] == true;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -678,6 +689,7 @@ class _CampaignDetailModalSheetState extends ConsumerState<_CampaignDetailModalS
             behavior: SnackBarBehavior.floating,
           ),
         );
+        widget.onInterestSent?.call();
       }
     } catch (e) {
       if (mounted) {

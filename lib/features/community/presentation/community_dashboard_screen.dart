@@ -10,6 +10,7 @@ import '../../auth/domain/account_role.dart';
 import '../../auth/state/auth_provider.dart';
 import 'campaigns/campaigns_screen.dart';
 import 'chat/community_chat_hub.dart';
+import 'providers/chat_provider.dart';
 import 'community_detail_screen.dart';
 import 'profile/profile_screen.dart';
 import 'proposal_components.dart';
@@ -324,9 +325,11 @@ class _CommunityDashboardScreenState
                     _ProposalTabBody(role: effectiveRole),
                     CampaignsScreen(
                       onBack: () => _onTabSelected(0),
+                      onInterestSent: () => _onTabSelected(5),
                     ),
                     _HubTabBody(
                       onBack: () => _onTabSelected(0),
+                      onNavigateToChats: () => _onTabSelected(5),
                     ),
                     _CommunityTabBody(
                       onNavigateToTab: _onTabSelected,
@@ -369,7 +372,7 @@ class _DashboardTabBody extends ConsumerWidget {
     final proposalsAsync = ref.watch(dashboardProposalsProvider);
     final campaignsAsync = ref.watch(dashboardCampaignsProvider);
     final hubsAsync = ref.watch(dashboardHubsProvider);
-    final communitiesAsync = ref.watch(dashboardCommunitiesProvider);
+    final communitiesAsync = ref.watch(communityCollaborationCommunitiesProvider);
     final dealsAsync = ref.watch(dashboardDealsProvider);
     final publishedAsync = ref.watch(publishedProposalsProvider);
 
@@ -2467,11 +2470,13 @@ class _ExploreTabBodyState extends State<_ExploreTabBody> {
     if (_subView == 'hubs') {
       return _HubTabBody(
         onBack: () => setState(() => _subView = 'menu'),
+        onNavigateToChats: () => widget.onNavigateToTab(5),
       );
     }
     if (_subView == 'campaigns') {
       return CampaignsScreen(
         onBack: () => setState(() => _subView = 'menu'),
+        onInterestSent: () => widget.onNavigateToTab(5),
       );
     }
 
@@ -2642,9 +2647,10 @@ class _ExploreTabBodyState extends State<_ExploreTabBody> {
 }
 
 class _HubTabBody extends ConsumerWidget {
-  const _HubTabBody({this.onBack});
+  const _HubTabBody({this.onBack, this.onNavigateToChats});
 
   final VoidCallback? onBack;
+  final VoidCallback? onNavigateToChats;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2770,11 +2776,12 @@ class _HubTabBody extends ConsumerWidget {
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: _NeoListCard(
+                    child: _HubListingCard(
+                      hub: h,
                       title: title,
                       subtitle: subtitle,
-                      status: 'Active',
-                      statusColor: const Color(0xFFDCFCE7),
+                      role: role,
+                      onNavigateToChats: onNavigateToChats,
                     ),
                   );
                 }).toList(),
@@ -2796,77 +2803,163 @@ class _HubTabBody extends ConsumerWidget {
   }
 }
 
-class _NeoListCard extends StatelessWidget {
-  const _NeoListCard({
+class _HubListingCard extends ConsumerStatefulWidget {
+  const _HubListingCard({
+    required this.hub,
     required this.title,
     required this.subtitle,
-    required this.status,
-    required this.statusColor,
+    required this.role,
+    this.onNavigateToChats,
   });
 
+  final Map<String, dynamic> hub;
   final String title;
   final String subtitle;
-  final String status;
-  final Color statusColor;
+  final AccountRole? role;
+  final VoidCallback? onNavigateToChats;
+
+  @override
+  ConsumerState<_HubListingCard> createState() => _HubListingCardState();
+}
+
+class _HubListingCardState extends ConsumerState<_HubListingCard> {
+  bool _isSubmitting = false;
+
+  Future<void> _expressInterest() async {
+    final hubId = widget.hub['id']?.toString();
+    if (hubId == null || hubId.isEmpty || _isSubmitting) return;
+
+    setState(() => _isSubmitting = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      final isBrand = widget.role == AccountRole.brand;
+      final response = await api.dio.post<dynamic>(
+        '/spaces/community/$hubId/interest',
+        data: {'asRole': isBrand ? 'BRAND' : 'COMMUNITY'},
+      );
+      final responseData = response.data;
+      final result = responseData is Map
+          ? (responseData['data'] is Map ? responseData['data'] : responseData)
+          : null;
+      final alreadyInterested = result is Map && result['alreadyInterested'] == true;
+
+      ref.invalidate(chatHubProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(alreadyInterested
+              ? 'You already sent interest. Check your chat requests.'
+              : 'Interest sent. The space partner must accept before chat opens.'),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+      widget.onNavigateToChats?.call();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not send interest: $error'),
+          backgroundColor: MeetdayColors.primaryRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.black, width: 2),
         boxShadow: const [
           BoxShadow(
             color: Colors.black,
-            offset: Offset(2.5, 2.5),
+            offset: Offset(3, 3),
             blurRadius: 0,
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.title,
                   style: GoogleFonts.bricolageGrotesque(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF111111),
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  border: Border.all(color: Colors.black, width: 1.2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'ACTIVE',
                   style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: const Color(0xFF667085),
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
                   ),
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            widget.subtitle,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: const Color(0xFF667085),
+              height: 1.35,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-            decoration: BoxDecoration(
-              color: statusColor,
-              border: Border.all(color: Colors.black, width: 1.2),
-              borderRadius: BorderRadius.circular(999),
+          if ((widget.hub['about'] ?? '').toString().trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.hub['about'].toString(),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.poppins(fontSize: 11, height: 1.4, color: Colors.black87),
             ),
-            child: Text(
-              status,
-              style: GoogleFonts.poppins(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: Colors.black,
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isSubmitting ? null : _expressInterest,
+              icon: _isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded, size: 16),
+              label: Text(_isSubmitting ? 'Sending...' : 'I\'M INTERESTED'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MeetdayColors.primaryRed,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: MeetdayColors.primaryRed.withValues(alpha: 0.6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(color: Colors.black, width: 2),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                elevation: 0,
               ),
             ),
           ),
@@ -2892,32 +2985,7 @@ class _CommunityTabBody extends ConsumerWidget {
 
     return communitiesAsync.when(
       data: (communities) {
-        final list = communities.isNotEmpty
-            ? communities
-            : [
-                <String, dynamic>{
-                  'id': 'demo-1',
-                  'name': 'Meetday Social Circle',
-                  'size': '1,240',
-                  'memberCount': '1,240',
-                  'about':
-                      'A curated social circle bringing together founders, creators, and artists for weekly offline meetups.',
-                  'operatingCities': ['Delhi NCR', 'Bengaluru'],
-                  'avgGuestCount': '60-80',
-                  'experiencesPerYear': '24',
-                },
-                <String, dynamic>{
-                  'id': 'demo-2',
-                  'name': 'Creative Hosts Network',
-                  'size': '760',
-                  'memberCount': '760',
-                  'about':
-                      'Independent community organizers and event hosts curating intimate music, design, and culture popups.',
-                  'operatingCities': ['Mumbai'],
-                  'avgGuestCount': '45',
-                  'experiencesPerYear': '12',
-                },
-              ];
+        final list = communities;
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
@@ -2958,7 +3026,7 @@ class _CommunityTabBody extends ConsumerWidget {
             ),
             const SizedBox(height: 3),
             Text(
-              'Communities onboarded on Meetday, available for sponsorship.',
+              'Browse approved communities and start a collaboration.',
               style: GoogleFonts.poppins(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
@@ -2966,44 +3034,58 @@ class _CommunityTabBody extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 16),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: list.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 14,
-                childAspectRatio: 0.72,
-              ),
-              itemBuilder: (context, index) {
-                final c = list[index];
-                final name = (c['name'] ?? c['title'] ?? 'Community').toString();
-                final members = (c['memberCount'] ?? c['size'] ?? '0').toString();
-                final imageUrl = c['logoUrl'] as String?;
+            if (list.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: Text(
+                  'No other approved communities are available yet.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF667085),
+                  ),
+                ),
+              )
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: list.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 0.72,
+                ),
+                itemBuilder: (context, index) {
+                  final c = list[index];
+                  final name = (c['name'] ?? c['title'] ?? 'Community').toString();
+                  final members = (c['memberCount'] ?? c['size'] ?? '0').toString();
+                  final imageUrl = c['logoUrl'] as String?;
 
-                return _CommunityCardPreview(
-                  title: name,
-                  memberCount: members,
-                  imageUrl: imageUrl,
-                  width: null,
-                  onTap: () {
-                    final matchingProposals = getCommunityMatchingProposals(c, publishedProposals);
+                  return _CommunityCardPreview(
+                    title: name,
+                    memberCount: members,
+                    imageUrl: imageUrl,
+                    width: null,
+                    onTap: () {
+                      final matchingProposals = getCommunityMatchingProposals(c, publishedProposals);
 
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => CommunityDetailScreen(
-                          community: c,
-                          activeProposals: matchingProposals,
-                          onSelectTab: onNavigateToTab,
-                          currentTabIndex: 2,
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CommunityDetailScreen(
+                            community: c,
+                            activeProposals: matchingProposals,
+                            onSelectTab: onNavigateToTab,
+                            currentTabIndex: 2,
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                      );
+                    },
+                  );
+                },
+              ),
           ],
         );
       },
@@ -3025,7 +3107,7 @@ class _CommunityTabBody extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           _ErrorCard(
-            onRetry: () => ref.refresh(dashboardCommunitiesProvider),
+            onRetry: () => ref.refresh(communityCollaborationCommunitiesProvider),
           ),
         ],
       ),

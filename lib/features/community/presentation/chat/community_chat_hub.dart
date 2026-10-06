@@ -10,7 +10,55 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/domain/account_role.dart';
+import '../../../auth/state/auth_provider.dart';
 import '../providers/chat_provider.dart';
+
+String _spaceChatRole(AccountRole? role) {
+  if (role == AccountRole.brand) return 'BRAND';
+  if (role == AccountRole.space) return 'SPACE';
+  return 'COMMUNITY';
+}
+
+bool _canCreateThreadDeal(UnifiedActiveThread thread, AccountRole? role) {
+  return switch (thread.kind) {
+    'CAMPAIGN' => role == AccountRole.brand,
+    'SPONSORSHIP' => role == AccountRole.community,
+    'SPACE_INTEREST' => role == AccountRole.space,
+    'SPACE_HOST' => role == AccountRole.community,
+    _ => false,
+  };
+}
+
+bool _canReviewThreadDeal(UnifiedActiveThread thread, AccountRole? role) {
+  return switch (thread.kind) {
+    'CAMPAIGN' => role == AccountRole.community,
+    'SPONSORSHIP' => role == AccountRole.brand,
+    'SPACE_INTEREST' =>
+      role == AccountRole.brand || role == AccountRole.community,
+    'SPACE_HOST' => role == AccountRole.space,
+    _ => false,
+  };
+}
+
+bool _canReviewThreadReport(UnifiedActiveThread thread, AccountRole? role) {
+  return switch (thread.kind) {
+    'CAMPAIGN' || 'SPONSORSHIP' => role == AccountRole.brand,
+    'SPACE_INTEREST' =>
+      role == AccountRole.brand || role == AccountRole.community,
+    'SPACE_HOST' => role == AccountRole.space,
+    _ => false,
+  };
+}
+
+bool _canSubmitThreadReport(UnifiedActiveThread thread, AccountRole? role) {
+  return switch (thread.kind) {
+    'CAMPAIGN' || 'SPONSORSHIP' => role == AccountRole.community,
+    'SPACE_INTEREST' => role == AccountRole.space,
+    'SPACE_HOST' => role == AccountRole.community,
+    _ => false,
+  };
+}
 
 // ─── Format Helpers ──────────────────────────────────────────────────────────
 
@@ -36,7 +84,20 @@ String _formatDateString(String? dateStr) {
   if (dateStr == null || dateStr.isEmpty) return '—';
   try {
     final dt = DateTime.parse(dateStr).toLocal();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   } catch (_) {
     return dateStr.split('T').first;
@@ -80,7 +141,9 @@ String _shortTimeAgo(String? iso) {
 String _messageTime(DateTime? dt) {
   if (dt == null) return '';
   final local = dt.toLocal();
-  final hour = local.hour > 12 ? local.hour - 12 : (local.hour == 0 ? 12 : local.hour);
+  final hour = local.hour > 12
+      ? local.hour - 12
+      : (local.hour == 0 ? 12 : local.hour);
   final period = local.hour >= 12 ? 'PM' : 'AM';
   final min = local.minute.toString().padLeft(2, '0');
   return '$hour:$min $period';
@@ -89,18 +152,17 @@ String _messageTime(DateTime? dt) {
 // ─── Main Chat Hub Screen ────────────────────────────────────────────────────
 
 class CommunityChatHubScreen extends ConsumerStatefulWidget {
-  const CommunityChatHubScreen({
-    super.key,
-    this.initialCategory,
-  });
+  const CommunityChatHubScreen({super.key, this.initialCategory});
 
   final String? initialCategory;
 
   @override
-  ConsumerState<CommunityChatHubScreen> createState() => _CommunityChatHubScreenState();
+  ConsumerState<CommunityChatHubScreen> createState() =>
+      _CommunityChatHubScreenState();
 }
 
-class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen> {
+class _CommunityChatHubScreenState
+    extends ConsumerState<CommunityChatHubScreen> {
   // 'landing' or 'active'
   String _viewMode = 'landing';
   String _activeCategory = 'sponsorships';
@@ -136,9 +198,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
 
   void _openThread(UnifiedActiveThread thread) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ChatThreadScreen(thread: thread),
-      ),
+          MaterialPageRoute<void>(builder: (_) => ChatThreadScreen(thread: thread)),
     );
   }
 
@@ -150,6 +210,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
     try {
       final api = ref.read(apiClientProvider);
       final id = request.id;
+      final spaceRole = _spaceChatRole(ref.read(authControllerProvider).role);
 
       switch (request.kind) {
         case 'SPONSORSHIP':
@@ -157,16 +218,27 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
           await api.dio.post<dynamic>('/sponsorships/chats/$id/accept');
           break;
         case 'SPACE_INTEREST':
-          await api.dio.post<dynamic>('/spaces/chats/$id/accept', queryParameters: {'role': 'COMMUNITY'});
+          await api.dio.post<dynamic>(
+            '/spaces/chats/$id/accept',
+            queryParameters: {'role': spaceRole},
+          );
           break;
         case 'SPACE_HOST':
-          await api.dio.post<dynamic>('/space-host/chats/$id/accept', queryParameters: {'role': 'HOST'});
+          await api.dio.post<dynamic>(
+            '/space-host/chats/$id/accept',
+            queryParameters: {'role': 'HOST'},
+          );
           break;
         case 'COMMUNITY_COLLAB':
           if (request.category == 'brands') {
-            await api.dio.post<dynamic>('/brand-community-collaboration/chats/$id/accept', queryParameters: {'asRole': 'COMMUNITY'});
+            await api.dio.post<dynamic>(
+              '/brand-community-collaboration/chats/$id/accept',
+              queryParameters: {'asRole': 'COMMUNITY'},
+            );
           } else {
-            await api.dio.post<dynamic>('/community-collaboration/chats/$id/accept');
+            await api.dio.post<dynamic>(
+              '/community-collaboration/chats/$id/accept',
+            );
           }
           break;
       }
@@ -174,7 +246,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Accepted collaboration request from ${request.counterpartName}!'),
+            content: Text(
+              'Accepted collaboration request from ${request.counterpartName}!',
+            ),
             backgroundColor: const Color(0xFF22C55E),
           ),
         );
@@ -212,16 +286,25 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
     try {
       final api = ref.read(apiClientProvider);
       final id = request.id;
+      final spaceRole = _spaceChatRole(ref.read(authControllerProvider).role);
 
       switch (request.kind) {
         case 'SPACE_INTEREST':
-          await api.dio.post<dynamic>('/spaces/chats/$id/decline', queryParameters: {'role': 'COMMUNITY'});
+          await api.dio.post<dynamic>(
+            '/spaces/chats/$id/decline',
+            queryParameters: {'role': spaceRole},
+          );
           break;
         case 'COMMUNITY_COLLAB':
           if (request.category == 'brands') {
-            await api.dio.post<dynamic>('/brand-community-collaboration/chats/$id/decline', queryParameters: {'asRole': 'COMMUNITY'});
+            await api.dio.post<dynamic>(
+              '/brand-community-collaboration/chats/$id/decline',
+              queryParameters: {'asRole': 'COMMUNITY'},
+            );
           } else {
-            await api.dio.post<dynamic>('/community-collaboration/chats/$id/decline');
+            await api.dio.post<dynamic>(
+              '/community-collaboration/chats/$id/decline',
+            );
           }
           break;
       }
@@ -266,9 +349,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
         return _buildLandingView(data);
       },
       loading: () => const Center(
-        child: CircularProgressIndicator(
-          color: MeetdayColors.primaryRed,
-        ),
+        child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
       ),
       error: (err, stack) => Center(
         child: Padding(
@@ -276,7 +357,11 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline_rounded, size: 42, color: MeetdayColors.primaryRed),
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 42,
+                color: MeetdayColors.primaryRed,
+              ),
               const SizedBox(height: 12),
               Text(
                 'Could not load chats',
@@ -290,13 +375,19 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
               Text(
                 err.toString(),
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF667085)),
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: const Color(0xFF667085),
+                ),
               ),
               const SizedBox(height: 16),
               GestureDetector(
                 onTap: () => ref.refresh(chatHubProvider),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: MeetdayColors.primaryRed,
                     borderRadius: BorderRadius.circular(10),
@@ -333,8 +424,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
   Widget _buildLandingView(ChatHubData data) {
     // Filter requests by queue direction (INCOMING vs OUTGOING), category filter, and search
     final filteredRequests = data.allRequests.where((req) {
-      if (req.direction != _activeQueue) return false;
-      if (_categoryFilter != 'ALL' && req.category != _categoryFilter) return false;
+          if (req.direction != _activeQueue) return false;
+      if (_categoryFilter != 'ALL' && req.category != _categoryFilter)
+        return false;
       if (_landingSearchQuery.trim().isNotEmpty) {
         final q = _landingSearchQuery.toLowerCase().trim();
         final matchName = req.counterpartName.toLowerCase().contains(q);
@@ -442,9 +534,14 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
-                          color: _activeQueue == 'INCOMING' ? MeetdayColors.primaryRed : Colors.transparent,
+                          color: _activeQueue == 'INCOMING'
+                              ? MeetdayColors.primaryRed
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: _activeQueue == 'INCOMING'
                               ? const [
@@ -464,18 +561,27 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                               style: GoogleFonts.poppins(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
-                                color: _activeQueue == 'INCOMING' ? Colors.white : Colors.black54,
+                                color: _activeQueue == 'INCOMING'
+                                    ? Colors.white
+                                    : Colors.black54,
                               ),
                             ),
                             if (data.incomingCount > 0) ...[
                               const SizedBox(width: 5),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: _activeQueue == 'INCOMING' ? Colors.white : MeetdayColors.accentYellow,
+                                  color: _activeQueue == 'INCOMING'
+                                      ? Colors.white
+                                      : MeetdayColors.accentYellow,
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
-                                    color: _activeQueue == 'INCOMING' ? Colors.transparent : Colors.black12,
+                                    color: _activeQueue == 'INCOMING'
+                                        ? Colors.transparent
+                                        : Colors.black12,
                                     width: 1,
                                   ),
                                 ),
@@ -484,7 +590,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                   style: GoogleFonts.poppins(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w900,
-                                    color: _activeQueue == 'INCOMING' ? MeetdayColors.primaryRed : Colors.black,
+                                    color: _activeQueue == 'INCOMING'
+                                        ? MeetdayColors.primaryRed
+                                        : Colors.black,
                                   ),
                                 ),
                               ),
@@ -503,9 +611,14 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
-                          color: _activeQueue == 'OUTGOING' ? Colors.black : Colors.transparent,
+                          color: _activeQueue == 'OUTGOING'
+                              ? Colors.black
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: _activeQueue == 'OUTGOING'
                               ? const [
@@ -525,15 +638,22 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                               style: GoogleFonts.poppins(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
-                                color: _activeQueue == 'OUTGOING' ? Colors.white : Colors.black54,
+                                color: _activeQueue == 'OUTGOING'
+                                    ? Colors.white
+                                    : Colors.black54,
                               ),
                             ),
                             if (data.sentCount > 0) ...[
                               const SizedBox(width: 5),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: _activeQueue == 'OUTGOING' ? MeetdayColors.accentYellow : const Color(0x1F000000),
+                                  color: _activeQueue == 'OUTGOING'
+                                      ? MeetdayColors.accentYellow
+                                      : const Color(0x1F000000),
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
                                     color: Colors.transparent,
@@ -585,8 +705,12 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                     padding: const EdgeInsets.all(12),
                     decoration: const BoxDecoration(
                       color: Color(0xFFFAFAFA),
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(19)),
-                      border: Border(bottom: BorderSide(color: Colors.black, width: 2)),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(19),
+                      ),
+                      border: Border(
+                        bottom: BorderSide(color: Colors.black, width: 2),
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -595,12 +719,42 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                           scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
-                              _filterPill('ALL', 'All', _categoryFilter == 'ALL', data.allRequests),
-                              _filterPill('sponsorships', 'Sponsorships', _categoryFilter == 'sponsorships', data.allRequests),
-                              _filterPill('campaigns', 'Campaigns', _categoryFilter == 'campaigns', data.allRequests),
-                              _filterPill('spaces', 'Hubs', _categoryFilter == 'spaces', data.allRequests),
-                              _filterPill('communities', 'Communities', _categoryFilter == 'communities', data.allRequests),
-                              _filterPill('brands', 'Brands', _categoryFilter == 'brands', data.allRequests),
+                              _filterPill(
+                                'ALL',
+                                'All',
+                                _categoryFilter == 'ALL',
+                                data.allRequests,
+                              ),
+                              _filterPill(
+                                'sponsorships',
+                                'Sponsorships',
+                                _categoryFilter == 'sponsorships',
+                                data.allRequests,
+                              ),
+                              _filterPill(
+                                'campaigns',
+                                'Campaigns',
+                                _categoryFilter == 'campaigns',
+                                data.allRequests,
+                              ),
+                              _filterPill(
+                                'spaces',
+                                'Hubs',
+                                _categoryFilter == 'spaces',
+                                data.allRequests,
+                              ),
+                              _filterPill(
+                                'communities',
+                                'Communities',
+                                _categoryFilter == 'communities',
+                                data.allRequests,
+                              ),
+                              _filterPill(
+                                'brands',
+                                'Brands',
+                                _categoryFilter == 'brands',
+                                data.allRequests,
+                              ),
                             ],
                           ),
                         ),
@@ -612,12 +766,19 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0x33000000), width: 2),
+                            border: Border.all(
+                              color: const Color(0x33000000),
+                              width: 2,
+                            ),
                           ),
                           child: Row(
                             children: [
                               const SizedBox(width: 8),
-                              const Icon(Icons.search_rounded, size: 16, color: Colors.black38),
+                              const Icon(
+                                Icons.search_rounded,
+                                size: 16,
+                                color: Colors.black38,
+                              ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: TextField(
@@ -626,10 +787,16 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                       _landingSearchQuery = val;
                                     });
                                   },
-                                  style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                   decoration: InputDecoration(
                                     hintText: 'Search requests…',
-                                    hintStyle: GoogleFonts.poppins(fontSize: 11, color: Colors.black38),
+                                    hintStyle: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: Colors.black38,
+                                    ),
                                     border: InputBorder.none,
                                     enabledBorder: InputBorder.none,
                                     focusedBorder: InputBorder.none,
@@ -637,7 +804,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                     disabledBorder: InputBorder.none,
                                     filled: false,
                                     isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -649,8 +818,14 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                     });
                                   },
                                   child: const Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 8),
-                                    child: Icon(Icons.close_rounded, size: 14, color: Colors.black45),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                    ),
+                                    child: Icon(
+                                      Icons.close_rounded,
+                                      size: 14,
+                                      color: Colors.black45,
+                                    ),
                                   ),
                                 ),
                             ],
@@ -666,7 +841,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                     padding: const EdgeInsets.all(12),
                     child: filteredRequests.isEmpty
                         ? Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 36,
+                              horizontal: 16,
+                            ),
                             child: Center(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -699,7 +877,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                             ),
                           )
                         : Column(
-                            children: filteredRequests.map((req) => _buildRequestCard(req)).toList(),
+                            children: filteredRequests
+                                .map((req) => _buildRequestCard(req))
+                                .toList(),
                           ),
                   ),
                 ],
@@ -756,11 +936,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.black, width: 3),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(4, 4),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 0),
         ],
       ),
       child: ClipRRect(
@@ -822,7 +998,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
 
                       if (hasUnread)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2.5,
+                          ),
                           decoration: BoxDecoration(
                             color: MeetdayColors.primaryRed,
                             borderRadius: BorderRadius.circular(999),
@@ -846,7 +1025,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                   Container(
                     padding: const EdgeInsets.only(top: 10),
                     decoration: const BoxDecoration(
-                      border: Border(top: BorderSide(color: Color(0x1F000000), width: 1.2)),
+                      border: Border(
+                        top: BorderSide(color: Color(0x1F000000), width: 1.2),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -859,7 +1040,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                               decoration: BoxDecoration(
                                 color: const Color(0xFF22C55E),
                                 shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0x4D000000), width: 1),
+                                border: Border.all(
+                                  color: const Color(0x4D000000),
+                                  width: 1,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -876,11 +1060,17 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
 
                         if (hasPending)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: MeetdayColors.accentYellow,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.black, width: 1.5),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 1.5,
+                              ),
                             ),
                             child: Text(
                               '${cat.pendingRequestsCount} pending',
@@ -914,10 +1104,17 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
 
   // ─── Filter Pills inside Requests Box ────────────────────────────────────────
 
-  Widget _filterPill(String key, String label, bool isSelected, List<UnifiedRequestItem> allReqs) {
+  Widget _filterPill(
+    String key,
+    String label,
+    bool isSelected,
+    List<UnifiedRequestItem> allReqs,
+  ) {
     final count = key == 'ALL'
         ? allReqs.where((r) => r.direction == _activeQueue).length
-        : allReqs.where((r) => r.direction == _activeQueue && r.category == key).length;
+        : allReqs
+              .where((r) => r.direction == _activeQueue && r.category == key)
+              .length;
 
     Color pillBg = Colors.white;
     Color textColor = const Color(0x99000000);
@@ -1055,11 +1252,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.black, width: 2),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(2, 2),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
         ],
       ),
       child: Column(
@@ -1091,7 +1284,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                         ),
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: badgeBg,
                             borderRadius: BorderRadius.circular(6),
@@ -1140,7 +1336,11 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
           // Description or message preview
           const SizedBox(height: 6),
           Text(
-            req.description ?? req.lastMessagePreview ?? (isIncoming ? 'Requested connection with your profile.' : 'You sent a connection request.'),
+            req.description ??
+                req.lastMessagePreview ??
+                (isIncoming
+                    ? 'Requested connection with your profile.'
+                    : 'You sent a connection request.'),
             style: GoogleFonts.poppins(
               fontSize: 11,
               fontWeight: FontWeight.w500,
@@ -1161,7 +1361,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                 GestureDetector(
                   onTap: isResponding ? null : () => _handleAcceptRequest(req),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF22C55E),
                       borderRadius: BorderRadius.circular(12),
@@ -1178,12 +1381,19 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                         ? const SizedBox(
                             width: 14,
                             height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+                              const Icon(
+                                Icons.check_rounded,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 'Accept',
@@ -1203,7 +1413,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                 GestureDetector(
                   onTap: isResponding ? null : () => _handleDeclineRequest(req),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
@@ -1230,7 +1443,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
             )
           else
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 4.5,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0x0F000000), // bg-black/5
                 borderRadius: BorderRadius.circular(12),
@@ -1293,11 +1509,13 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
         break;
       case 'spaces':
         headingTitle = 'Hubs Chats';
-        headingSubtitle = 'Collaborate with Community Hubs and manage your requests.';
+        headingSubtitle =
+            'Collaborate with Community Hubs and manage your requests.';
         break;
       case 'communities':
         headingTitle = 'Community Chats';
-        headingSubtitle = 'Collaborate with other communities and manage partnership chats.';
+        headingSubtitle =
+            'Collaborate with other communities and manage partnership chats.';
         break;
       case 'brands':
         headingTitle = 'Brand Chats';
@@ -1312,7 +1530,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
           decoration: const BoxDecoration(
             color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0x1F000000), width: 1.5)),
+            border: Border(
+              bottom: BorderSide(color: Color(0x1F000000), width: 1.5),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1323,7 +1543,11 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.arrow_back_rounded, size: 14, color: Colors.black54),
+                    const Icon(
+                      Icons.arrow_back_rounded,
+                      size: 14,
+                      color: Colors.black54,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Back to Chats & Requests Hub',
@@ -1367,7 +1591,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                   decoration: BoxDecoration(
                     color: const Color(0x0F000000), // bg-black/5
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0x1F000000), width: 2),
+                    border: Border.all(
+                      color: const Color(0x1F000000),
+                      width: 2,
+                    ),
                   ),
                   child: Row(
                     children: data.categories.map((cat) {
@@ -1415,7 +1642,10 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
                           margin: const EdgeInsets.only(right: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: tabBg,
                             borderRadius: BorderRadius.circular(14),
@@ -1436,14 +1666,19 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                 cat.label,
                                 style: GoogleFonts.poppins(
                                   fontSize: 11.5,
-                                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w900
+                                      : FontWeight.w600,
                                   color: tabText,
                                 ),
                               ),
                               if (hasUnread) ...[
                                 const SizedBox(width: 5),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: badgeBg,
                                     borderRadius: BorderRadius.circular(999),
@@ -1453,7 +1688,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                     ),
                                   ),
                                   child: Text(
-                                    cat.badgeCount > 9 ? '9+' : '${cat.badgeCount}',
+                                    cat.badgeCount > 9
+                                        ? '9+'
+                                        : '${cat.badgeCount}',
                                     style: GoogleFonts.poppins(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w900,
@@ -1500,20 +1737,34 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                       padding: const EdgeInsets.all(12),
                       decoration: const BoxDecoration(
                         color: Color(0xFFFAFAFA),
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
-                        border: Border(bottom: BorderSide(color: Color(0x1F000000), width: 2)),
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(21),
+                        ),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: Color(0x1F000000),
+                            width: 2,
+                          ),
+                        ),
                       ),
                       child: Container(
                         height: 38,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0x33000000), width: 2),
+                          border: Border.all(
+                            color: const Color(0x33000000),
+                            width: 2,
+                          ),
                         ),
                         child: Row(
                           children: [
                             const SizedBox(width: 10),
-                            const Icon(Icons.search_rounded, size: 16, color: Colors.black38),
+                            const Icon(
+                              Icons.search_rounded,
+                              size: 16,
+                              color: Colors.black38,
+                            ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: TextField(
@@ -1522,10 +1773,16 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                     _activeSearchQuery = val;
                                   });
                                 },
-                                style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                                 decoration: InputDecoration(
                                   hintText: 'Search conversations…',
-                                  hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
+                                  hintStyle: GoogleFonts.poppins(
+                                    fontSize: 11.5,
+                                    color: Colors.black38,
+                                  ),
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
                                   focusedBorder: InputBorder.none,
@@ -1533,7 +1790,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                   disabledBorder: InputBorder.none,
                                   filled: false,
                                   isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1546,7 +1805,11 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                 },
                                 child: const Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 8),
-                                  child: Icon(Icons.close_rounded, size: 14, color: Colors.black45),
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    size: 14,
+                                    color: Colors.black45,
+                                  ),
                                 ),
                               ),
                           ],
@@ -1633,13 +1896,20 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  _avatar(thread.counterpartAvatarUrl, thread.counterpartName, size: 40),
+                  _avatar(
+                    thread.counterpartAvatarUrl,
+                    thread.counterpartName,
+                    size: 40,
+                  ),
                   if (unread > 0)
                     Positioned(
                       top: -4,
                       right: -4,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4.5,
+                          vertical: 1.5,
+                        ),
                         decoration: BoxDecoration(
                           color: MeetdayColors.primaryRed,
                           borderRadius: BorderRadius.circular(999),
@@ -1693,11 +1963,19 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                                     color: Color(0xFF10B981),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.check, size: 10, color: Colors.white),
+                                  child: const Icon(
+                                    Icons.check,
+                                    size: 10,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ] else if (thread.isDealLocked) ...[
                                 const SizedBox(width: 5),
-                                const Icon(Icons.lock, size: 12, color: Colors.black54),
+                                const Icon(
+                                  Icons.lock,
+                                  size: 12,
+                                  color: Colors.black54,
+                                ),
                               ],
                             ],
                           ),
@@ -1707,8 +1985,12 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                             timeStr,
                             style: GoogleFonts.poppins(
                               fontSize: 10,
-                              fontWeight: unread > 0 ? FontWeight.w800 : FontWeight.w600,
-                              color: unread > 0 ? MeetdayColors.primaryRed : Colors.black38,
+                              fontWeight: unread > 0
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: unread > 0
+                                  ? MeetdayColors.primaryRed
+                                  : Colors.black38,
                             ),
                           ),
                       ],
@@ -1734,8 +2016,12 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
                         thread.lastMessagePreview!,
                         style: GoogleFonts.poppins(
                           fontSize: 11,
-                          fontWeight: unread > 0 ? FontWeight.w700 : FontWeight.w500,
-                          color: unread > 0 ? Colors.black87 : const Color(0x66000000), // text-black/40
+                          fontWeight: unread > 0
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: unread > 0
+                              ? Colors.black87
+                              : const Color(0x66000000), // text-black/40
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1755,7 +2041,9 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
 
   Widget _avatar(String? url, String name, {double size = 40}) {
     final initials = name.trim().isNotEmpty
-        ? (name.trim().length > 2 ? name.trim().substring(0, 2).toUpperCase() : name.trim().toUpperCase())
+        ? (name.trim().length > 2
+              ? name.trim().substring(0, 2).toUpperCase()
+              : name.trim().toUpperCase())
         : 'MD';
 
     return Container(
@@ -1801,10 +2089,7 @@ class _CommunityChatHubScreenState extends ConsumerState<CommunityChatHubScreen>
 // ═════════════════════════════════════════════════════════════════════════════
 
 class ChatThreadScreen extends ConsumerStatefulWidget {
-  const ChatThreadScreen({
-    super.key,
-    required this.thread,
-  });
+  const ChatThreadScreen({super.key, required this.thread});
 
   final UnifiedActiveThread thread;
 
@@ -1859,9 +2144,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           _textController.clear();
         });
       } else {
-        final payload = <String, dynamic>{
-          if (text.isNotEmpty) 'content': text,
-        };
+        final payload = <String, dynamic>{if (text.isNotEmpty) 'content': text};
         if (mediaUrl != null) payload['mediaUrl'] = mediaUrl;
         if (mediaKey != null) payload['mediaKey'] = mediaKey;
         if (_replyingTo != null) payload['replyToId'] = _replyingTo!.id;
@@ -1870,15 +2153,26 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           case 'SPONSORSHIP':
           case 'CAMPAIGN':
             payload['asRole'] = 'HOST';
-            await api.dio.post<dynamic>('/sponsorships/chats/$id/messages', data: payload);
+            await api.dio.post<dynamic>(
+              '/sponsorships/chats/$id/messages',
+              data: payload,
+            );
             break;
           case 'SPACE_INTEREST':
-            payload['asRole'] = 'COMMUNITY';
-            await api.dio.post<dynamic>('/spaces/chats/$id/messages', data: payload);
+            payload['asRole'] = _spaceChatRole(
+              ref.read(authControllerProvider).role,
+            );
+            await api.dio.post<dynamic>(
+              '/spaces/chats/$id/messages',
+              data: payload,
+            );
             break;
           case 'SPACE_HOST':
             payload['asRole'] = 'HOST';
-            await api.dio.post<dynamic>('/space-host/chats/$id/messages', data: payload);
+            await api.dio.post<dynamic>(
+              '/space-host/chats/$id/messages',
+              data: payload,
+            );
             break;
           case 'COMMUNITY_COLLAB':
             if (widget.thread.category == 'brands') {
@@ -1935,7 +2229,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         ),
         title: Text(
           'Delete Message',
-          style: GoogleFonts.bricolageGrotesque(fontWeight: FontWeight.w900, fontSize: 18),
+          style: GoogleFonts.bricolageGrotesque(
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
         ),
         content: Text(
           'Are you sure you want to delete this message? This cannot be undone.',
@@ -1944,7 +2241,13 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: Colors.black54)),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w700,
+                color: Colors.black54,
+              ),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -1957,7 +2260,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
               elevation: 0,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text('Delete', style: GoogleFonts.poppins(fontWeight: FontWeight.w800)),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w800),
+            ),
           ),
         ],
       ),
@@ -1971,10 +2277,224 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete message: $e'), backgroundColor: MeetdayColors.primaryRed),
+            SnackBar(
+              content: Text('Failed to delete message: $e'),
+              backgroundColor: MeetdayColors.primaryRed,
+            ),
           );
         }
       }
+    }
+  }
+
+  Future<void> _showJointEventProposalForm() async {
+    final titleController = TextEditingController();
+    final dateController = TextEditingController();
+    final locationController = TextEditingController();
+    final conceptController = TextEditingController();
+    var isSubmitting = false;
+
+    Widget field(
+      String label,
+      TextEditingController controller, {
+      int maxLines = 1,
+    }) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 5),
+          TextField(
+            controller: controller,
+            maxLines: maxLines,
+            style: GoogleFonts.poppins(fontSize: 12),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: const Color(0xFFF9FAFB),
+              hintText: label,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 11,
+                vertical: 10,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          side: BorderSide(color: Colors.black, width: 2),
+        ),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              16,
+              18,
+              MediaQuery.of(sheetContext).viewInsets.bottom + 18,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Propose a Joint Event',
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Send an event idea to ${widget.thread.counterpartName}.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  field('EVENT TITLE', titleController),
+                  const SizedBox(height: 10),
+                  field('PROPOSED DATE', dateController),
+                  const SizedBox(height: 10),
+                  field('LOCATION', locationController),
+                  const SizedBox(height: 10),
+                  field(
+                    'CONCEPT AND COLLABORATION PLAN',
+                    conceptController,
+                    maxLines: 4,
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              final eventTitle = titleController.text.trim();
+                              if (eventTitle.isEmpty ||
+                                  conceptController.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Add an event title and collaboration plan.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              setSheetState(() => isSubmitting = true);
+                              final proposal = [
+                                'JOINT EVENT PROPOSAL',
+                                '',
+                                'Event: $eventTitle',
+                                if (dateController.text.trim().isNotEmpty)
+                                  'Proposed date: ${dateController.text.trim()}',
+                                if (locationController.text.trim().isNotEmpty)
+                                  'Location: ${locationController.text.trim()}',
+                                '',
+                                'Concept and collaboration plan:',
+                                conceptController.text.trim(),
+                              ].join('\n');
+
+                              try {
+                                final api = ref.read(apiClientProvider);
+                                await api.dio.post<dynamic>(
+                                  '/community-collaboration/chats/${widget.thread.id}/messages',
+                                  data: {'content': proposal},
+                                );
+                                ref.invalidate(
+                                  chatMessagesProvider(widget.thread),
+                                );
+                                ref.invalidate(chatHubProvider);
+                                if (sheetContext.mounted) {
+                                  Navigator.of(sheetContext).pop();
+                                }
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Joint event proposal sent.',
+                                      ),
+                                      backgroundColor: Color(0xFF10B981),
+                                    ),
+                                  );
+                                }
+                              } catch (error) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Could not send event proposal: $error',
+                                      ),
+                                      backgroundColor: MeetdayColors.primaryRed,
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (sheetContext.mounted) {
+                                  setSheetState(() => isSubmitting = false);
+                                }
+                              }
+                            },
+                      icon: isSubmitting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.event_available_rounded, size: 17),
+                      label: Text(
+                        isSubmitting ? 'Sending...' : 'Send Proposal',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MeetdayColors.primaryRed,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: const BorderSide(color: Colors.black, width: 2),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      titleController.dispose();
+      dateController.dispose();
+      locationController.dispose();
+      conceptController.dispose();
     }
   }
 
@@ -1991,7 +2511,6 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         }
       },
     );
-
     final messagesAsync = ref.watch(chatMessagesProvider(widget.thread));
 
     return Scaffold(
@@ -2000,7 +2519,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        shape: const Border(bottom: BorderSide(color: Colors.black, width: 2.5)),
+        shape: const Border(
+          bottom: BorderSide(color: Colors.black, width: 2.5),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.black),
           onPressed: () => Navigator.of(context).pop(),
@@ -2017,21 +2538,33 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 border: Border.all(color: Colors.black, width: 2),
               ),
               clipBehavior: Clip.antiAlias,
-              child: widget.thread.counterpartAvatarUrl != null && widget.thread.counterpartAvatarUrl!.isNotEmpty
+              child:
+                  widget.thread.counterpartAvatarUrl != null &&
+                      widget.thread.counterpartAvatarUrl!.isNotEmpty
                   ? Image.network(
                       widget.thread.counterpartAvatarUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => Center(
                         child: Text(
-                          widget.thread.counterpartName.isNotEmpty ? widget.thread.counterpartName[0] : 'U',
-                          style: GoogleFonts.bricolageGrotesque(fontSize: 13, fontWeight: FontWeight.w900),
+                          widget.thread.counterpartName.isNotEmpty
+                              ? widget.thread.counterpartName[0]
+                              : 'U',
+                          style: GoogleFonts.bricolageGrotesque(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                     )
                   : Center(
                       child: Text(
-                        widget.thread.counterpartName.isNotEmpty ? widget.thread.counterpartName[0] : 'U',
-                        style: GoogleFonts.bricolageGrotesque(fontSize: 13, fontWeight: FontWeight.w900),
+                        widget.thread.counterpartName.isNotEmpty
+                            ? widget.thread.counterpartName[0]
+                            : 'U',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
             ),
@@ -2058,7 +2591,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       if (widget.thread.counterpartType != null) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0x1A000000),
                             borderRadius: BorderRadius.circular(5),
@@ -2091,6 +2627,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           ],
         ),
         actions: [
+          if (widget.thread.kind == 'COMMUNITY_COLLAB' &&
+              widget.thread.category == 'communities') ...[
+            Tooltip(
+              message: 'Propose a joint event',
+              child: IconButton(
+                icon: const Icon(
+                  Icons.event_available_rounded,
+                  color: Colors.black,
+                ),
+                onPressed: _showJointEventProposalForm,
+              ),
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.black),
             onPressed: () {
@@ -2119,7 +2668,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.waving_hand_rounded, size: 40, color: MeetdayColors.accentYellow),
+                            const Icon(
+                              Icons.waving_hand_rounded,
+                              size: 40,
+                              color: MeetdayColors.accentYellow,
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               'Active Conversation Started',
@@ -2145,7 +2698,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   }
 
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!_hasInitiallyScrolled && _scrollController.hasClients) {
+                    if (!_hasInitiallyScrolled &&
+                        _scrollController.hasClients) {
                       _scrollToBottom(animated: false);
                       _hasInitiallyScrolled = true;
                     }
@@ -2162,22 +2716,30 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   );
                 },
                 loading: () => const Center(
-                  child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
+                  child: CircularProgressIndicator(
+                    color: MeetdayColors.primaryRed,
+                  ),
                 ),
-                error: (err, stack) => Center(
-                  child: Text('Failed to load messages: $err'),
-                ),
+                error: (err, stack) =>
+                    Center(child: Text('Failed to load messages: $err')),
               ),
             ),
 
             // Replying banner above composer
             if (_replyingTo != null) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
                 color: const Color(0xFFF9FAFB),
                 child: Row(
                   children: [
-                    Container(width: 3.5, height: 28, color: MeetdayColors.primaryRed),
+                    Container(
+                      width: 3.5,
+                      height: 28,
+                      color: MeetdayColors.primaryRed,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -2192,7 +2754,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                             ),
                           ),
                           Text(
-                            _replyingTo!.content.isNotEmpty ? _replyingTo!.content : 'Attachment',
+                            _replyingTo!.content.isNotEmpty
+                                ? _replyingTo!.content
+                                : 'Attachment',
                             style: GoogleFonts.poppins(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
@@ -2205,7 +2769,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18, color: Colors.black54),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Colors.black54,
+                      ),
                       onPressed: () => setState(() => _replyingTo = null),
                     ),
                   ],
@@ -2216,11 +2784,18 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             // Editing status banner above composer
             if (_editingMessage != null) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
                 color: const Color(0xFFFFFBEB),
                 child: Row(
                   children: [
-                    Container(width: 3.5, height: 28, color: const Color(0xFFF59E0B)),
+                    Container(
+                      width: 3.5,
+                      height: 28,
+                      color: const Color(0xFFF59E0B),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -2248,7 +2823,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18, color: Colors.black54),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Colors.black54,
+                      ),
                       onPressed: () => setState(() {
                         _editingMessage = null;
                         _textController.clear();
@@ -2264,7 +2843,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.black, width: 2.5)),
+                border: Border(
+                  top: BorderSide(color: Colors.black, width: 2.5),
+                ),
               ),
               child: Row(
                 children: [
@@ -2279,11 +2860,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: const Center(
-                        child: Icon(Icons.attach_file_rounded, size: 20, color: Colors.black87),
+                        child: Icon(
+                          Icons.attach_file_rounded,
+                          size: 20,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                   ),
@@ -2291,20 +2880,31 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
                   // Emoji button
                   GestureDetector(
-                    onTap: () => setState(() => _showEmojiPicker = !_showEmojiPicker),
+                    onTap: () =>
+                        setState(() => _showEmojiPicker = !_showEmojiPicker),
                     child: Container(
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: _showEmojiPicker ? MeetdayColors.accentYellow : Colors.white,
+                        color: _showEmojiPicker
+                            ? MeetdayColors.accentYellow
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: const Center(
-                        child: Icon(Icons.emoji_emotions_outlined, size: 20, color: Colors.black87),
+                        child: Icon(
+                          Icons.emoji_emotions_outlined,
+                          size: 20,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                   ),
@@ -2320,28 +2920,41 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: TextField(
                         controller: _textController,
                         cursorColor: Colors.black,
                         onChanged: (_) => setState(() {}),
-                        style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w500),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                        ),
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
                         decoration: InputDecoration(
                           hintText: _editingMessage != null
                               ? 'Edit message…'
                               : 'Type a message to ${widget.thread.counterpartName}…',
-                          hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
+                          hintStyle: GoogleFonts.poppins(
+                            fontSize: 11.5,
+                            color: Colors.black38,
+                          ),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
                           errorBorder: InputBorder.none,
                           disabledBorder: InputBorder.none,
                           filled: false,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ),
@@ -2359,7 +2972,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: Center(
@@ -2367,9 +2984,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
-                            : const Icon(Icons.send_rounded, size: 18, color: Colors.white),
+                            : const Icon(
+                                Icons.send_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
                       ),
                     ),
                   ),
@@ -2388,16 +3012,23 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   // ─── Pinned Deal Banner ──────────────────────────────────────────────────
 
   Widget _buildDealBanner() {
+    final currentRole = ref.watch(authControllerProvider).role;
+    final canCreateDeal = _canCreateThreadDeal(widget.thread, currentRole);
     final dealAsync = ref.watch(threadDealProvider(widget.thread));
     final reportAsync = ref.watch(threadReportProvider(widget.thread));
 
     return dealAsync.when(
       data: (deal) {
         final report = reportAsync.asData?.value;
-        final isReportApproved = report != null &&
+        final isReportApproved =
+            report != null &&
             (report['status'] == 'APPROVED' ||
-                (report['summary'] is String && report['summary'].toString().contains('"status":"APPROVED"')));
-        final isClosed = isReportApproved || (deal != null && deal['status'] == 'CLOSED');
+                (report['summary'] is String &&
+                    report['summary'].toString().contains(
+                      '"status":"APPROVED"',
+                    )));
+        final isClosed =
+            isReportApproved || (deal != null && deal['status'] == 'CLOSED');
 
         if (deal == null) {
           // Show "Lock the Deal" banner
@@ -2406,7 +3037,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: const BoxDecoration(
               color: Color(0xFFFFFBEB),
-              border: Border(bottom: BorderSide(color: Colors.black, width: 2.5)),
+              border: Border(
+                bottom: BorderSide(color: Colors.black, width: 2.5),
+              ),
             ),
             child: Row(
               children: [
@@ -2421,7 +3054,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Once terms are agreed, submit the final details here.',
+                    canCreateDeal
+                        ? 'Once terms are agreed, submit the final details here.'
+                        : 'Waiting for ${widget.thread.counterpartName} to submit deal terms.',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -2429,45 +3064,63 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _showDealFormDialog(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6.5),
-                    decoration: BoxDecoration(
-                      color: MeetdayColors.accentYellow,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.black, width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.lock_rounded, size: 13, color: Colors.black),
-                        const SizedBox(width: 5),
-                        Text(
-                          'Lock the Deal',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
+                if (canCreateDeal) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _showDealFormDialog(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: MeetdayColors.accentYellow,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.lock_rounded,
+                            size: 13,
                             color: Colors.black,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 5),
+                          Text(
+                            'Lock the Deal',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           );
         }
 
         // Deal exists: Status banner
-        final dealStatus = (deal['status'] ?? 'PENDING_APPROVAL').toString().toUpperCase();
-        final paymentStatus = (deal['paymentStatus'] ?? 'UNPAID').toString().toUpperCase();
-        final projectName = (deal['projectName'] ?? widget.thread.title).toString();
+        final dealStatus = (deal['status'] ?? 'PENDING_APPROVAL')
+            .toString()
+            .toUpperCase();
+        final paymentStatus = (deal['paymentStatus'] ?? 'UNPAID')
+            .toString()
+            .toUpperCase();
+        final projectName = (deal['projectName'] ?? widget.thread.title)
+            .toString();
         final amount = deal['sponsorshipAmount'] ?? deal['amount'] ?? '0';
 
         return Container(
@@ -2488,13 +3141,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       children: [
                         // Deal Status Pill
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: isClosed
                                 ? Colors.black
                                 : dealStatus == 'APPROVED'
-                                    ? const Color(0xFFDCFCE7)
-                                    : const Color(0xFFFEF3C7),
+                                ? const Color(0xFFDCFCE7)
+                                : const Color(0xFFFEF3C7),
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(color: Colors.black, width: 1.5),
                           ),
@@ -2509,7 +3165,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                     color: Color(0xFF10B981),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.check, size: 8, color: Colors.white),
+                                  child: const Icon(
+                                    Icons.check,
+                                    size: 8,
+                                    color: Colors.white,
+                                  ),
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
@@ -2524,7 +3184,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                 Text(
                                   dealStatus == 'APPROVED'
                                       ? 'LOCKED'
-                                      : (dealStatus == 'CHANGES_REQUESTED' ? 'REVISION' : 'PENDING'),
+                                      : (dealStatus == 'CHANGES_REQUESTED'
+                                            ? 'REVISION'
+                                            : 'PENDING'),
                                   style: GoogleFonts.poppins(
                                     fontSize: 8.5,
                                     fontWeight: FontWeight.w900,
@@ -2540,11 +3202,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         if (dealStatus == 'APPROVED') ...[
                           const SizedBox(width: 5),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: paymentStatus == 'PAID' ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                              color: paymentStatus == 'PAID'
+                                  ? const Color(0xFFDCFCE7)
+                                  : const Color(0xFFFEF3C7),
                               borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: Colors.black, width: 1.5),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 1.5,
+                              ),
                             ),
                             child: Text(
                               paymentStatus,
@@ -2581,21 +3251,33 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 children: [
                   // View Deal Button
                   GestureDetector(
-                    onTap: () => _showDealDetailsDialog(context, initialDeal: deal),
+                    onTap: () =>
+                        _showDealDetailsDialog(context, initialDeal: deal),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: MeetdayColors.primaryRed,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.visibility_rounded, size: 12, color: Colors.white),
+                          const Icon(
+                            Icons.visibility_rounded,
+                            size: 12,
+                            color: Colors.white,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Deal',
@@ -2611,23 +3293,35 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   ),
                   const SizedBox(width: 6),
                   // Edit Deal or Report button
-                  if (dealStatus != 'APPROVED') ...[
+                  if (dealStatus != 'APPROVED' && canCreateDeal) ...[
                     GestureDetector(
-                      onTap: () => _showDealFormDialog(context, existingDeal: deal),
+                      onTap: () =>
+                          _showDealFormDialog(context, existingDeal: deal),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: MeetdayColors.accentYellow,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.black, width: 2),
                           boxShadow: const [
-                            BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
                           ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.edit_rounded, size: 12, color: Colors.black),
+                            const Icon(
+                              Icons.edit_rounded,
+                              size: 12,
+                              color: Colors.black,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'Edit',
@@ -2641,24 +3335,37 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         ),
                       ),
                     ),
-                  ] else ...[
+                  ] else if (dealStatus == 'APPROVED') ...[
                     GestureDetector(
-                      onTap: () => _showDealReportModal(context, initialReport: report, deal: deal),
+                      onTap: () => _showDealReportModal(
+                        context,
+                        initialReport: report,
+                        deal: deal,
+                      ),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: MeetdayColors.accentYellow,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.black, width: 2),
                           boxShadow: const [
-                            BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
                           ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              report != null ? Icons.description_rounded : Icons.post_add_rounded,
+                              report != null
+                                  ? Icons.description_rounded
+                                  : Icons.post_add_rounded,
                               size: 12,
                               color: Colors.black,
                             ),
@@ -2691,7 +3398,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   Widget _buildSystemMessageBubble(UnifiedChatMessage msg) {
     final lower = msg.content.toLowerCase();
-    final isCampaign = widget.thread.kind == 'CAMPAIGN' ||
+    final isCampaign =
+        widget.thread.kind == 'CAMPAIGN' ||
         (lower.contains('campaign') && !lower.contains('sponsorship proposal'));
 
     Color bg;
@@ -2707,7 +3415,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         lower.contains('deal is closed') ||
         lower.contains('closed') ||
         lower.contains('completed') ||
-        (lower.contains('approved') && (lower.contains('deliverables') || lower.contains('report')))) {
+        (lower.contains('approved') &&
+            (lower.contains('deliverables') || lower.contains('report')))) {
       bg = const Color(0xFFECFDF5);
       textColor = const Color(0xFF065F46);
       iconCircleBg = const Color(0xFF10B981);
@@ -2715,10 +3424,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.check_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
           children: const [
             TextSpan(text: 'Congratulations! The '),
-            TextSpan(text: 'deal is officially completed and closed', style: TextStyle(fontWeight: FontWeight.w800)),
+            TextSpan(
+              text: 'deal is officially completed and closed',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             TextSpan(text: '!'),
           ],
         ),
@@ -2726,7 +3442,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     }
     // 2. Deliverables Report Revision Requested
     else if ((lower.contains('deliverables') || lower.contains('report')) &&
-        (lower.contains('revision') || lower.contains('requested change') || lower.contains('requested changes'))) {
+        (lower.contains('revision') ||
+            lower.contains('requested change') ||
+            lower.contains('requested changes'))) {
       bg = const Color(0xFFFFFBEB);
       textColor = const Color(0xFF92400E);
       iconCircleBg = const Color(0xFFFFC940);
@@ -2734,9 +3452,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.edit_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
           children: const [
-            TextSpan(text: 'Revision requested', style: TextStyle(fontWeight: FontWeight.w800)),
+            TextSpan(
+              text: 'Revision requested',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             TextSpan(text: ' on the deliverables report.'),
           ],
         ),
@@ -2745,7 +3470,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     // 3. Deliverables Report Submitted
     else if (lower.contains('submitted the deliverables') ||
         lower.contains('submitted the report') ||
-        (lower.contains('submitted') && (lower.contains('deliverables') || lower.contains('report')))) {
+        (lower.contains('submitted') &&
+            (lower.contains('deliverables') || lower.contains('report')))) {
       bg = const Color(0xFFFEF2F2);
       textColor = const Color(0xFF991B1B);
       iconCircleBg = const Color(0xFFEE2C2C);
@@ -2753,10 +3479,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.assignment_turned_in_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
           children: const [
             TextSpan(text: 'The '),
-            TextSpan(text: 'deliverables report', style: TextStyle(fontWeight: FontWeight.w800)),
+            TextSpan(
+              text: 'deliverables report',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             TextSpan(text: ' was submitted for review.'),
           ],
         ),
@@ -2774,10 +3507,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.lock_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
           children: const [
             TextSpan(text: 'The '),
-            TextSpan(text: 'deal is officially locked', style: TextStyle(fontWeight: FontWeight.w800)),
+            TextSpan(
+              text: 'deal is officially locked',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             TextSpan(text: ' and confirmed!'),
           ],
         ),
@@ -2797,17 +3537,26 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       final dealWord = isCampaign ? 'campaign deal' : 'deal proposal';
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
           children: [
             const TextSpan(text: 'A new '),
-            TextSpan(text: dealWord, style: const TextStyle(fontWeight: FontWeight.w800)),
+            TextSpan(
+              text: dealWord,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
             const TextSpan(text: ' was shared for approval.'),
           ],
         ),
       );
     }
     // 6. Proposal Changes Requested
-    else if (lower.contains('changes') || lower.contains('requested change') || lower.contains('revision')) {
+    else if (lower.contains('changes') ||
+        lower.contains('requested change') ||
+        lower.contains('revision')) {
       bg = const Color(0xFFFFFBEB);
       textColor = const Color(0xFF92400E);
       iconCircleBg = const Color(0xFFFFC940);
@@ -2816,9 +3565,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       final dealWord = isCampaign ? 'campaign deal' : 'proposal';
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
           children: [
-            const TextSpan(text: 'Changes requested', style: TextStyle(fontWeight: FontWeight.w800)),
+            const TextSpan(
+              text: 'Changes requested',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             TextSpan(text: ' on the $dealWord.'),
           ],
         ),
@@ -2833,9 +3589,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       iconData = Icons.credit_card_rounded;
       messageText = RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(fontSize: 10.5, color: textColor, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
           children: const [
-            TextSpan(text: 'Payment completed', style: TextStyle(fontWeight: FontWeight.w800)),
+            TextSpan(
+              text: 'Payment completed',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             TextSpan(text: ' successfully!'),
           ],
         ),
@@ -2844,22 +3607,37 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     // 8. Generic Fallback
     else {
       final clean = msg.content
-          .replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]', unicode: true), '')
+          .replaceAll(
+            RegExp(
+              r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]',
+              unicode: true,
+            ),
+            '',
+          )
           .trim();
       return Center(
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.85,
+          ),
           decoration: BoxDecoration(
             color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.1), width: 1),
+            border: Border.all(
+              color: Colors.black.withValues(alpha: 0.1),
+              width: 1,
+            ),
           ),
           child: Text(
             clean.isNotEmpty ? clean : msg.content,
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.black54),
+            style: GoogleFonts.poppins(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.black54,
+            ),
           ),
         ),
       );
@@ -2870,11 +3648,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
+        ),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.12), width: 1),
+          border: Border.all(
+            color: Colors.black.withValues(alpha: 0.12),
+            width: 1,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -2937,9 +3720,14 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       textColor = Colors.black;
     }
 
-    final isDarkBubble = (bubbleBg == MeetdayColors.primaryRed || bubbleBg == Colors.black);
-    final alignment = (isAdmin || !isMe) ? Alignment.centerLeft : Alignment.centerRight;
-    final crossAlign = (isAdmin || !isMe) ? CrossAxisAlignment.start : CrossAxisAlignment.end;
+    final isDarkBubble =
+        (bubbleBg == MeetdayColors.primaryRed || bubbleBg == Colors.black);
+    final alignment = (isAdmin || !isMe)
+        ? Alignment.centerLeft
+        : Alignment.centerRight;
+    final crossAlign = (isAdmin || !isMe)
+        ? CrossAxisAlignment.start
+        : CrossAxisAlignment.end;
 
     return Dismissible(
       key: ValueKey('msg_${msg.id}_${msg.createdAt}'),
@@ -2955,7 +3743,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       background: Container(
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 16),
-        child: const Icon(Icons.reply_rounded, color: MeetdayColors.primaryRed, size: 24),
+        child: const Icon(
+          Icons.reply_rounded,
+          color: MeetdayColors.primaryRed,
+          size: 24,
+        ),
       ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -2987,7 +3779,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 onLongPress: () => _showMessageContextMenu(msg),
                 child: isDeleted
                     ? Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF3F4F6),
                           borderRadius: BorderRadius.circular(16),
@@ -3003,12 +3798,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         ),
                       )
                     : Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 9,
+                        ),
                         decoration: BoxDecoration(
                           color: bubbleBg,
                           borderRadius: BorderRadius.circular(16).copyWith(
-                            bottomRight: isMe ? const Radius.circular(3) : const Radius.circular(16),
-                            bottomLeft: (!isMe || isAdmin) ? const Radius.circular(3) : const Radius.circular(16),
+                            bottomRight: isMe
+                                ? const Radius.circular(3)
+                                : const Radius.circular(16),
+                            bottomLeft: (!isMe || isAdmin)
+                                ? const Radius.circular(3)
+                                : const Radius.circular(16),
                           ),
                         ),
                         child: Column(
@@ -3018,7 +3820,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                             if (msg.replyTo != null) ...[
                               Container(
                                 margin: const EdgeInsets.only(bottom: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
                                   color: isDarkBubble
                                       ? Colors.white.withValues(alpha: 0.15)
@@ -3026,7 +3831,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border(
                                     left: BorderSide(
-                                      color: isDarkBubble ? Colors.white70 : Colors.black45,
+                                      color: isDarkBubble
+                                          ? Colors.white70
+                                          : Colors.black45,
                                       width: 3.5,
                                     ),
                                   ),
@@ -3039,7 +3846,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                       style: GoogleFonts.poppins(
                                         fontSize: 9,
                                         fontWeight: FontWeight.w900,
-                                        color: isDarkBubble ? Colors.white70 : Colors.black54,
+                                        color: isDarkBubble
+                                            ? Colors.white70
+                                            : Colors.black54,
                                       ),
                                     ),
                                     if (msg.replyTo!.content.isNotEmpty) ...[
@@ -3049,7 +3858,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                         style: GoogleFonts.poppins(
                                           fontSize: 10.5,
                                           fontWeight: FontWeight.w500,
-                                          color: isDarkBubble ? Colors.white : Colors.black87,
+                                          color: isDarkBubble
+                                              ? Colors.white
+                                              : Colors.black87,
                                         ),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
@@ -3061,20 +3872,26 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                             ],
 
                             // Media Attachment
-                            if (msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty) ...[
+                            if (msg.mediaUrl != null &&
+                                msg.mediaUrl!.isNotEmpty) ...[
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
                                 child: Image.network(
                                   msg.mediaUrl!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => Container(
-                                    padding: const EdgeInsets.all(8),
-                                    color: Colors.black12,
-                                    child: const Icon(Icons.broken_image_rounded, size: 36),
-                                  ),
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        color: Colors.black12,
+                                        child: const Icon(
+                                          Icons.broken_image_rounded,
+                                          size: 36,
+                                        ),
+                                      ),
                                 ),
                               ),
-                              if (msg.content.isNotEmpty) const SizedBox(height: 6),
+                              if (msg.content.isNotEmpty)
+                                const SizedBox(height: 6),
                             ],
 
                             // Content text
@@ -3095,7 +3912,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                         style: TextStyle(
                                           fontSize: 9.5,
                                           fontStyle: FontStyle.italic,
-                                          color: isDarkBubble ? Colors.white60 : Colors.black45,
+                                          color: isDarkBubble
+                                              ? Colors.white60
+                                              : Colors.black45,
                                         ),
                                       ),
                                   ],
@@ -3145,10 +3964,46 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   Widget _buildEmojiPicker() {
     const emojis = [
-      '👍', '❤️', '🔥', '🎉', '🚀', '👏', '🤝', '✨', '💯', '🙌',
-      '😊', '😂', '🤣', '😍', '🤔', '😎', '🥳', '🤩', '💡', '💬',
-      '📅', '📍', '🏢', '💼', '📈', '💰', '🏷️', '🎯', '🎤', '☕',
-      '⭐', '📌', '🏆', '✅', '🔔', '📣', '🍻', '🍔', '🍕', '🎈',
+      '👍',
+      '❤️',
+      '🔥',
+      '🎉',
+      '🚀',
+      '👏',
+      '🤝',
+      '✨',
+      '💯',
+      '🙌',
+      '😊',
+      '😂',
+      '🤣',
+      '😍',
+      '🤔',
+      '😎',
+      '🥳',
+      '🤩',
+      '💡',
+      '💬',
+      '📅',
+      '📍',
+      '🏢',
+      '💼',
+      '📈',
+      '💰',
+      '🏷️',
+      '🎯',
+      '🎤',
+      '☕',
+      '⭐',
+      '📌',
+      '🏆',
+      '✅',
+      '🔔',
+      '📣',
+      '🍻',
+      '🍔',
+      '🍕',
+      '🎈',
     ];
 
     return Container(
@@ -3176,7 +4031,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   : text + emoji;
               _textController.text = newText;
               _textController.selection = TextSelection.collapsed(
-                offset: (selection.start >= 0 ? selection.start : text.length) + emoji.length,
+                offset:
+                    (selection.start >= 0 ? selection.start : text.length) +
+                    emoji.length,
               );
             },
             borderRadius: BorderRadius.circular(8),
@@ -3208,7 +4065,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
               if (!msg.isDeleted)
                 ListTile(
                   leading: const Icon(Icons.reply_rounded, color: Colors.black),
-                  title: Text('Reply', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+                  title: Text(
+                    'Reply',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                  ),
                   onTap: () {
                     Navigator.of(ctx).pop();
                     setState(() {
@@ -3219,19 +4079,27 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 ),
               ListTile(
                 leading: const Icon(Icons.copy_rounded, color: Colors.black),
-                title: Text('Copy Text', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+                title: Text(
+                  'Copy Text',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                ),
                 onTap: () {
                   Navigator.of(ctx).pop();
                   Clipboard.setData(ClipboardData(text: msg.content));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Message copied to clipboard')),
+                    const SnackBar(
+                      content: Text('Message copied to clipboard'),
+                    ),
                   );
                 },
               ),
               if (msg.isMe && !msg.isDeleted) ...[
                 ListTile(
                   leading: const Icon(Icons.edit_rounded, color: Colors.black),
-                  title: Text('Edit Message', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+                  title: Text(
+                    'Edit Message',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                  ),
                   onTap: () {
                     Navigator.of(ctx).pop();
                     setState(() {
@@ -3242,9 +4110,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.delete_outline_rounded, color: MeetdayColors.primaryRed),
-                  title: Text('Delete Message',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: MeetdayColors.primaryRed)),
+                  leading: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: MeetdayColors.primaryRed,
+                  ),
+                  title: Text(
+                    'Delete Message',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700,
+                      color: MeetdayColors.primaryRed,
+                    ),
+                  ),
                   onTap: () {
                     Navigator.of(ctx).pop();
                     _handleDelete(msg);
@@ -3394,7 +4270,12 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         side: BorderSide(color: Colors.black, width: 2.5),
       ),
       builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          MediaQuery.of(ctx).viewInsets.bottom + 20,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3403,13 +4284,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
               child: Container(
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
             const SizedBox(height: 16),
             Text(
               'Attach Media',
-              style: GoogleFonts.bricolageGrotesque(fontSize: 18, fontWeight: FontWeight.w900),
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -3434,17 +4321,29 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.photo_library_rounded, size: 24, color: Colors.black),
+                          const Icon(
+                            Icons.photo_library_rounded,
+                            size: 24,
+                            color: Colors.black,
+                          ),
                           const SizedBox(height: 6),
                           Text(
                             'Gallery',
-                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.black),
+                            style: GoogleFonts.poppins(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
                           ),
                         ],
                       ),
@@ -3465,17 +4364,29 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.camera_alt_rounded, size: 24, color: Colors.black),
+                          const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 24,
+                            color: Colors.black,
+                          ),
                           const SizedBox(height: 6),
                           Text(
                             'Camera',
-                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.black),
+                            style: GoogleFonts.poppins(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
                           ),
                         ],
                       ),
@@ -3496,17 +4407,29 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
                         ],
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.file_present_rounded, size: 24, color: Color(0xFF2563EB)),
+                          const Icon(
+                            Icons.file_present_rounded,
+                            size: 24,
+                            color: Color(0xFF2563EB),
+                          ),
                           const SizedBox(height: 6),
                           Text(
                             'Document',
-                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.black),
+                            style: GoogleFonts.poppins(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
                           ),
                         ],
                       ),
@@ -3520,15 +4443,23 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             // Divider or text URL
             Row(
               children: [
-                const Expanded(child: Divider(color: Colors.black12, thickness: 1)),
+                const Expanded(
+                  child: Divider(color: Colors.black12, thickness: 1),
+                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Text(
                     'OR PASTE URL',
-                    style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.black38),
+                    style: GoogleFonts.poppins(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black38,
+                    ),
                   ),
                 ),
-                const Expanded(child: Divider(color: Colors.black12, thickness: 1)),
+                const Expanded(
+                  child: Divider(color: Colors.black12, thickness: 1),
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -3537,16 +4468,28 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 color: const Color(0xFFF9FAFB),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.black, width: 2),
-                boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black,
+                    offset: Offset(2, 2),
+                    blurRadius: 0,
+                  ),
+                ],
               ),
               child: TextField(
                 controller: urlController,
                 style: GoogleFonts.poppins(fontSize: 12),
                 decoration: InputDecoration(
                   hintText: 'https://example.com/image.png',
-                  hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
+                  hintStyle: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.black38,
+                  ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
@@ -3571,7 +4514,13 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     _sendMessage(mediaUrl: url);
                   }
                 },
-                child: Text('Send Media URL', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
+                child: Text(
+                  'Send Media URL',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
               ),
             ),
           ],
@@ -3582,17 +4531,36 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   // ─── Deal Form Dialog (Lock Deal / Edit Deal) ──────────────────────────────
 
-  void _showDealFormDialog(BuildContext context, {Map<String, dynamic>? existingDeal}) {
-    final nameCtrl = TextEditingController(text: existingDeal?['projectName']?.toString() ?? widget.thread.title);
-    final amountCtrl =
-        TextEditingController(text: (existingDeal?['sponsorshipAmount'] ?? existingDeal?['amount'] ?? '').toString());
-    final deliverablesCtrl = TextEditingController(text: existingDeal?['deliverables']?.toString() ?? '');
-    final venueCtrl = TextEditingController(text: existingDeal?['venue']?.toString() ?? 'Main Stage / Venue');
+  void _showDealFormDialog(
+    BuildContext context, {
+    Map<String, dynamic>? existingDeal,
+  }) {
+    final nameCtrl = TextEditingController(
+      text: existingDeal?['projectName']?.toString() ?? widget.thread.title,
+    );
+    final amountCtrl = TextEditingController(
+      text:
+          (existingDeal?['sponsorshipAmount'] ?? existingDeal?['amount'] ?? '')
+              .toString(),
+    );
+    final deliverablesCtrl = TextEditingController(
+      text: existingDeal?['deliverables']?.toString() ?? '',
+    );
+    final venueCtrl = TextEditingController(
+      text: existingDeal?['venue']?.toString() ?? 'Main Stage / Venue',
+    );
     final dateCtrl = TextEditingController(
-        text: existingDeal?['startDate']?.toString().split('T').first ??
-            DateTime.now().toIso8601String().split('T').first);
+      text:
+          existingDeal?['startDate']?.toString().split('T').first ??
+          DateTime.now().toIso8601String().split('T').first,
+    );
     final notesCtrl = TextEditingController(
-        text: (existingDeal?['additionalNotes'] ?? existingDeal?['otherTerms'] ?? '').toString());
+      text:
+          (existingDeal?['additionalNotes'] ??
+                  existingDeal?['otherTerms'] ??
+                  '')
+              .toString(),
+    );
     bool isSaving = false;
 
     showModalBottomSheet<void>(
@@ -3606,7 +4574,12 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
           return Padding(
-            padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              MediaQuery.of(ctx).viewInsets.bottom + 20,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -3616,7 +4589,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     child: Container(
                       width: 40,
                       height: 4,
-                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(2)),
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -3624,8 +4600,13 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        existingDeal != null ? 'Edit Deal Terms' : 'Lock the Deal',
-                        style: GoogleFonts.bricolageGrotesque(fontSize: 19, fontWeight: FontWeight.w900),
+                        existingDeal != null
+                            ? 'Edit Deal Terms'
+                            : 'Lock the Deal',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded),
@@ -3635,17 +4616,28 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   ),
                   Text(
                     'Finalize terms and submit them to ${widget.thread.counterpartName} for lock confirmation.',
-                    style: GoogleFonts.poppins(fontSize: 11, color: Colors.black54),
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.black54,
+                    ),
                   ),
                   const SizedBox(height: 14),
                   _fieldLabel('PROJECT / EVENT NAME'),
                   _formInput(nameCtrl, 'e.g. Developer Meetup 2026'),
                   const SizedBox(height: 10),
                   _fieldLabel('DEAL AMOUNT (₹)'),
-                  _formInput(amountCtrl, 'e.g. 50000', keyboardType: TextInputType.number),
+                  _formInput(
+                    amountCtrl,
+                    'e.g. 50000',
+                    keyboardType: TextInputType.number,
+                  ),
                   const SizedBox(height: 10),
                   _fieldLabel('DELIVERABLES AGREED'),
-                  _formInput(deliverablesCtrl, 'List agreed deliverables, logo display, speaking slot…', maxLines: 3),
+                  _formInput(
+                    deliverablesCtrl,
+                    'List agreed deliverables, logo display, speaking slot…',
+                    maxLines: 3,
+                  ),
                   const SizedBox(height: 10),
                   _fieldLabel('VENUE / LOCATION'),
                   _formInput(venueCtrl, 'e.g. Innovation Hub / Bangalore'),
@@ -3654,7 +4646,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   _formInput(dateCtrl, 'YYYY-MM-DD'),
                   const SizedBox(height: 10),
                   _fieldLabel('ADDITIONAL NOTES'),
-                  _formInput(notesCtrl, 'Special conditions, payment schedules…', maxLines: 2),
+                  _formInput(
+                    notesCtrl,
+                    'Special conditions, payment schedules…',
+                    maxLines: 2,
+                  ),
                   const SizedBox(height: 18),
                   SizedBox(
                     width: double.infinity,
@@ -3673,7 +4669,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                           ? null
                           : () async {
                               final name = nameCtrl.text.trim();
-                              final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
+                              final amount =
+                                  double.tryParse(amountCtrl.text.trim()) ?? 0;
                               if (name.isEmpty) return;
 
                               setModalState(() => isSaving = true);
@@ -3687,18 +4684,30 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                   'startDate': dateCtrl.text.trim(),
                                   'additionalNotes': notesCtrl.text.trim(),
                                 };
-                                await saveDealApi(api, widget.thread, payload, isUpdate: existingDeal != null);
-                                ref.invalidate(threadDealProvider(widget.thread));
-                                ref.invalidate(chatMessagesProvider(widget.thread));
+                                await saveDealApi(
+                                  api,
+                                  widget.thread,
+                                  payload,
+                                  isUpdate: existingDeal != null,
+                                  role: ref.read(authControllerProvider).role,
+                                );
+                                ref.invalidate(
+                                  threadDealProvider(widget.thread),
+                                );
+                                ref.invalidate(
+                                  chatMessagesProvider(widget.thread),
+                                );
                                 ref.invalidate(chatHubProvider);
 
                                 if (ctx.mounted) Navigator.of(ctx).pop();
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: Text(existingDeal != null
-                                          ? 'Deal terms updated!'
-                                          : 'Deal locked successfully!'),
+                                      content: Text(
+                                        existingDeal != null
+                                            ? 'Deal terms updated!'
+                                            : 'Deal locked successfully!',
+                                      ),
                                       backgroundColor: const Color(0xFF10B981),
                                     ),
                                   );
@@ -3707,19 +4716,26 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                        content: Text('Failed to save deal: $e'),
-                                        backgroundColor: MeetdayColors.primaryRed),
+                                      content: Text('Failed to save deal: $e'),
+                                      backgroundColor: MeetdayColors.primaryRed,
+                                    ),
                                   );
                                 }
                               } finally {
-                                if (ctx.mounted) setModalState(() => isSaving = false);
+                                if (ctx.mounted)
+                                  setModalState(() => isSaving = false);
                               }
                             },
                       child: Text(
                         isSaving
                             ? 'Saving…'
-                            : (existingDeal != null ? 'Update Deal Terms' : 'Confirm & Lock Deal'),
-                        style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 13),
+                            : (existingDeal != null
+                                  ? 'Update Deal Terms'
+                                  : 'Confirm & Lock Deal'),
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ),
@@ -3734,7 +4750,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   // ─── Deal Details Modal Bottom Sheet ───────────────────────────────────────
 
-  void _showDealDetailsDialog(BuildContext context, {Map<String, dynamic>? initialDeal}) {
+  void _showDealDetailsDialog(
+    BuildContext context, {
+    Map<String, dynamic>? initialDeal,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3763,8 +4782,14 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     showDialog<void>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: Colors.black, width: 2.5)),
-        title: Text('Request Changes', style: GoogleFonts.bricolageGrotesque(fontWeight: FontWeight.w900)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Colors.black, width: 2.5),
+        ),
+        title: Text(
+          'Request Changes',
+          style: GoogleFonts.bricolageGrotesque(fontWeight: FontWeight.w900),
+        ),
         content: TextField(
           controller: noteCtrl,
           maxLines: 3,
@@ -3772,32 +4797,56 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           decoration: InputDecoration(
             hintText: 'Describe changes needed on the deal terms…',
             hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2.5)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.black, width: 2),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.black, width: 2),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.black, width: 2.5),
+            ),
             filled: false,
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dCtx).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(dCtx).pop(),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: MeetdayColors.primaryRed, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MeetdayColors.primaryRed,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () async {
               Navigator.of(dCtx).pop();
               try {
                 final api = ref.read(apiClientProvider);
-                await requestDealChangesApi(api, widget.thread, note: noteCtrl.text.trim());
+                await requestDealChangesApi(
+                  api,
+                  widget.thread,
+                  note: noteCtrl.text.trim(),
+                  role: ref.read(authControllerProvider).role,
+                );
                 ref.invalidate(threadDealProvider(widget.thread));
                 ref.invalidate(chatMessagesProvider(widget.thread));
                 ref.invalidate(chatHubProvider);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Changes requested successfully!')),
+                    const SnackBar(
+                      content: Text('Changes requested successfully!'),
+                    ),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to request changes: $e')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to request changes: $e')),
+                  );
                 }
               }
             },
@@ -3811,7 +4860,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   // ─── Deal Report Modal Bottom Sheet ────────────────────────────────────────
 
   void _showDealReportModal(
-      BuildContext context, {Map<String, dynamic>? initialReport, Map<String, dynamic>? deal}) {
+    BuildContext context, {
+    Map<String, dynamic>? initialReport,
+    Map<String, dynamic>? deal,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3845,14 +4897,20 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     );
   }
 
-  Widget _formInput(TextEditingController ctrl, String hint,
-      {int maxLines = 1, TextInputType? keyboardType}) {
+  Widget _formInput(
+    TextEditingController ctrl,
+    String hint, {
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFF9FAFB),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+        boxShadow: const [
+          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+        ],
       ),
       child: TextField(
         controller: ctrl,
@@ -3868,7 +4926,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           errorBorder: InputBorder.none,
           disabledBorder: InputBorder.none,
           filled: false,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
         ),
       ),
     );
@@ -3893,10 +4954,12 @@ class _DealDetailsModalSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_DealDetailsModalSheet> createState() => _DealDetailsModalSheetState();
+  ConsumerState<_DealDetailsModalSheet> createState() =>
+      _DealDetailsModalSheetState();
 }
 
-class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> {
+class _DealDetailsModalSheetState
+    extends ConsumerState<_DealDetailsModalSheet> {
   Map<String, dynamic>? deal;
   bool isLoading = true;
   bool isApproving = false;
@@ -3915,8 +4978,8 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
       final res = widget.thread.kind == 'SPACE_INTEREST'
           ? await api.dio.get<dynamic>('/spaces/chats/$id/deal')
           : widget.thread.kind == 'SPACE_HOST'
-              ? await api.dio.get<dynamic>('/space-host/chats/$id/deal')
-              : await api.dio.get<dynamic>('/sponsorships/chats/$id/deal');
+          ? await api.dio.get<dynamic>('/space-host/chats/$id/deal')
+          : await api.dio.get<dynamic>('/sponsorships/chats/$id/deal');
       final raw = res.data is Map ? (res.data['data'] ?? res.data) : null;
       if (raw is Map && mounted) {
         setState(() {
@@ -3931,18 +4994,29 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
     if (mounted) setState(() => isLoading = false);
   }
 
-  Widget _badge(String text, {required Color bg, required Color textCol, Color? borderCol}) {
+  Widget _badge(
+    String text, {
+    required Color bg,
+    required Color textCol,
+    Color? borderCol,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: borderCol ?? Colors.black, width: 1.5),
-        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0)],
+        boxShadow: const [
+          BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
+        ],
       ),
       child: Text(
         text,
-        style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: textCol),
+        style: GoogleFonts.poppins(
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          color: textCol,
+        ),
       ),
     );
   }
@@ -3961,12 +5035,22 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
         children: [
           Text(
             label,
-            style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w900, color: Colors.black45, letterSpacing: 0.3),
+            style: GoogleFonts.poppins(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
+              color: Colors.black45,
+              letterSpacing: 0.3,
+            ),
           ),
           const SizedBox(height: 3),
           Text(
             value.isNotEmpty ? value : '—',
-            style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.black, height: 1.3),
+            style: GoogleFonts.poppins(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+              height: 1.3,
+            ),
             maxLines: multiline ? null : 1,
             overflow: multiline ? null : TextOverflow.ellipsis,
           ),
@@ -3988,15 +5072,20 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
   @override
   Widget build(BuildContext context) {
     final curDeal = deal;
-    final dealStatus = (curDeal?['status'] ?? 'PENDING').toString().toUpperCase();
+    final dealStatus = (curDeal?['status'] ?? 'PENDING')
+        .toString()
+        .toUpperCase();
     final isLocked = dealStatus == 'APPROVED';
     final isChangesRequested = dealStatus == 'CHANGES_REQUESTED';
     final isCampaign = widget.thread.kind == 'CAMPAIGN';
+    final currentRole = ref.watch(authControllerProvider).role;
+    final canApproveOrRequestChanges = _canReviewThreadDeal(
+      widget.thread,
+      currentRole,
+    );
 
-    final isHost = widget.thread.kind != 'BRAND' && widget.thread.category != 'brands';
-    final canApproveOrRequestChanges = isCampaign ? isHost : !isHost;
-
-    final projectName = (curDeal?['projectName'] ?? widget.thread.title).toString();
+    final projectName = (curDeal?['projectName'] ?? widget.thread.title)
+        .toString();
     final startDateStr = _formatDateString(curDeal?['startDate']?.toString());
     final endDateStr = _formatDateString(curDeal?['endDate']?.toString());
     final venueStr = (curDeal?['venue'] ?? '—').toString();
@@ -4005,15 +5094,24 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
     final cashAmountStr = _formatIndianCurrency(amountVal);
     final barterStr = (curDeal?['barterElements'] ?? 'None').toString();
     final deliverablesStr = (curDeal?['deliverables'] ?? '').toString();
-    final notesStr = (curDeal?['additionalNotes'] ?? curDeal?['otherTerms'] ?? '').toString();
+    final notesStr =
+        (curDeal?['additionalNotes'] ?? curDeal?['otherTerms'] ?? '')
+            .toString();
     final changeNote = (curDeal?['changeRequestNote'] ?? '').toString();
     final versionNum = curDeal?['version'] ?? 1;
 
-    final paymentStatus = (curDeal?['paymentStatus'] ?? 'UNPAID').toString().toUpperCase();
+    final paymentStatus = (curDeal?['paymentStatus'] ?? 'UNPAID')
+        .toString()
+        .toUpperCase();
     final isPaid = paymentStatus == 'PAID';
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 14, 20, MediaQuery.of(context).padding.bottom + 16),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        14,
+        20,
+        MediaQuery.of(context).padding.bottom + 16,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4023,7 +5121,10 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
             child: Container(
               width: 40,
               height: 4.5,
-              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(3)),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -4036,15 +5137,26 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                 children: [
                   Text(
                     isCampaign ? 'Campaign Deal' : 'Deal Details',
-                    style: GoogleFonts.bricolageGrotesque(fontSize: 19, fontWeight: FontWeight.w900),
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   if (isLocked)
                     _badge('🔒 Locked', bg: Colors.black, textCol: Colors.white)
                   else if (isChangesRequested)
-                    _badge('Changes Requested', bg: MeetdayColors.primaryRed, textCol: Colors.white)
+                    _badge(
+                      'Changes Requested',
+                      bg: MeetdayColors.primaryRed,
+                      textCol: Colors.white,
+                    )
                   else
-                    _badge('Pending Approval', bg: MeetdayColors.accentYellow, textCol: Colors.black),
+                    _badge(
+                      'Pending Approval',
+                      bg: MeetdayColors.accentYellow,
+                      textCol: Colors.black,
+                    ),
                 ],
               ),
               GestureDetector(
@@ -4055,7 +5167,11 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                     color: const Color(0xFFF3F4F6),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.close_rounded, size: 20, color: Colors.black87),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: Colors.black87,
+                  ),
                 ),
               ),
             ],
@@ -4064,7 +5180,9 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
 
           // Content Box
           ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.65,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4072,23 +5190,45 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                   if (isLoading && curDeal == null)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5)),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.black,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
                     )
                   else ...[
-                    _itemBox(isCampaign ? 'CAMPAIGN NAME' : 'PROJECT NAME', projectName),
+                    _itemBox(
+                      isCampaign ? 'CAMPAIGN NAME' : 'PROJECT NAME',
+                      projectName,
+                    ),
                     const SizedBox(height: 8),
 
                     _twoCol('START DATE', startDateStr, 'END DATE', endDateStr),
                     const SizedBox(height: 8),
 
-                    _twoCol(isCampaign ? 'CITY / REGION' : 'VENUE', venueStr, 'TIME', timeStr),
+                    _twoCol(
+                      isCampaign ? 'CITY / REGION' : 'VENUE',
+                      venueStr,
+                      'TIME',
+                      timeStr,
+                    ),
                     const SizedBox(height: 8),
 
-                    _twoCol('CASH AMOUNT', cashAmountStr, 'BARTER ELEMENTS', barterStr),
+                    _twoCol(
+                      'CASH AMOUNT',
+                      cashAmountStr,
+                      'BARTER ELEMENTS',
+                      barterStr,
+                    ),
                     const SizedBox(height: 8),
 
                     if (deliverablesStr.isNotEmpty) ...[
-                      _itemBox('KEY DELIVERABLES', deliverablesStr, multiline: true),
+                      _itemBox(
+                        'KEY DELIVERABLES',
+                        deliverablesStr,
+                        multiline: true,
+                      ),
                       const SizedBox(height: 8),
                     ],
 
@@ -4104,19 +5244,30 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                         decoration: BoxDecoration(
                           color: const Color(0xFFFEF2F2),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: MeetdayColors.primaryRed, width: 2),
+                          border: Border.all(
+                            color: MeetdayColors.primaryRed,
+                            width: 2,
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'CHANGES REQUESTED',
-                              style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: MeetdayColors.primaryRed),
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: MeetdayColors.primaryRed,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               changeNote,
-                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
                             ),
                           ],
                         ),
@@ -4125,7 +5276,9 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                     ],
 
                     // Payment Breakdown Card (Matching frontend DealDetailsModal)
-                    if (isLocked && (num.tryParse(amountVal?.toString() ?? '0') ?? 0) > 0) ...[
+                    if (isLocked &&
+                        (num.tryParse(amountVal?.toString() ?? '0') ?? 0) >
+                            0) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -4133,7 +5286,13 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                           color: const Color(0xFFF9FAFB),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: Colors.black, width: 2),
-                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -4141,11 +5300,22 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('PAYMENT BREAKDOWN', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                                Text(
+                                  'PAYMENT BREAKDOWN',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black54,
+                                  ),
+                                ),
                                 _badge(
                                   isPaid ? 'PAID' : 'PENDING',
-                                  bg: isPaid ? const Color(0xFF10B981) : const Color(0xFFE5E7EB),
-                                  textCol: isPaid ? Colors.white : Colors.black87,
+                                  bg: isPaid
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFFE5E7EB),
+                                  textCol: isPaid
+                                      ? Colors.white
+                                      : Colors.black87,
                                   borderCol: Colors.black,
                                 ),
                               ],
@@ -4153,22 +5323,45 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                             const SizedBox(height: 8),
                             _paymentRow('Sponsorship Amount', cashAmountStr),
                             if (curDeal?['platformFeeAmount'] != null)
-                              _paymentRow('Platform Fee (5%)', _formatIndianCurrency(curDeal!['platformFeeAmount'])),
+                              _paymentRow(
+                                'Platform Fee (5%)',
+                                _formatIndianCurrency(
+                                  curDeal!['platformFeeAmount'],
+                                ),
+                              ),
                             if (curDeal?['transactionFeeAmount'] != null)
-                              _paymentRow('Transaction Fee (3%)', _formatIndianCurrency(curDeal!['transactionFeeAmount'])),
+                              _paymentRow(
+                                'Transaction Fee (3%)',
+                                _formatIndianCurrency(
+                                  curDeal!['transactionFeeAmount'],
+                                ),
+                              ),
                             if (curDeal?['taxAmount'] != null)
-                              _paymentRow('GST', _formatIndianCurrency(curDeal!['taxAmount'])),
-                            const Divider(height: 12, thickness: 1, color: Color(0x26000000)),
+                              _paymentRow(
+                                'GST',
+                                _formatIndianCurrency(curDeal!['taxAmount']),
+                              ),
+                            const Divider(
+                              height: 12,
+                              thickness: 1,
+                              color: Color(0x26000000),
+                            ),
                             _paymentRow(
                               'Total Amount',
-                              _formatIndianCurrency(curDeal?['totalAmount'] ?? amountVal),
+                              _formatIndianCurrency(
+                                curDeal?['totalAmount'] ?? amountVal,
+                              ),
                               isBold: true,
                             ),
                             if (isPaid && curDeal?['paidAt'] != null) ...[
                               const SizedBox(height: 4),
                               Text(
                                 'Paid on ${_formatDateString(curDeal!['paidAt'].toString())}',
-                                style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.black45),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black45,
+                                ),
                               ),
                             ],
                           ],
@@ -4179,7 +5372,11 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
 
                     Text(
                       'Version $versionNum',
-                      style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.black38),
+                      style: GoogleFonts.poppins(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black38,
+                      ),
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -4206,7 +5403,13 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                         elevation: 0,
                       ),
                       onPressed: widget.onRequestChanges,
-                      child: Text('Request Changes', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                      child: Text(
+                        'Request Changes',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -4228,29 +5431,51 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                               setState(() => isApproving = true);
                               try {
                                 final api = ref.read(apiClientProvider);
-                                await approveDealApi(api, widget.thread);
-                                ref.invalidate(threadDealProvider(widget.thread));
-                                ref.invalidate(chatMessagesProvider(widget.thread));
+                                await approveDealApi(
+                                  api,
+                                  widget.thread,
+                                  role: ref.read(authControllerProvider).role,
+                                );
+                                ref.invalidate(
+                                  threadDealProvider(widget.thread),
+                                );
+                                ref.invalidate(
+                                  chatMessagesProvider(widget.thread),
+                                );
                                 ref.invalidate(chatHubProvider);
                                 if (context.mounted) {
                                   Navigator.of(context).pop();
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('🎉 Deal approved and locked!'), backgroundColor: Color(0xFF10B981)),
+                                    const SnackBar(
+                                      content: Text(
+                                        '🎉 Deal approved and locked!',
+                                      ),
+                                      backgroundColor: Color(0xFF10B981),
+                                    ),
                                   );
                                 }
                               } catch (e) {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Failed to approve deal: $e'), backgroundColor: MeetdayColors.primaryRed),
+                                    SnackBar(
+                                      content: Text(
+                                        'Failed to approve deal: $e',
+                                      ),
+                                      backgroundColor: MeetdayColors.primaryRed,
+                                    ),
                                   );
                                 }
                               } finally {
-                                if (mounted) setState(() => isApproving = false);
+                                if (mounted)
+                                  setState(() => isApproving = false);
                               }
                             },
                       child: Text(
                         isApproving ? 'Approving…' : 'Approve & Lock',
-                        style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12),
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
@@ -4271,7 +5496,13 @@ class _DealDetailsModalSheetState extends ConsumerState<_DealDetailsModalSheet> 
                     elevation: 0,
                   ),
                   onPressed: () => widget.onEditDeal(curDeal),
-                  child: Text('Edit Deal Terms', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 13)),
+                  child: Text(
+                    'Edit Deal Terms',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -4325,7 +5556,8 @@ class _DealReportModalSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_DealReportModalSheet> createState() => _DealReportModalSheetState();
+  ConsumerState<_DealReportModalSheet> createState() =>
+      _DealReportModalSheetState();
 }
 
 class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
@@ -4397,7 +5629,8 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
   void _prefillFromDeal(Map<String, dynamic>? d) {
     nameCtrl.text = (d?['projectName'] ?? widget.thread.title).toString();
-    dateCtrl.text = (d?['startDate']?.toString().split('T').first ?? '').toString();
+    dateCtrl.text = (d?['startDate']?.toString().split('T').first ?? '')
+        .toString();
     venueCtrl.text = (d?['venue'] ?? '').toString();
     timeCtrl.text = (d?['time'] ?? '').toString();
     guestCountCtrl.text = '';
@@ -4407,8 +5640,15 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
     deliverablesList = [];
     if (d?['deliverables'] != null) {
-      final items = d!['deliverables'].toString().split(RegExp(r',|\n')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-      deliverablesList = items.map((t) => {'text': t, 'checked': false}).toList();
+      final items = d!['deliverables']
+          .toString()
+          .split(RegExp(r',|\n'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      deliverablesList = items
+          .map((t) => {'text': t, 'checked': false})
+          .toList();
     }
   }
 
@@ -4421,18 +5661,35 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
       } catch (_) {}
     }
 
-    nameCtrl.text = (summary['projectName'] ?? rep['projectName'] ?? deal?['projectName'] ?? widget.thread.title).toString();
-    dateCtrl.text = (summary['date'] ?? rep['eventDate'] ?? deal?['startDate']?.toString().split('T').first ?? '').toString();
-    venueCtrl.text = (summary['venue'] ?? rep['venue'] ?? deal?['venue'] ?? '').toString();
-    timeCtrl.text = (summary['time'] ?? rep['time'] ?? deal?['time'] ?? '').toString();
-    guestCountCtrl.text = (summary['guestCount'] ?? rep['guestCount'] ?? '').toString();
-    ageRangeCtrl.text = (summary['ageRange'] ?? rep['ageRange'] ?? '').toString();
+    nameCtrl.text =
+        (summary['projectName'] ??
+                rep['projectName'] ??
+                deal?['projectName'] ??
+                widget.thread.title)
+            .toString();
+    dateCtrl.text =
+        (summary['date'] ??
+                rep['eventDate'] ??
+                deal?['startDate']?.toString().split('T').first ??
+                '')
+            .toString();
+    venueCtrl.text = (summary['venue'] ?? rep['venue'] ?? deal?['venue'] ?? '')
+        .toString();
+    timeCtrl.text = (summary['time'] ?? rep['time'] ?? deal?['time'] ?? '')
+        .toString();
+    guestCountCtrl.text = (summary['guestCount'] ?? rep['guestCount'] ?? '')
+        .toString();
+    ageRangeCtrl.text = (summary['ageRange'] ?? rep['ageRange'] ?? '')
+        .toString();
     summaryCtrl.text = (summary['summary'] ?? rep['summary'] ?? '').toString();
     if (summaryCtrl.text.startsWith('{')) summaryCtrl.text = '';
     notesCtrl.text = (rep['notes'] ?? '').toString();
 
-    reportStatus = (rep['status'] ?? summary['status'] ?? 'PENDING').toString().toUpperCase();
-    revisionNote = (rep['revisionNote'] ?? summary['revisionNote'] ?? '').toString();
+    reportStatus = (rep['status'] ?? summary['status'] ?? 'PENDING')
+        .toString()
+        .toUpperCase();
+    revisionNote = (rep['revisionNote'] ?? summary['revisionNote'] ?? '')
+        .toString();
 
     deliverablesList = [];
     final rawDelivs = summary['deliverables'] ?? rep['deliverables'];
@@ -4448,20 +5705,33 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
         }
       }
     } else if (deal?['deliverables'] != null) {
-      final items = deal!['deliverables'].toString().split(RegExp(r',|\n')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-      deliverablesList = items.map((t) => {'text': t, 'checked': false}).toList();
+      final items = deal!['deliverables']
+          .toString()
+          .split(RegExp(r',|\n'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      deliverablesList = items
+          .map((t) => {'text': t, 'checked': false})
+          .toList();
     }
 
     videoLinks = [];
     final vLinks = summary['videoLinks'] ?? rep['videoLinks'];
     if (vLinks is List) {
-      videoLinks = vLinks.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      videoLinks = vLinks
+          .map((e) => e.toString())
+          .where((s) => s.isNotEmpty)
+          .toList();
     }
 
     socialLinks = [];
     final sLinks = summary['socialLinks'] ?? rep['socialLinks'];
     if (sLinks is List) {
-      socialLinks = sLinks.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      socialLinks = sLinks
+          .map((e) => e.toString())
+          .where((s) => s.isNotEmpty)
+          .toList();
     }
 
     proofKeys = [];
@@ -4480,10 +5750,15 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
       final api = ref.read(apiClientProvider);
       final id = widget.thread.id;
       final res = widget.thread.kind == 'SPACE_INTEREST'
-          ? await api.dio.get<dynamic>('/spaces/chats/$id/deal/report')
+          ? await api.dio.get<dynamic>(
+              '/spaces/chats/$id/deal/report',
+              queryParameters: {
+                'role': _spaceChatRole(ref.read(authControllerProvider).role),
+              },
+            )
           : widget.thread.kind == 'SPACE_HOST'
-              ? await api.dio.get<dynamic>('/space-host/chats/$id/deal/report')
-              : await api.dio.get<dynamic>('/sponsorships/chats/$id/deal/report');
+          ? await api.dio.get<dynamic>('/space-host/chats/$id/deal/report')
+          : await api.dio.get<dynamic>('/sponsorships/chats/$id/deal/report');
       final raw = res.data is Map ? (res.data['data'] ?? res.data) : null;
       if (raw is Map && mounted) {
         final rep = Map<String, dynamic>.from(raw);
@@ -4499,9 +5774,10 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
       debugPrint('Error fetching fresh report: $e');
     }
     if (mounted) {
+      final currentRole = ref.read(authControllerProvider).role;
+      final isReviewer = _canReviewThreadReport(widget.thread, currentRole);
       setState(() {
         isLoading = false;
-        final isReviewer = widget.thread.category == 'brands' && widget.thread.kind == 'SPONSORSHIP';
         isEditing = !isReviewer;
       });
     }
@@ -4515,7 +5791,10 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
       return;
     }
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
     if (picked == null) return;
 
     setState(() => isUploadingProof = true);
@@ -4525,7 +5804,9 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
       final key = await api.uploadMediaFile(
         bytes: bytes,
         fileName: picked.name,
-        context: widget.thread.kind == 'SPACE_INTEREST' || widget.thread.kind == 'SPACE_HOST'
+        context:
+            widget.thread.kind == 'SPACE_INTEREST' ||
+                widget.thread.kind == 'SPACE_HOST'
             ? 'SPACE_DEAL_REPORT_MEDIA'
             : 'SPONSORSHIP_DEAL_REPORT_MEDIA',
         resourceId: widget.thread.id,
@@ -4544,9 +5825,14 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
   }
 
   Future<void> _handleSaveReport() async {
-    if (nameCtrl.text.trim().isEmpty || dateCtrl.text.trim().isEmpty || venueCtrl.text.trim().isEmpty) {
+    if (nameCtrl.text.trim().isEmpty ||
+        dateCtrl.text.trim().isEmpty ||
+        venueCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in Project Name, Date, and Venue.'), backgroundColor: MeetdayColors.primaryRed),
+        const SnackBar(
+          content: Text('Please fill in Project Name, Date, and Venue.'),
+          backgroundColor: MeetdayColors.primaryRed,
+        ),
       );
       return;
     }
@@ -4584,7 +5870,12 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
         'proofKeys': proofKeys,
       };
 
-      await saveReportApi(api, widget.thread, payload);
+      await saveReportApi(
+        api,
+        widget.thread,
+        payload,
+        role: ref.read(authControllerProvider).role,
+      );
       ref.invalidate(threadReportProvider(widget.thread));
       ref.invalidate(chatMessagesProvider(widget.thread));
       ref.invalidate(chatHubProvider);
@@ -4597,7 +5888,11 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(report != null ? 'Report resubmitted for review!' : 'Report submitted for review!'),
+            content: Text(
+              report != null
+                  ? 'Report resubmitted for review!'
+                  : 'Report submitted for review!',
+            ),
             backgroundColor: const Color(0xFF10B981),
           ),
         );
@@ -4605,7 +5900,10 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save report: $e'), backgroundColor: MeetdayColors.primaryRed),
+          SnackBar(
+            content: Text('Failed to save report: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
         );
       }
     } finally {
@@ -4617,7 +5915,9 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
     setState(() => isSaving = true);
     try {
       final api = ref.read(apiClientProvider);
-      final note = status == 'REVISION_REQUESTED' ? brandRevisionCtrl.text.trim() : '';
+      final note = status == 'REVISION_REQUESTED'
+          ? brandRevisionCtrl.text.trim()
+          : '';
       final summaryData = jsonEncode({
         'projectName': nameCtrl.text.trim(),
         'date': dateCtrl.text.trim(),
@@ -4649,7 +5949,12 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
         'proofKeys': proofKeys,
       };
 
-      await saveReportApi(api, widget.thread, payload);
+      await saveReportApi(
+        api,
+        widget.thread,
+        payload,
+        role: ref.read(authControllerProvider).role,
+      );
       ref.invalidate(threadReportProvider(widget.thread));
       ref.invalidate(chatMessagesProvider(widget.thread));
       ref.invalidate(chatHubProvider);
@@ -4662,15 +5967,24 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(status == 'APPROVED' ? 'Report approved! Deal closed.' : 'Revision request sent.'),
-            backgroundColor: status == 'APPROVED' ? const Color(0xFF10B981) : MeetdayColors.primaryRed,
+            content: Text(
+              status == 'APPROVED'
+                  ? 'Report approved! Deal closed.'
+                  : 'Revision request sent.',
+            ),
+            backgroundColor: status == 'APPROVED'
+                ? const Color(0xFF10B981)
+                : MeetdayColors.primaryRed,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update report status: $e'), backgroundColor: MeetdayColors.primaryRed),
+          SnackBar(
+            content: Text('Failed to update report status: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
         );
       }
     } finally {
@@ -4678,35 +5992,57 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
     }
   }
 
-  Widget _badge(String text, {required Color bg, required Color textCol, Color? borderCol}) {
+  Widget _badge(
+    String text, {
+    required Color bg,
+    required Color textCol,
+    Color? borderCol,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: borderCol ?? Colors.black, width: 1.5),
-        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0)],
+        boxShadow: const [
+          BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
+        ],
       ),
       child: Text(
         text,
-        style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: textCol),
+        style: GoogleFonts.poppins(
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          color: textCol,
+        ),
       ),
     );
   }
 
-  Widget _inputBox(TextEditingController ctrl, String hint, {int maxLines = 1, bool enabled = true}) {
+  Widget _inputBox(
+    TextEditingController ctrl,
+    String hint, {
+    int maxLines = 1,
+    bool enabled = true,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: enabled ? const Color(0xFFF9FAFB) : const Color(0xFFF3F4F6),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+        boxShadow: const [
+          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+        ],
       ),
       child: TextField(
         controller: ctrl,
         enabled: enabled,
         maxLines: maxLines,
-        style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black),
+        style: GoogleFonts.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Colors.black,
+        ),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
@@ -4716,7 +6052,10 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
           errorBorder: InputBorder.none,
           disabledBorder: InputBorder.none,
           filled: false,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
         ),
       ),
     );
@@ -4736,12 +6075,22 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
         children: [
           Text(
             label,
-            style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w900, color: Colors.black45, letterSpacing: 0.3),
+            style: GoogleFonts.poppins(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
+              color: Colors.black45,
+              letterSpacing: 0.3,
+            ),
           ),
           const SizedBox(height: 3),
           Text(
             value.isNotEmpty ? value : '—',
-            style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.black, height: 1.3),
+            style: GoogleFonts.poppins(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+              height: 1.3,
+            ),
             maxLines: multiline ? null : 1,
             overflow: multiline ? null : TextOverflow.ellipsis,
           ),
@@ -4752,11 +6101,25 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isReviewer = widget.thread.category == 'brands' && widget.thread.kind == 'SPONSORSHIP';
-    final isHost = !isReviewer;
+    final currentRole = ref.watch(authControllerProvider).role;
+    final isReviewer = _canReviewThreadReport(widget.thread, currentRole);
+    final isReportSubmitter = _canSubmitThreadReport(
+      widget.thread,
+      currentRole,
+    );
+    final reportSubmitterLabel = widget.thread.kind == 'SPACE_INTEREST'
+        ? 'The space partner'
+        : 'The community';
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 14, 20, MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 16),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        14,
+        20,
+        MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom +
+            16,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4766,7 +6129,10 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
             child: Container(
               width: 40,
               height: 4.5,
-              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(3)),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -4779,16 +6145,31 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                 children: [
                   Text(
                     isEditing ? 'Submit Report' : 'Deliverables Report',
-                    style: GoogleFonts.bricolageGrotesque(fontSize: 19, fontWeight: FontWeight.w900),
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   if (report != null && !isEditing) ...[
                     if (reportStatus == 'APPROVED')
-                      _badge('Approved', bg: const Color(0xFF10B981), textCol: Colors.white)
+                      _badge(
+                        'Approved',
+                        bg: const Color(0xFF10B981),
+                        textCol: Colors.white,
+                      )
                     else if (reportStatus == 'REVISION_REQUESTED')
-                      _badge('Revision Requested', bg: MeetdayColors.primaryRed, textCol: Colors.white)
+                      _badge(
+                        'Revision Requested',
+                        bg: MeetdayColors.primaryRed,
+                        textCol: Colors.white,
+                      )
                     else
-                      _badge('Pending Approval', bg: MeetdayColors.accentYellow, textCol: Colors.black),
+                      _badge(
+                        'Pending Approval',
+                        bg: MeetdayColors.accentYellow,
+                        textCol: Colors.black,
+                      ),
                   ],
                 ],
               ),
@@ -4800,7 +6181,11 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                     color: const Color(0xFFF3F4F6),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.close_rounded, size: 20, color: Colors.black87),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: Colors.black87,
+                  ),
                 ),
               ),
             ],
@@ -4809,7 +6194,9 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
           // Body
           ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.65,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4817,22 +6204,35 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                   if (isLoading)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5)),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.black,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
                     )
                   else if (!isEditing && report == null && isReviewer) ...[
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 36,
+                        horizontal: 16,
+                      ),
                       child: Center(
                         child: Text(
-                          'The community has not submitted a deliverables report yet.',
-                          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black45),
+                          '$reportSubmitterLabel has not submitted a deliverables report yet.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black45,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ),
                     ),
                   ] else if (!isEditing) ...[
                     // ─── VIEW MODE ───
-                    if (reportStatus == 'REVISION_REQUESTED' && revisionNote.isNotEmpty) ...[
+                    if (reportStatus == 'REVISION_REQUESTED' &&
+                        revisionNote.isNotEmpty) ...[
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 10),
@@ -4840,19 +6240,30 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                         decoration: BoxDecoration(
                           color: const Color(0xFFFEF2F2),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: MeetdayColors.primaryRed, width: 2),
+                          border: Border.all(
+                            color: MeetdayColors.primaryRed,
+                            width: 2,
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Revision Requested By Brand:',
-                              style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w900, color: MeetdayColors.primaryRed),
+                              'Revision Requested:',
+                              style: GoogleFonts.poppins(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w900,
+                                color: MeetdayColors.primaryRed,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               revisionNote,
-                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
                             ),
                           ],
                         ),
@@ -4861,7 +6272,9 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
                     Row(
                       children: [
-                        Expanded(child: _itemBox('PROJECT NAME', nameCtrl.text)),
+                        Expanded(
+                          child: _itemBox('PROJECT NAME', nameCtrl.text),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(child: _itemBox('DATE', dateCtrl.text)),
                       ],
@@ -4879,16 +6292,27 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
                     Row(
                       children: [
-                        Expanded(child: _itemBox('GUEST COUNT', guestCountCtrl.text)),
+                        Expanded(
+                          child: _itemBox('GUEST COUNT', guestCountCtrl.text),
+                        ),
                         const SizedBox(width: 8),
-                        Expanded(child: _itemBox('AGE RANGE', ageRangeCtrl.text)),
+                        Expanded(
+                          child: _itemBox('AGE RANGE', ageRangeCtrl.text),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
 
                     // Deliverables Met Checklist
                     if (deliverablesList.isNotEmpty) ...[
-                      Text('DELIVERABLES MET', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      Text(
+                        'DELIVERABLES MET',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black54,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Container(
                         width: double.infinity,
@@ -4897,19 +6321,31 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                           color: const Color(0xFFFAFAFA),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.black, width: 2),
-                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
                         ),
                         child: Column(
                           children: deliverablesList.map((item) {
                             final checked = item['checked'] == true;
                             return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3.5),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 3.5,
+                              ),
                               child: Row(
                                 children: [
                                   Icon(
-                                    checked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    checked
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
                                     size: 16,
-                                    color: checked ? const Color(0xFF10B981) : Colors.black38,
+                                    color: checked
+                                        ? const Color(0xFF10B981)
+                                        : Colors.black38,
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -4917,8 +6353,12 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                                       (item['text'] ?? '').toString(),
                                       style: GoogleFonts.poppins(
                                         fontSize: 12,
-                                        fontWeight: checked ? FontWeight.w700 : FontWeight.w500,
-                                        color: checked ? Colors.black : Colors.black54,
+                                        fontWeight: checked
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: checked
+                                            ? Colors.black
+                                            : Colors.black54,
                                       ),
                                     ),
                                   ),
@@ -4933,7 +6373,14 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
                     // Proof Photos (tap opens full size)
                     if (proofUrls.isNotEmpty) ...[
-                      Text('PROOF PHOTOS (${proofUrls.length})', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      Text(
+                        'PROOF PHOTOS (${proofUrls.length})',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black54,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Wrap(
                         spacing: 8,
@@ -4947,13 +6394,34 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF3F4F6),
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.black, width: 2),
-                                boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0)],
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 2,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black,
+                                    offset: Offset(1.5, 1.5),
+                                    blurRadius: 0,
+                                  ),
+                                ],
                               ),
                               clipBehavior: Clip.antiAlias,
                               child: url.startsWith('http')
-                                  ? Image.network(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 24))
-                                  : Image.file(File(url), fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.image, size: 24)),
+                                  ? Image.network(
+                                      url,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const Icon(
+                                        Icons.broken_image,
+                                        size: 24,
+                                      ),
+                                    )
+                                  : Image.file(
+                                      File(url),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) =>
+                                          const Icon(Icons.image, size: 24),
+                                    ),
                             ),
                           );
                         }).toList(),
@@ -4963,23 +6431,51 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
                     // Video Links
                     if (videoLinks.isNotEmpty) ...[
-                      Text('VIDEO LINKS', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      Text(
+                        'VIDEO LINKS',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black54,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Column(
                         children: videoLinks.map((link) {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFFAFAFA),
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0x33000000), width: 1.5),
+                              border: Border.all(
+                                color: const Color(0x33000000),
+                                width: 1.5,
+                              ),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.play_circle_fill_rounded, size: 16, color: MeetdayColors.primaryRed),
+                                const Icon(
+                                  Icons.play_circle_fill_rounded,
+                                  size: 16,
+                                  color: MeetdayColors.primaryRed,
+                                ),
                                 const SizedBox(width: 8),
-                                Expanded(child: Text(link, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blue.shade800), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                Expanded(
+                                  child: Text(
+                                    link,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue.shade800,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                           );
@@ -4990,23 +6486,51 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
 
                     // Social Links
                     if (socialLinks.isNotEmpty) ...[
-                      Text('SOCIAL LINKS', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black54)),
+                      Text(
+                        'SOCIAL LINKS',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black54,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Column(
                         children: socialLinks.map((link) {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFFAFAFA),
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0x33000000), width: 1.5),
+                              border: Border.all(
+                                color: const Color(0x33000000),
+                                width: 1.5,
+                              ),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.link_rounded, size: 16, color: Colors.black87),
+                                const Icon(
+                                  Icons.link_rounded,
+                                  size: 16,
+                                  color: Colors.black87,
+                                ),
                                 const SizedBox(width: 8),
-                                Expanded(child: Text(link, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blue.shade800), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                Expanded(
+                                  child: Text(
+                                    link,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue.shade800,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                           );
@@ -5016,12 +6540,20 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                     ],
 
                     if (summaryCtrl.text.isNotEmpty) ...[
-                      _itemBox('EVENT HIGHLIGHTS & SUMMARY', summaryCtrl.text, multiline: true),
+                      _itemBox(
+                        'EVENT HIGHLIGHTS & SUMMARY',
+                        summaryCtrl.text,
+                        multiline: true,
+                      ),
                       const SizedBox(height: 8),
                     ],
 
                     if (notesCtrl.text.isNotEmpty) ...[
-                      _itemBox('ADDITIONAL NOTES', notesCtrl.text, multiline: true),
+                      _itemBox(
+                        'ADDITIONAL NOTES',
+                        notesCtrl.text,
+                        multiline: true,
+                      ),
                       const SizedBox(height: 8),
                     ],
                   ] else ...[
@@ -5094,10 +6626,18 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                           color: const Color(0xFFFAFAFA),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.black, width: 2),
-                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0)],
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
                         ),
                         child: Column(
-                          children: deliverablesList.asMap().entries.map((entry) {
+                          children: deliverablesList.asMap().entries.map((
+                            entry,
+                          ) {
                             final idx = entry.key;
                             final item = entry.value;
                             final checked = item['checked'] == true;
@@ -5108,19 +6648,30 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                                 });
                               },
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
                                 child: Row(
                                   children: [
                                     Icon(
-                                      checked ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                      checked
+                                          ? Icons.check_box_rounded
+                                          : Icons
+                                                .check_box_outline_blank_rounded,
                                       size: 18,
-                                      color: checked ? MeetdayColors.primaryRed : Colors.black45,
+                                      color: checked
+                                          ? MeetdayColors.primaryRed
+                                          : Colors.black45,
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
                                         (item['text'] ?? '').toString(),
-                                        style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black),
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -5151,7 +6702,10 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF3F4F6),
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.black, width: 2),
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 2,
+                                  ),
                                 ),
                                 clipBehavior: Clip.antiAlias,
                                 child: url.startsWith('http')
@@ -5165,13 +6719,21 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                                   onTap: () {
                                     setState(() {
                                       proofUrls.removeAt(i);
-                                      if (i < proofKeys.length) proofKeys.removeAt(i);
+                                      if (i < proofKeys.length)
+                                        proofKeys.removeAt(i);
                                     });
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
-                                    child: const Icon(Icons.close_rounded, size: 12, color: Colors.white),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -5180,24 +6742,48 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                         }),
                         if (proofKeys.length < 5)
                           GestureDetector(
-                            onTap: isUploadingProof ? null : _pickAndUploadProofPhoto,
+                            onTap: isUploadingProof
+                                ? null
+                                : _pickAndUploadProofPhoto,
                             child: Container(
                               width: 64,
                               height: 64,
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF9FAFB),
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.black45, width: 2, strokeAlign: BorderSide.strokeAlignInside),
+                                border: Border.all(
+                                  color: Colors.black45,
+                                  width: 2,
+                                  strokeAlign: BorderSide.strokeAlignInside,
+                                ),
                               ),
                               child: Center(
                                 child: isUploadingProof
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.black,
+                                        ),
+                                      )
                                     : Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Icon(Icons.add_photo_alternate_rounded, size: 20, color: Colors.black54),
+                                          const Icon(
+                                            Icons.add_photo_alternate_rounded,
+                                            size: 20,
+                                            color: Colors.black54,
+                                          ),
                                           const SizedBox(height: 2),
-                                          Text('+ Add', style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.black54)),
+                                          Text(
+                                            '+ Add',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
                                         ],
                                       ),
                               ),
@@ -5220,30 +6806,55 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF9FAFB),
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.black, width: 2),
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 2,
+                                  ),
                                 ),
                                 child: TextField(
-                                  controller: TextEditingController(text: entry.value)..selection = TextSelection.collapsed(offset: entry.value.length),
+                                  controller:
+                                      TextEditingController(text: entry.value)
+                                        ..selection = TextSelection.collapsed(
+                                          offset: entry.value.length,
+                                        ),
                                   onChanged: (val) => videoLinks[i] = val,
-                                  style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w500),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                   decoration: const InputDecoration(
                                     hintText: 'https://youtube.com/...',
                                     border: InputBorder.none,
                                     enabledBorder: InputBorder.none,
                                     focusedBorder: InputBorder.none,
                                     filled: false,
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 6),
                             GestureDetector(
-                              onTap: () => setState(() => videoLinks.removeAt(i)),
+                              onTap: () =>
+                                  setState(() => videoLinks.removeAt(i)),
                               child: Container(
                                 padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.black, width: 1.5)),
-                                child: const Icon(Icons.delete_outline_rounded, size: 16, color: MeetdayColors.primaryRed),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEE2E2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 16,
+                                  color: MeetdayColors.primaryRed,
+                                ),
                               ),
                             ),
                           ],
@@ -5255,13 +6866,23 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                         onTap: () => setState(() => videoLinks.add('')),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: Colors.black, width: 1.5),
                           ),
-                          child: Text('+ Add Video Link', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black)),
+                          child: Text(
+                            '+ Add Video Link',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
+                          ),
                         ),
                       ),
                     const SizedBox(height: 6),
@@ -5279,30 +6900,55 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF9FAFB),
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.black, width: 2),
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 2,
+                                  ),
                                 ),
                                 child: TextField(
-                                  controller: TextEditingController(text: entry.value)..selection = TextSelection.collapsed(offset: entry.value.length),
+                                  controller:
+                                      TextEditingController(text: entry.value)
+                                        ..selection = TextSelection.collapsed(
+                                          offset: entry.value.length,
+                                        ),
                                   onChanged: (val) => socialLinks[i] = val,
-                                  style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w500),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                   decoration: const InputDecoration(
                                     hintText: 'https://instagram.com/...',
                                     border: InputBorder.none,
                                     enabledBorder: InputBorder.none,
                                     focusedBorder: InputBorder.none,
                                     filled: false,
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 6),
                             GestureDetector(
-                              onTap: () => setState(() => socialLinks.removeAt(i)),
+                              onTap: () =>
+                                  setState(() => socialLinks.removeAt(i)),
                               child: Container(
                                 padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.black, width: 1.5)),
-                                child: const Icon(Icons.delete_outline_rounded, size: 16, color: MeetdayColors.primaryRed),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEE2E2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 16,
+                                  color: MeetdayColors.primaryRed,
+                                ),
                               ),
                             ),
                           ],
@@ -5314,23 +6960,41 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                         onTap: () => setState(() => socialLinks.add('')),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: Colors.black, width: 1.5),
                           ),
-                          child: Text('+ Add Social Link', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black)),
+                          child: Text(
+                            '+ Add Social Link',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
+                          ),
                         ),
                       ),
                     const SizedBox(height: 6),
 
                     _fieldHeader('EVENT HIGHLIGHTS & SUMMARY'),
-                    _inputBox(summaryCtrl, 'Overview of how deliverables were fulfilled…', maxLines: 3),
+                    _inputBox(
+                      summaryCtrl,
+                      'Overview of how deliverables were fulfilled…',
+                      maxLines: 3,
+                    ),
                     const SizedBox(height: 10),
 
                     _fieldHeader('ADDITIONAL NOTES'),
-                    _inputBox(notesCtrl, 'Any further notes or details for review', maxLines: 2),
+                    _inputBox(
+                      notesCtrl,
+                      'Any further notes or details for review',
+                      maxLines: 2,
+                    ),
                     const SizedBox(height: 14),
                   ],
                 ],
@@ -5353,12 +7017,21 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.black, width: 2),
+                            side: const BorderSide(
+                              color: Colors.black,
+                              width: 2,
+                            ),
                           ),
                           elevation: 0,
                         ),
                         onPressed: () => setState(() => isEditing = false),
-                        child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -5377,15 +7050,22 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                       ),
                       onPressed: isSaving ? null : _handleSaveReport,
                       child: Text(
-                        isSaving ? 'Submitting…' : (report != null ? 'Resubmit Report' : 'Submit Report'),
-                        style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12),
+                        isSaving
+                            ? 'Submitting…'
+                            : (report != null
+                                  ? 'Resubmit Report'
+                                  : 'Submit Report'),
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ] else ...[
-              if (isHost && reportStatus != 'APPROVED') ...[
+              if (isReportSubmitter && reportStatus != 'APPROVED') ...[
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -5403,9 +7083,19 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.edit_rounded, size: 14, color: Colors.black),
+                        const Icon(
+                          Icons.edit_rounded,
+                          size: 14,
+                          color: Colors.black,
+                        ),
                         const SizedBox(width: 6),
-                        Text('Edit Report', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 13)),
+                        Text(
+                          'Edit Report',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -5423,9 +7113,13 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                         child: TextField(
                           controller: brandRevisionCtrl,
                           maxLines: 2,
-                          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500),
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                           decoration: const InputDecoration(
-                            hintText: 'Describe requested revisions or missing items…',
+                            hintText:
+                                'Describe requested revisions or missing items…',
                             border: InputBorder.none,
                             enabledBorder: InputBorder.none,
                             focusedBorder: InputBorder.none,
@@ -5442,15 +7136,27 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 foregroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(vertical: 11),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  side: const BorderSide(color: Colors.black, width: 2),
+                                  side: const BorderSide(
+                                    color: Colors.black,
+                                    width: 2,
+                                  ),
                                 ),
                                 elevation: 0,
                               ),
-                              onPressed: () => setState(() => showRevisionInput = false),
-                              child: Text('Cancel', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                              onPressed: () =>
+                                  setState(() => showRevisionInput = false),
+                              child: Text(
+                                'Cancel',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -5459,15 +7165,30 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: MeetdayColors.primaryRed,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 11),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  side: const BorderSide(color: Colors.black, width: 2),
+                                  side: const BorderSide(
+                                    color: Colors.black,
+                                    width: 2,
+                                  ),
                                 ),
                                 elevation: 0,
                               ),
-                              onPressed: isSaving ? null : () => _handleBrandAction('REVISION_REQUESTED'),
-                              child: Text('Send Request', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12)),
+                              onPressed: isSaving
+                                  ? null
+                                  : () => _handleBrandAction(
+                                      'REVISION_REQUESTED',
+                                    ),
+                              child: Text(
+                                'Send Request',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -5485,12 +7206,22 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(color: Colors.black, width: 2),
+                              side: const BorderSide(
+                                color: Colors.black,
+                                width: 2,
+                              ),
                             ),
                             elevation: 0,
                           ),
-                          onPressed: () => setState(() => showRevisionInput = true),
-                          child: Text('Request Revision', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 12)),
+                          onPressed: () =>
+                              setState(() => showRevisionInput = true),
+                          child: Text(
+                            'Request Revision',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -5502,12 +7233,23 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(color: Colors.black, width: 2),
+                              side: const BorderSide(
+                                color: Colors.black,
+                                width: 2,
+                              ),
                             ),
                             elevation: 0,
                           ),
-                          onPressed: isSaving ? null : () => _handleBrandAction('APPROVED'),
-                          child: Text('Approve Report', style: GoogleFonts.poppins(fontWeight: FontWeight.w900, fontSize: 12)),
+                          onPressed: isSaving
+                              ? null
+                              : () => _handleBrandAction('APPROVED'),
+                          child: Text(
+                            'Approve Report',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -5560,7 +7302,10 @@ void _showImagePreviewDialog(BuildContext context, String imageUrl) {
                       errorBuilder: (_, _, _) => Container(
                         color: Colors.black,
                         padding: const EdgeInsets.all(32),
-                        child: const Text('Failed to load image', style: TextStyle(color: Colors.white)),
+                        child: const Text(
+                          'Failed to load image',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
                     )
                   : Image.file(
@@ -5569,7 +7314,10 @@ void _showImagePreviewDialog(BuildContext context, String imageUrl) {
                       errorBuilder: (_, _, _) => Container(
                         color: Colors.black,
                         padding: const EdgeInsets.all(32),
-                        child: const Text('Failed to load image', style: TextStyle(color: Colors.white)),
+                        child: const Text(
+                          'Failed to load image',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
             ),
@@ -5581,8 +7329,15 @@ void _showImagePreviewDialog(BuildContext context, String imageUrl) {
               onTap: () => Navigator.of(ctx).pop(),
               child: Container(
                 padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
-                child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                decoration: const BoxDecoration(
+                  color: Colors.black87,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
           ),
