@@ -658,7 +658,7 @@ class _CampaignDetailModalSheetState extends ConsumerState<_CampaignDetailModalS
       final api = ref.read(apiClientProvider);
       final res = await api.dio.post<dynamic>(
         '/campaigns/published/$campaignId/interest',
-        queryParameters: {'role': 'HOST'},
+        queryParameters: {'role': 'COMMUNITY'},
       );
 
       if (mounted) {

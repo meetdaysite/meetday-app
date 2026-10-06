@@ -237,33 +237,47 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> signInWithGoogle({required AccountRole role}) async {
     try {
+      print('=== GOOGLE SIGNIN START ===');
       final googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return;
+      if (googleUser == null) {
+        print('❌ Google Sign-In returned null (user cancelled)');
+        return;
+      }
+      print('✅ Google user: ${googleUser.email}');
 
       final googleAuth = await googleUser.authentication;
+      print('✅ Google auth obtained');
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
+      print('✅ Credential created');
       final result = await FirebaseAuth.instance.signInWithCredential(
         credential,
       );
+      print('✅ Firebase auth successful');
       final user = result.user;
       if (user == null) throw const AuthException('Google account not found.');
+      print('✅ Firebase user: ${user.email}');
 
       final token = await user.getIdToken();
       if (token == null || token.isEmpty) {
         throw const AuthException('Could not verify your Google session.');
       }
+      print('✅ ID token obtained (${token.length} chars)');
 
       final api = _api ?? ApiClient(config: AppConfig.fromEnvironment());
       api.setIdToken(token);
+      print('✅ API client token set');
 
       // Try to get existing profile
       Map<String, dynamic> profile;
       try {
+        print('🔍 Fetching existing profile...');
         profile = await api.getMe();
+        print('✅ Profile found');
       } catch (e) {
+        print('❌ Profile fetch error: $e');
         // User doesn't exist yet, register them
         if (e.toString().contains('404')) {
           final names = (user.displayName ?? '').split(' ');
@@ -325,8 +339,13 @@ class AuthController extends Notifier<AuthState> {
       }
 
       await _persistAuthenticatedUser(user.uid, token, role);
+      print('✅ SIGNIN COMPLETE - User authenticated');
     } on FirebaseAuthException catch (error) {
+      print('❌ FirebaseAuthException: ${error.code} - ${error.message}');
       throw AuthException(_firebaseMessage(error.code));
+    } catch (error) {
+      print('❌ SIGNIN FAILED - $error');
+      rethrow;
     }
   }
 
