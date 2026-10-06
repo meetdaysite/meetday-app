@@ -495,6 +495,39 @@ final dashboardCampaignsProvider = FutureProvider.autoDispose<List<Map<String, d
   }
 });
 
+/// Authenticated Brand's Own Campaigns (from /campaigns via getMyCampaigns())
+final brandCampaignsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    final list = await api.getMyCampaigns();
+    return list.whereType<Map>().map((item) {
+      final m = Map<String, dynamic>.from(item);
+      final bp = m['brandProfile'] is Map ? Map<String, dynamic>.from(m['brandProfile'] as Map) : null;
+      return <String, dynamic>{
+        'id': (m['id'] ?? '').toString(),
+        'name': (m['name'] ?? 'Campaign').toString(),
+        'goal': (m['goal'] ?? '').toString(),
+        'locations': (m['locations'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+        'audience': (m['audience'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+        'startDate': (m['startDate'] ?? '').toString(),
+        'endDate': (m['endDate'] ?? '').toString(),
+        'offerType': (m['offerType'] ?? 'CASH').toString().toUpperCase(),
+        'budgetAmount': m['budgetAmount'] ?? 0,
+        'budgetCurrency': (m['budgetCurrency'] ?? '₹').toString(),
+        'barterElements': m['barterElements'] as String?,
+        'description': m['description'] as String?,
+        'status': (m['status'] ?? 'DRAFT').toString().toUpperCase(),
+        'brandName': (bp?['brandName'] ?? 'My Brand').toString(),
+        'brandLogo': bp?['logoUrl'] as String?,
+        'brandProfile': bp,
+      };
+    }).toList();
+  } catch (e) {
+    debugPrint('Error fetching /campaigns: $e');
+    return [];
+  }
+});
+
 // Dashboard Deals/Locked Deals & Reports (authenticated real data)
 final dashboardDealsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.watch(apiClientProvider);

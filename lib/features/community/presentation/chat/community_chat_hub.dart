@@ -233,7 +233,11 @@ class _CommunityChatHubScreenState
           if (request.category == 'brands') {
             await api.dio.post<dynamic>(
               '/brand-community-collaboration/chats/$id/accept',
-              queryParameters: {'asRole': 'COMMUNITY'},
+              queryParameters: {
+                'asRole': ref.read(authControllerProvider).role == AccountRole.brand
+                    ? 'BRAND'
+                    : 'COMMUNITY',
+              },
             );
           } else {
             await api.dio.post<dynamic>(
@@ -299,7 +303,11 @@ class _CommunityChatHubScreenState
           if (request.category == 'brands') {
             await api.dio.post<dynamic>(
               '/brand-community-collaboration/chats/$id/decline',
-              queryParameters: {'asRole': 'COMMUNITY'},
+              queryParameters: {
+                'asRole': ref.read(authControllerProvider).role == AccountRole.brand
+                    ? 'BRAND'
+                    : 'COMMUNITY',
+              },
             );
           } else {
             await api.dio.post<dynamic>(
@@ -425,8 +433,9 @@ class _CommunityChatHubScreenState
     // Filter requests by queue direction (INCOMING vs OUTGOING), category filter, and search
     final filteredRequests = data.allRequests.where((req) {
           if (req.direction != _activeQueue) return false;
-      if (_categoryFilter != 'ALL' && req.category != _categoryFilter)
+      if (_categoryFilter != 'ALL' && req.category != _categoryFilter) {
         return false;
+      }
       if (_landingSearchQuery.trim().isNotEmpty) {
         final q = _landingSearchQuery.toLowerCase().trim();
         final matchName = req.counterpartName.toLowerCase().contains(q);
@@ -2144,41 +2153,47 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           _textController.clear();
         });
       } else {
+        final currentRole = ref.read(authControllerProvider).role;
+        final isBrandViewer = currentRole == AccountRole.brand;
+        final sponsorshipRole = isBrandViewer ? 'BRAND' : 'HOST';
+
         final payload = <String, dynamic>{if (text.isNotEmpty) 'content': text};
-        if (mediaUrl != null) payload['mediaUrl'] = mediaUrl;
-        if (mediaKey != null) payload['mediaKey'] = mediaKey;
+        if (mediaKey != null && mediaKey.isNotEmpty) payload['mediaKey'] = mediaKey;
         if (_replyingTo != null) payload['replyToId'] = _replyingTo!.id;
 
         switch (widget.thread.kind) {
           case 'SPONSORSHIP':
           case 'CAMPAIGN':
-            payload['asRole'] = 'HOST';
+            final spPayload = Map<String, dynamic>.from(payload);
+            spPayload['asRole'] = sponsorshipRole;
             await api.dio.post<dynamic>(
               '/sponsorships/chats/$id/messages',
-              data: payload,
+              data: spPayload,
             );
             break;
           case 'SPACE_INTEREST':
-            payload['asRole'] = _spaceChatRole(
-              ref.read(authControllerProvider).role,
-            );
+            final spcPayload = Map<String, dynamic>.from(payload);
+            spcPayload['asRole'] = _spaceChatRole(currentRole);
             await api.dio.post<dynamic>(
               '/spaces/chats/$id/messages',
-              data: payload,
+              data: spcPayload,
             );
             break;
           case 'SPACE_HOST':
-            payload['asRole'] = 'HOST';
+            final sphPayload = Map<String, dynamic>.from(payload);
+            sphPayload['asRole'] =
+                currentRole == AccountRole.space ? 'SPACE' : 'HOST';
             await api.dio.post<dynamic>(
               '/space-host/chats/$id/messages',
-              data: payload,
+              data: sphPayload,
             );
             break;
           case 'COMMUNITY_COLLAB':
             if (widget.thread.category == 'brands') {
+              final asRole = isBrandViewer ? 'BRAND' : 'COMMUNITY';
               await api.dio.post<dynamic>(
                 '/brand-community-collaboration/chats/$id/messages',
-                queryParameters: {'asRole': 'COMMUNITY'},
+                queryParameters: {'asRole': asRole},
                 data: payload,
               );
             } else {
@@ -3686,16 +3701,33 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       return _buildSystemMessageBubble(msg);
     }
 
-    final isAdmin = msg.isAdmin;
+    final isAdmin = msg.isAdmin || msg.senderType.toUpperCase() == 'ADMIN';
     final isMe = msg.isMe && !isAdmin;
     final isDeleted = msg.isDeleted;
+    final isBrandViewer =
+        ref.watch(authControllerProvider).role == AccountRole.brand;
 
-    // Website bubble coloring:
-    // admin = grey (#F3F4F6) only, text black
-    // isMe (community) = Meetday Yellow (#FFC940), text black
-    // brand = Meetday Red (#EE2C2C), text white
-    // space = black, text white
-    // other community collab = white (#FFFFFF), text black
+    final senderUpper = msg.senderType.toUpperCase();
+    final isSpaceSender = senderUpper == 'SPACE' ||
+        senderUpper == 'SPACE_HOST' ||
+        widget.thread.category == 'spaces' ||
+        widget.thread.kind == 'SPACE_HOST' ||
+        widget.thread.kind == 'SPACE_INTEREST';
+
+    // Website & Brand bubble coloring:
+    // For Brands:
+    // - Sent messages: RED (MeetdayColors.primaryRed, text white)
+    // - Received messages:
+    //     - Admin / Bot / System: GREY (#F3F4F6, text black)
+    //     - Space partner: BLACK (Colors.black, text white)
+    //     - Community counterpart: YELLOW (#FFC940, text black)
+    // For Communities:
+    // - Sent messages: YELLOW (#FFC940, text black)
+    // - Received messages:
+    //     - Admin / Bot: GREY (#F3F4F6, text black)
+    //     - Brand counterpart: RED (#EE2C2C, text white)
+    //     - Space partner: BLACK (Colors.black, text white)
+    //     - Community peer: WHITE (#FFFFFF, text black)
     Color bubbleBg;
     Color textColor;
 
@@ -3703,21 +3735,37 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       bubbleBg = const Color(0xFFF3F4F6);
       textColor = Colors.black;
     } else if (isMe) {
-      bubbleBg = MeetdayColors.accentYellow;
-      textColor = Colors.black;
-    } else if (widget.thread.category == 'brands' ||
-        widget.thread.kind == 'SPONSORSHIP' ||
-        widget.thread.kind == 'CAMPAIGN') {
-      bubbleBg = MeetdayColors.primaryRed;
-      textColor = Colors.white;
-    } else if (widget.thread.category == 'spaces' ||
-        widget.thread.kind == 'SPACE_HOST' ||
-        widget.thread.kind == 'SPACE_INTEREST') {
-      bubbleBg = Colors.black;
-      textColor = Colors.white;
+      if (isBrandViewer) {
+        bubbleBg = MeetdayColors.primaryRed;
+        textColor = Colors.white;
+      } else {
+        bubbleBg = MeetdayColors.accentYellow;
+        textColor = Colors.black;
+      }
     } else {
-      bubbleBg = Colors.white;
-      textColor = Colors.black;
+      if (isBrandViewer) {
+        if (isSpaceSender) {
+          bubbleBg = Colors.black;
+          textColor = Colors.white;
+        } else {
+          bubbleBg = MeetdayColors.accentYellow;
+          textColor = Colors.black;
+        }
+      } else {
+        if (widget.thread.category == 'brands' ||
+            widget.thread.kind == 'SPONSORSHIP' ||
+            widget.thread.kind == 'CAMPAIGN' ||
+            senderUpper == 'BRAND') {
+          bubbleBg = MeetdayColors.primaryRed;
+          textColor = Colors.white;
+        } else if (isSpaceSender) {
+          bubbleBg = Colors.black;
+          textColor = Colors.white;
+        } else {
+          bubbleBg = Colors.white;
+          textColor = Colors.black;
+        }
+      }
     }
 
     final isDarkBubble =
@@ -4722,8 +4770,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                   );
                                 }
                               } finally {
-                                if (ctx.mounted)
+                                if (ctx.mounted) {
                                   setModalState(() => isSaving = false);
+                                }
                               }
                             },
                       child: Text(
@@ -5466,8 +5515,9 @@ class _DealDetailsModalSheetState
                                   );
                                 }
                               } finally {
-                                if (mounted)
+                                if (mounted) {
                                   setState(() => isApproving = false);
+                                }
                               }
                             },
                       child: Text(
@@ -6719,8 +6769,9 @@ class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
                                   onTap: () {
                                     setState(() {
                                       proofUrls.removeAt(i);
-                                      if (i < proofKeys.length)
+                                      if (i < proofKeys.length) {
                                         proofKeys.removeAt(i);
+                                      }
                                     });
                                   },
                                   child: Container(

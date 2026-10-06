@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/meetday_colors.dart';
 import 'proposal/proposal_form_screen.dart';
 import 'proposal/proposal_pdf_viewer_screen.dart';
@@ -54,46 +55,50 @@ class ProposalListItemCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(15.5),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-              // Left Image (110 width)
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left Image (Strict 1:1 Aspect Ratio Square for all cards)
               SizedBox(
-                width: 110,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF8FAFC),
-                        border: Border(
-                          right: BorderSide(color: Colors.black, width: 2),
+                width: 120,
+                height: 120,
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF8FAFC),
+                          border: Border(
+                            right: BorderSide(color: Colors.black, width: 2),
+                          ),
                         ),
+                        child: (imageUrl != null && imageUrl.isNotEmpty)
+                            ? Image.network(
+                                imageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    _fallbackMonogram(name),
+                              )
+                            : _fallbackMonogram(name),
                       ),
-                      child: (imageUrl != null && imageUrl.isNotEmpty)
-                          ? Image.network(
-                              imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  _fallbackMonogram(name),
-                            )
-                          : _fallbackMonogram(name),
-                    ),
-                    // Status Badge over image
-                    Positioned(
-                      top: 6,
-                      left: 6,
-                      child: _buildStatusPill(status),
-                    ),
-                  ],
+                      // Status Badge over image
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: _buildStatusPill(status),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
               // Right Info Content
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 120),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -215,8 +220,7 @@ class ProposalListItemCard extends StatelessWidget {
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 
   Widget _fallbackMonogram(String name) {
@@ -297,12 +301,16 @@ class ProposalDetailDialog extends StatelessWidget {
     this.onSubmitApproval,
     this.onEdit,
     this.onDelete,
+    this.isBrand = false,
+    this.onChatStarted,
   });
 
   final Map<String, dynamic> proposal;
   final VoidCallback? onSubmitApproval;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final bool isBrand;
+  final VoidCallback? onChatStarted;
 
   static String _formatDate(String raw) {
     if (raw.isEmpty) return '';
@@ -1286,6 +1294,77 @@ class ProposalDetailDialog extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (isBrand && onEdit == null && onSubmitApproval == null) ...[
+                      const SizedBox(height: 14),
+                      Builder(
+                        builder: (btnCtx) => GestureDetector(
+                          onTap: () async {
+                            final id = (proposal['id'] ?? '').toString();
+                            if (id.isEmpty) return;
+                            try {
+                              final res = await ApiClient.instance.markSponsorshipInterest(id);
+                              final already = res['alreadyInterested'] == true;
+                              if (btnCtx.mounted) {
+                                ScaffoldMessenger.of(btnCtx).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      already
+                                          ? "You've already expressed interest in this proposal"
+                                          : '✅ Interest sent to the host and admin team!',
+                                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                                    ),
+                                    backgroundColor: const Color(0xFF10B981),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (btnCtx.mounted) {
+                                ScaffoldMessenger.of(btnCtx).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to express interest: $e'),
+                                    backgroundColor: MeetdayColors.primaryRed,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.accentYellow,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(2.5, 2.5),
+                                  blurRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.star_rounded, size: 18, color: Colors.black),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'EXPRESS INTEREST ➔',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

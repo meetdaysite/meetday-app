@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/domain/account_role.dart';
 import '../../../auth/state/auth_provider.dart';
 import '../widgets/google_venue_autocomplete_field.dart';
 
@@ -165,20 +166,36 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
 
   Future<void> _fetchCommunityProfile() async {
     final api = ref.read(apiClientProvider);
+    final auth = ref.read(authControllerProvider);
+    final isBrand = auth.role == AccountRole.brand;
     try {
-      final res = await api.dio.get<dynamic>('/hosts/community');
-      if (res.statusCode == 200 && res.data is Map) {
-        final data = res.data['data'] is Map ? res.data['data'] as Map : res.data as Map;
+      if (isBrand) {
+        final res = await api.getBrandProfile();
         setState(() {
-          _communityName = data['name']?.toString();
-          _communityApprovalStatus = data['approvalStatus']?.toString().toUpperCase();
-          _isCommunityApproved = _communityApprovalStatus == 'APPROVED';
-          // Pre-populate city if not set
-          final city = data['city']?.toString();
+          _communityName = res['brandName']?.toString() ?? res['name']?.toString() ?? 'Brand Partner';
+          _communityApprovalStatus = (res['approvalStatus'] ?? 'APPROVED').toString().toUpperCase();
+          _isCommunityApproved = true;
+          final dynamic cities = res['operatingCities'];
+          final city = res['city']?.toString() ?? (cities is List && cities.isNotEmpty ? cities.first.toString() : null);
           if (city != null && city.isNotEmpty && _venues.isNotEmpty && (_venues[0]['city'] ?? '').isEmpty) {
             _venues[0]['city'] = city;
           }
         });
+      } else {
+        final res = await api.dio.get<dynamic>('/hosts/community');
+        if (res.statusCode == 200 && res.data is Map) {
+          final data = res.data['data'] is Map ? res.data['data'] as Map : res.data as Map;
+          setState(() {
+            _communityName = data['name']?.toString();
+            _communityApprovalStatus = data['approvalStatus']?.toString().toUpperCase();
+            _isCommunityApproved = _communityApprovalStatus == 'APPROVED';
+            // Pre-populate city if not set
+            final city = data['city']?.toString();
+            if (city != null && city.isNotEmpty && _venues.isNotEmpty && (_venues[0]['city'] ?? '').isEmpty) {
+              _venues[0]['city'] = city;
+            }
+          });
+        }
       }
     } catch (_) {
       // Non-blocking fallback
@@ -1132,7 +1149,9 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'Community: $_communityName • ${_isCommunityApproved ? 'Approved Host' : 'Pending Approval'}',
+                          ref.watch(authControllerProvider).role == AccountRole.brand
+                              ? 'Brand: $_communityName • Verified Brand'
+                              : 'Community: $_communityName • ${_isCommunityApproved ? 'Approved Host' : 'Pending Approval'}',
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,

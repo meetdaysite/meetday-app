@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/domain/account_role.dart';
 import '../../../auth/state/auth_provider.dart';
 import '../providers/profile_provider.dart';
 import '../providers/dashboard_provider.dart';
@@ -52,9 +53,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _refreshAll() async {
-    ref.invalidate(hostProfileProvider);
-    ref.invalidate(communityProfileProvider);
-    ref.invalidate(teamMembersProvider);
+    final isBrand = ref.read(authControllerProvider).role == AccountRole.brand;
+    if (isBrand) {
+      ref.invalidate(brandProfileProvider);
+      ref.invalidate(brandTeamMembersProvider);
+    } else {
+      ref.invalidate(hostProfileProvider);
+      ref.invalidate(communityProfileProvider);
+      ref.invalidate(teamMembersProvider);
+    }
   }
 
   void _openBrandPreview() {
@@ -158,6 +165,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _EditProfileSheet(hostProfile: host),
+    );
+  }
+
+  void _openEditBrandProfile(Map<String, dynamic> brandProfile) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditBrandProfileSheet(brandProfile: brandProfile),
+    );
+  }
+
+  void _openBrandTeamMembers(String brandName) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _TeamMembersSheet(
+        communityName: brandName,
+        isBrand: true,
+      ),
     );
   }
 
@@ -371,26 +399,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authRole = ref.watch(authControllerProvider).role;
+    final isBrand = authRole == AccountRole.brand;
+
     final hostAsync = ref.watch(hostProfileProvider);
     final communityAsync = ref.watch(communityProfileProvider);
+    final brandAsync = ref.watch(brandProfileProvider);
 
     final host = hostAsync.asData?.value ?? <String, dynamic>{};
     final community = communityAsync.asData?.value ?? <String, dynamic>{};
-    final isLoading = hostAsync.isLoading || communityAsync.isLoading;
+    final brand = brandAsync.asData?.value ?? <String, dynamic>{};
+
+    final isLoading = isBrand ? brandAsync.isLoading : (hostAsync.isLoading || communityAsync.isLoading);
     final unreadCount = ref.watch(unreadNotificationsCountProvider).asData?.value ?? 0;
 
-    // Rep details
-    final displayName = (host['displayName'] ?? host['legalName'] ?? 'Host').toString();
+    // Rep / Brand details
+    final displayName = isBrand
+        ? (brand['brandName'] ?? brand['displayName'] ?? 'Brand').toString()
+        : (host['displayName'] ?? host['legalName'] ?? 'Host').toString();
+    final avatarUrl = isBrand ? (brand['logoUrl'] as String?) : (host['avatarUrl'] as String?);
+    final email = isBrand
+        ? (brand['workEmail'] ?? brand['email'] ?? '').toString()
+        : (host['email'] ?? '').toString();
+    final phone = isBrand
+        ? (brand['contactPhone'] ?? brand['phone'] ?? '').toString()
+        : (host['phone'] ?? '').toString();
+
+    // Brand specific fields
+    final companyType = (brand['companyType'] ?? 'BRAND').toString().toUpperCase();
+    final brandApprovalStatus = (brand['approvalStatus'] ?? '').toString().toUpperCase();
+    final aboutCompany = (brand['aboutCompany'] ?? '').toString();
+    final brandWebsite = (brand['socialLinks'] is Map ? (brand['socialLinks']['website'] ?? '') : (brand['website'] ?? '')).toString();
+    final brandIndustry = (brand['industry'] ?? '').toString();
+
+    // Community specific fields
     final hostType = (host['hostType'] ?? 'INDIVIDUAL').toString().toUpperCase();
     final isIndividual = hostType == 'INDIVIDUAL';
     final genderKey = (host['gender'] ?? '').toString();
     final gender = _genderLabels[genderKey] ?? (genderKey.isNotEmpty ? genderKey : 'Not specified');
-    final email = (host['email'] ?? '').toString();
-    final phone = (host['phone'] ?? '').toString();
     final communityName = (community['name'] ?? host['communityName'] ?? 'Not specified').toString();
-    final avatarUrl = host['avatarUrl'] as String?;
-
-    // Status details
     final hasCommunity = community.isNotEmpty && community['id'] != null;
     final kycStatus = (host['kycStatus'] ?? 'NOT_SUBMITTED').toString();
     final isKycVerified = kycStatus == 'VERIFIED';
@@ -532,7 +579,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Your host identity and account details',
+              isBrand ? 'Your brand identity and account details' : 'Your host identity and account details',
               style: GoogleFonts.poppins(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -570,262 +617,563 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
 
-            // ─── The Iconic Yellow Neo-Brutalist Card (Community Rep Profile) ───
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: MeetdayColors.accentYellow,
-                border: Border.all(color: Colors.black, width: 3),
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(4, 4),
-                    blurRadius: 0,
-                  ),
-                ],
-              ),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
+            // ─── Brand Review Status Banner (matching website) ───
+            if (isBrand && (brandApprovalStatus == 'PENDING' || brandApprovalStatus == 'APPROVED' || brandApprovalStatus == 'REJECTED')) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: Colors.black.withAlpha(90), width: 2),
-                  borderRadius: BorderRadius.circular(20),
+                  color: brandApprovalStatus == 'APPROVED'
+                      ? const Color(0xFFF0FDF4)
+                      : brandApprovalStatus == 'PENDING'
+                          ? const Color(0xFFFFFBEB)
+                          : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: brandApprovalStatus == 'APPROVED'
+                        ? const Color(0xFF16A34A)
+                        : brandApprovalStatus == 'PENDING'
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFFEF4444),
+                    width: 2,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    // Avatar & Host Details Row (No edit button near badge per user request)
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Avatar container
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.black, width: 3),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(13),
-                            child: avatarUrl != null && avatarUrl.isNotEmpty
-                                ? Image.network(
-                                    avatarUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => const Icon(
-                                      Icons.person,
-                                      size: 32,
-                                      color: Colors.black54,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.person,
-                                    size: 32,
-                                    color: Colors.black54,
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        // Name and host type pill
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                displayName,
-                                style: GoogleFonts.bricolageGrotesque(
-                                  fontSize: 19,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.black,
-                                  height: 1.1,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E1B4B), // Dark Indigo matching website
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  isIndividual ? 'INDIVIDUAL HOST' : 'BUSINESS HOST',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    Icon(
+                      brandApprovalStatus == 'APPROVED'
+                          ? Icons.check_circle_rounded
+                          : brandApprovalStatus == 'PENDING'
+                              ? Icons.hourglass_top_rounded
+                              : Icons.error_outline_rounded,
+                      size: 18,
+                      color: brandApprovalStatus == 'APPROVED'
+                          ? const Color(0xFF15803D)
+                          : brandApprovalStatus == 'PENDING'
+                              ? const Color(0xFFB45309)
+                              : const Color(0xFFB91C1C),
                     ),
-
-                    const SizedBox(height: 16),
-                    const Divider(color: Color(0xFFE5E7EB), thickness: 1.5),
-                    const SizedBox(height: 12),
-
-                    // Info Rows matching website
-                    _buildInfoRow('Gender :', gender),
-                    const SizedBox(height: 10),
-                    _buildInfoRow('Email ID :', email.isNotEmpty ? email : 'Not specified'),
-                    const SizedBox(height: 10),
-                    _buildInfoRow('Phone No :', phone.isNotEmpty ? phone : 'Not specified'),
-                    const SizedBox(height: 10),
-                    _buildInfoRow('Community :', communityName),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        brandApprovalStatus == 'APPROVED'
+                            ? 'Approved - Your brand profile is live and active.'
+                            : brandApprovalStatus == 'PENDING'
+                                ? 'Awaiting admin approval - your profile is currently under review.'
+                                : 'Rejected - Please update your profile details and submit again.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: brandApprovalStatus == 'APPROVED'
+                              ? const Color(0xFF166534)
+                              : brandApprovalStatus == 'PENDING'
+                                  ? const Color(0xFF92400E)
+                                  : const Color(0xFF991B1B),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
+            ],
 
-            // ─── Options Menu List (separated by clean divider lines, not in boxes) ───
-            const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+            if (isBrand) ...[
+              // ─── The Iconic Yellow Neo-Brutalist Card (Brand Profile) ───
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: MeetdayColors.accentYellow,
+                  border: Border.all(color: Colors.black, width: 3),
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(4, 4),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black.withAlpha(90), width: 2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Avatar & Brand Details Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.black, width: 3),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(13),
+                              child: avatarUrl != null && avatarUrl.isNotEmpty
+                                  ? Image.network(
+                                      avatarUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const Icon(
+                                        Icons.business_rounded,
+                                        size: 32,
+                                        color: Colors.black54,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.business_rounded,
+                                      size: 32,
+                                      color: Colors.black54,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E1B4B), // Dark Indigo matching website
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    companyType == 'AGENCY' ? 'AGENCY' : 'BRAND',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFE5E7EB), thickness: 1.5),
+                      const SizedBox(height: 12),
 
-            // 1. Community Profile
-            _buildOptionLineItem(
-              title: 'Community Profile',
-              actionLabel: isLoading
-                  ? 'LOADING…'
-                  : hasCommunity
-                      ? 'VIEW DETAILS'
-                      : 'ACTIVATE NOW',
-              actionColor: MeetdayColors.primaryRed,
-              onTap: _openCommunityDetails,
-            ),
-            const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+                      _buildInfoRow('Email ID :', email.isNotEmpty ? email : 'Not specified', labelWidth: 140),
+                      const SizedBox(height: 10),
+                      _buildInfoRow('Phone No :', phone.isNotEmpty ? phone : 'Not specified', labelWidth: 140),
+                      if (brandWebsite.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _buildInfoRow('Website :', brandWebsite, labelWidth: 140),
+                      ],
+                      if (brandIndustry.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _buildInfoRow('Industry :', brandIndustry, labelWidth: 140),
+                      ],
+                      const SizedBox(height: 10),
+                      _buildInfoRow('About The Company :', aboutCompany.isNotEmpty ? aboutCompany : 'Not specified', labelWidth: 140),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
 
-            // 2. My Verifications
-            _buildOptionLineItem(
-              title: 'My Verifications',
-              actionLabel: isKycVerified ? 'VIEW DETAILS' : 'VERIFY NOW',
-              actionColor: MeetdayColors.primaryRed,
-              onTap: _openVerifications,
-            ),
-            const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+              // ─── Brand Options Menu List (matching website) ───
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
 
-            // 3. Notification Sound Toggle (flat row separated by line)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Notification Sounds',
+              // 1. Edit Brand Profile
+              _buildOptionLineItem(
+                title: 'Edit Brand Profile',
+                actionLabel: 'EDIT DETAILS',
+                actionColor: MeetdayColors.primaryRed,
+                onTap: () => _openEditBrandProfile(brand),
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 2. Notification Sound Toggle
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Notification Sounds',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: _notificationSounds,
+                      thumbColor: WidgetStateProperty.resolveWith<Color>((states) => Colors.white),
+                      trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+                        if (states.contains(WidgetState.selected)) {
+                          return MeetdayColors.primaryRed;
+                        }
+                        return Colors.black26;
+                      }),
+                      onChanged: (val) => setState(() => _notificationSounds = val),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 3. Team Members
+              _buildOptionLineItem(
+                title: 'Team Members',
+                actionLabel: 'MANAGE',
+                actionColor: MeetdayColors.primaryRed,
+                onTap: () => _openBrandTeamMembers(displayName),
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 4. Profile Actions (LOG OUT / DELETE)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Profile Actions',
                       style: GoogleFonts.bricolageGrotesque(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
                         color: Colors.black,
                       ),
                     ),
-                  ),
-                  Switch.adaptive(
-                    value: _notificationSounds,
-                    thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
-                      if (states.contains(WidgetState.selected)) {
-                        return Colors.white;
-                      }
-                      return Colors.white;
-                    }),
-                    trackColor: WidgetStateProperty.resolveWith<Color>((states) {
-                      if (states.contains(WidgetState.selected)) {
-                        return MeetdayColors.primaryRed;
-                      }
-                      return Colors.black26;
-                    }),
-                    onChanged: (val) => setState(() => _notificationSounds = val),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
-
-            // 4. Team Members
-            _buildOptionLineItem(
-              title: 'Team Members',
-              actionLabel: 'MANAGE',
-              actionColor: MeetdayColors.primaryRed,
-              onTap: _openTeamMembers,
-            ),
-            const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
-
-            // 5. Profile Actions (LOG OUT / DELETE - separated by line)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Profile Actions',
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      // LOG OUT Button
-                      GestureDetector(
-                        onTap: _confirmSignOut,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.black, width: 2.5),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-                            ],
-                          ),
-                          child: Text(
-                            'LOG OUT',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // DELETE Button
-                      GestureDetector(
-                        onTap: _confirmDeleteAccount,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: MeetdayColors.primaryRed,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.black, width: 2.5),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-                            ],
-                          ),
-                          child: Text(
-                            'DELETE',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: _confirmSignOut,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
                               color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                              ],
+                            ),
+                            child: Text(
+                              'LOG OUT',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black,
+                              ),
                             ),
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _confirmDeleteAccount,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.primaryRed,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                              ],
+                            ),
+                            child: Text(
+                              'DELETE',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+            ] else ...[
+              // ─── The Iconic Yellow Neo-Brutalist Card (Community Rep Profile) ───
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: MeetdayColors.accentYellow,
+                  border: Border.all(color: Colors.black, width: 3),
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(4, 4),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black.withAlpha(90), width: 2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Avatar & Host Details Row (No edit button near badge per user request)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Avatar container
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.black, width: 3),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(13),
+                              child: avatarUrl != null && avatarUrl.isNotEmpty
+                                  ? Image.network(
+                                      avatarUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const Icon(
+                                        Icons.person,
+                                        size: 32,
+                                        color: Colors.black54,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.person,
+                                      size: 32,
+                                      color: Colors.black54,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          // Name and host type pill
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E1B4B), // Dark Indigo matching website
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    isIndividual ? 'INDIVIDUAL HOST' : 'BUSINESS HOST',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
+
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFE5E7EB), thickness: 1.5),
+                      const SizedBox(height: 12),
+
+                      // Info Rows matching website
+                      _buildInfoRow('Gender :', gender),
+                      const SizedBox(height: 10),
+                      _buildInfoRow('Email ID :', email.isNotEmpty ? email : 'Not specified'),
+                      const SizedBox(height: 10),
+                      _buildInfoRow('Phone No :', phone.isNotEmpty ? phone : 'Not specified'),
+                      const SizedBox(height: 10),
+                      _buildInfoRow('Community :', communityName),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-            const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+              const SizedBox(height: 24),
+
+              // ─── Options Menu List (separated by clean divider lines, not in boxes) ───
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 1. Community Profile
+              _buildOptionLineItem(
+                title: 'Community Profile',
+                actionLabel: isLoading
+                    ? 'LOADING…'
+                    : hasCommunity
+                        ? 'VIEW DETAILS'
+                        : 'ACTIVATE NOW',
+                actionColor: MeetdayColors.primaryRed,
+                onTap: _openCommunityDetails,
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 2. My Verifications
+              _buildOptionLineItem(
+                title: 'My Verifications',
+                actionLabel: isKycVerified ? 'VIEW DETAILS' : 'VERIFY NOW',
+                actionColor: MeetdayColors.primaryRed,
+                onTap: _openVerifications,
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 3. Notification Sound Toggle (flat row separated by line)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Notification Sounds',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: _notificationSounds,
+                      thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+                        if (states.contains(WidgetState.selected)) {
+                          return Colors.white;
+                        }
+                        return Colors.white;
+                      }),
+                      trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+                        if (states.contains(WidgetState.selected)) {
+                          return MeetdayColors.primaryRed;
+                        }
+                        return Colors.black26;
+                      }),
+                      onChanged: (val) => setState(() => _notificationSounds = val),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 4. Team Members
+              _buildOptionLineItem(
+                title: 'Team Members',
+                actionLabel: 'MANAGE',
+                actionColor: MeetdayColors.primaryRed,
+                onTap: _openTeamMembers,
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+
+              // 5. Profile Actions (LOG OUT / DELETE - separated by line)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Profile Actions',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        // LOG OUT Button
+                        GestureDetector(
+                          onTap: _confirmSignOut,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                              ],
+                            ),
+                            child: Text(
+                              'LOG OUT',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // DELETE Button
+                        GestureDetector(
+                          onTap: _confirmDeleteAccount,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.primaryRed,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                              ],
+                            ),
+                            child: Text(
+                              'DELETE',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Color(0x1A000000), thickness: 1.2, height: 1),
+            ],
             const SizedBox(height: 36),
           ],
         ),
@@ -842,12 +1190,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildInfoRow(String label, String value, {double labelWidth = 95}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 95,
+          width: labelWidth,
           child: Text(
             label,
             style: GoogleFonts.poppins(
@@ -1841,9 +2189,13 @@ class _VerificationsDetailsSheet extends StatelessWidget {
 // 3. Team Members Bottom Sheet (replicates TeamMembersModal.tsx)
 // ─────────────────────────────────────────────────────────────────────────────
 class _TeamMembersSheet extends ConsumerStatefulWidget {
-  const _TeamMembersSheet({required this.communityName});
+  const _TeamMembersSheet({
+    required this.communityName,
+    this.isBrand = false,
+  });
 
   final String communityName;
+  final bool isBrand;
 
   @override
   ConsumerState<_TeamMembersSheet> createState() => _TeamMembersSheetState();
@@ -1862,9 +2214,14 @@ class _TeamMembersSheetState extends ConsumerState<_TeamMembersSheet> {
     setState(() => _isInviting = true);
     try {
       final api = ref.read(apiClientProvider);
-      await api.inviteHostTeamMember(email);
+      if (widget.isBrand) {
+        await api.inviteBrandTeamMember(email);
+        ref.invalidate(brandTeamMembersProvider);
+      } else {
+        await api.inviteHostTeamMember(email);
+        ref.invalidate(teamMembersProvider);
+      }
       setState(() => _emailInput = '');
-      ref.invalidate(teamMembersProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1895,8 +2252,13 @@ class _TeamMembersSheetState extends ConsumerState<_TeamMembersSheet> {
     try {
       final api = ref.read(apiClientProvider);
       final memberId = (member['id'] ?? '').toString();
-      await api.removeHostTeamMember(memberId);
-      ref.invalidate(teamMembersProvider);
+      if (widget.isBrand) {
+        await api.removeBrandTeamMember(memberId);
+        ref.invalidate(brandTeamMembersProvider);
+      } else {
+        await api.removeHostTeamMember(memberId);
+        ref.invalidate(teamMembersProvider);
+      }
       if (mounted) {
         setState(() => _memberToRemove = null);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1923,8 +2285,13 @@ class _TeamMembersSheetState extends ConsumerState<_TeamMembersSheet> {
   Future<void> _togglePermission(String memberId, bool currentValue) async {
     try {
       final api = ref.read(apiClientProvider);
-      await api.setHostMemberPermission(memberId, !currentValue);
-      ref.invalidate(teamMembersProvider);
+      if (widget.isBrand) {
+        await api.setBrandMemberPermission(memberId, !currentValue);
+        ref.invalidate(brandTeamMembersProvider);
+      } else {
+        await api.setHostMemberPermission(memberId, !currentValue);
+        ref.invalidate(teamMembersProvider);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1951,7 +2318,9 @@ class _TeamMembersSheetState extends ConsumerState<_TeamMembersSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final membersAsync = ref.watch(teamMembersProvider);
+    final membersAsync = widget.isBrand
+        ? ref.watch(brandTeamMembersProvider)
+        : ref.watch(teamMembersProvider);
     final data = membersAsync.asData?.value ?? <String, dynamic>{};
     final members = (data['members'] as List?) ?? [];
     final viewerCanManage = data['viewerCanManage'] == true;
@@ -2563,6 +2932,295 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
               onChanged: (val) {
                 if (val != null) setState(() => _hostType = val);
               },
+            ),
+            const SizedBox(height: 24),
+
+            // Save Button
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MeetdayColors.primaryRed,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Colors.black, width: 2.5),
+                ),
+              ),
+              onPressed: _isSaving ? null : _save,
+              child: _isSaving
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : Text('SAVE CHANGES', style: GoogleFonts.bricolageGrotesque(fontSize: 13, fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.black, width: 2),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: MeetdayColors.primaryRed, width: 2.5),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4b. Edit Brand Profile Bottom Sheet (replicates EditBrandProfilePanel.tsx)
+// ─────────────────────────────────────────────────────────────────────────────
+class _EditBrandProfileSheet extends ConsumerStatefulWidget {
+  const _EditBrandProfileSheet({required this.brandProfile});
+
+  final Map<String, dynamic> brandProfile;
+
+  @override
+  ConsumerState<_EditBrandProfileSheet> createState() => _EditBrandProfileSheetState();
+}
+
+class _EditBrandProfileSheetState extends ConsumerState<_EditBrandProfileSheet> {
+  late final TextEditingController _brandNameController;
+  late final TextEditingController _websiteController;
+  late final TextEditingController _workEmailController;
+  late final TextEditingController _contactPhoneController;
+  late final TextEditingController _aboutCompanyController;
+  late String _companyType;
+  late String _industry;
+  bool _isSaving = false;
+
+  static const List<String> _industryOptions = [
+    'Tech/SaaS',
+    'Food & Beverage',
+    'Fashion/Apparel',
+    'Consumer Tech',
+    'Health & Wellness',
+    'FinTech',
+    'Entertainment',
+    'Alcobev',
+    'Other',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.brandProfile;
+    _brandNameController = TextEditingController(
+      text: (p['brandName'] ?? p['displayName'] ?? '').toString(),
+    );
+    final social = p['socialLinks'] is Map ? p['socialLinks'] as Map : {};
+    _websiteController = TextEditingController(
+      text: (social['website'] ?? p['website'] ?? '').toString(),
+    );
+    _workEmailController = TextEditingController(
+      text: (p['workEmail'] ?? p['email'] ?? '').toString(),
+    );
+    _contactPhoneController = TextEditingController(
+      text: (p['contactPhone'] ?? p['phone'] ?? '').toString(),
+    );
+    _aboutCompanyController = TextEditingController(
+      text: (p['aboutCompany'] ?? '').toString(),
+    );
+    _companyType = (p['companyType'] ?? 'BRAND').toString().toUpperCase();
+    if (_companyType != 'BRAND' && _companyType != 'AGENCY') {
+      _companyType = 'BRAND';
+    }
+    final rawInd = (p['industry'] ?? '').toString();
+    _industry = _industryOptions.contains(rawInd) ? rawInd : 'Tech/SaaS';
+  }
+
+  @override
+  void dispose() {
+    _brandNameController.dispose();
+    _websiteController.dispose();
+    _workEmailController.dispose();
+    _contactPhoneController.dispose();
+    _aboutCompanyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _isSaving = true);
+    try {
+      final payload = <String, dynamic>{
+        'brandName': _brandNameController.text.trim(),
+        'companyType': _companyType,
+        'industry': _industry,
+        'workEmail': _workEmailController.text.trim(),
+        'contactPhone': _contactPhoneController.text.trim(),
+        'aboutCompany': _aboutCompanyController.text.trim(),
+        'socialLinks': {
+          'website': _websiteController.text.trim(),
+        },
+      };
+
+      final api = ref.read(apiClientProvider);
+      await api.updateBrandProfile(payload);
+      ref.invalidate(brandProfileProvider);
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Brand profile updated successfully!'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update brand profile: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(
+          top: BorderSide(color: Colors.black, width: 3.5),
+          left: BorderSide(color: Colors.black, width: 3.5),
+          right: BorderSide(color: Colors.black, width: 3.5),
+        ),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(999)),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Edit Brand Profile',
+                  style: GoogleFonts.bricolageGrotesque(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.black, width: 1.5),
+                    ),
+                    child: const Icon(Icons.close, size: 16, color: Colors.black),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Brand Name
+            Text('Brand Name', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _brandNameController,
+              decoration: _inputDecoration('e.g. Acme Corp'),
+            ),
+            const SizedBox(height: 14),
+
+            // Company Type (Brand vs Agency)
+            Text('Company Type', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              initialValue: _companyType,
+              decoration: _inputDecoration(''),
+              items: const [
+                DropdownMenuItem(value: 'BRAND', child: Text('Brand')),
+                DropdownMenuItem(value: 'AGENCY', child: Text('Agency')),
+              ],
+              onChanged: (val) {
+                if (val != null) setState(() => _companyType = val);
+              },
+            ),
+            const SizedBox(height: 14),
+
+            // Industry
+            Text('Industry', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              initialValue: _industry,
+              decoration: _inputDecoration(''),
+              items: _industryOptions
+                  .map((ind) => DropdownMenuItem(value: ind, child: Text(ind)))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _industry = val);
+              },
+            ),
+            const SizedBox(height: 14),
+
+            // Website
+            Text('Website', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _websiteController,
+              decoration: _inputDecoration('e.g. https://brand.com'),
+            ),
+            const SizedBox(height: 14),
+
+            // Work Email
+            Text('Work Email', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _workEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: _inputDecoration('e.g. hello@brand.com'),
+            ),
+            const SizedBox(height: 14),
+
+            // Contact Phone
+            Text('Contact Phone', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _contactPhoneController,
+              keyboardType: TextInputType.phone,
+              decoration: _inputDecoration('e.g. +91 9876543210'),
+            ),
+            const SizedBox(height: 14),
+
+            // About Company
+            Text('About The Company', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _aboutCompanyController,
+              maxLines: 3,
+              decoration: _inputDecoration('Tell us about your brand and products...'),
             ),
             const SizedBox(height: 24),
 

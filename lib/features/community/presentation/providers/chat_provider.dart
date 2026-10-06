@@ -126,8 +126,9 @@ class UnifiedChatMessage {
       isSystemMessage(raw);
 
   static bool isSystemMessage(Map<String, dynamic> m) {
-    if ((m['messageType'] ?? '').toString().toUpperCase() == 'SYSTEM')
+    if ((m['messageType'] ?? '').toString().toUpperCase() == 'SYSTEM') {
       return true;
+    }
     final content = (m['content'] ?? '').toString().toLowerCase();
     if (content.contains('[system]')) return true;
     if (content.contains('deal is locked') ||
@@ -168,9 +169,12 @@ class UnifiedChatMessage {
   factory UnifiedChatMessage.fromSponsorship(
     Map<String, dynamic> m, {
     String currentRole = 'HOST',
+    String? currentUserId,
   }) {
     final senderType = (m['senderType'] ?? 'HOST').toString().toUpperCase();
-    final isMe = senderType == currentRole.toUpperCase();
+    final senderId = m['senderId']?.toString();
+    final isMe = (currentUserId != null && senderId != null && senderId == currentUserId) ||
+        (senderType == currentRole.toUpperCase());
     final isSys = isSystemMessage(m);
     final msgType = isSys
         ? 'SYSTEM'
@@ -196,11 +200,14 @@ class UnifiedChatMessage {
   factory UnifiedChatMessage.fromSpace(
     Map<String, dynamic> m, {
     String currentRole = 'COMMUNITY',
+    String? currentUserId,
   }) {
     final senderType = (m['senderType'] ?? 'COMMUNITY')
         .toString()
         .toUpperCase();
-    final isMe = senderType == currentRole.toUpperCase();
+    final senderId = m['senderId']?.toString();
+    final isMe = (currentUserId != null && senderId != null && senderId == currentUserId) ||
+        (senderType == currentRole.toUpperCase());
     final isSys = isSystemMessage(m);
     final msgType = isSys
         ? 'SYSTEM'
@@ -223,9 +230,14 @@ class UnifiedChatMessage {
     );
   }
 
-  factory UnifiedChatMessage.fromSpaceHost(Map<String, dynamic> m) {
+  factory UnifiedChatMessage.fromSpaceHost(
+    Map<String, dynamic> m, {
+    String? currentUserId,
+  }) {
     final senderType = (m['senderType'] ?? 'HOST').toString().toUpperCase();
-    final isMe = senderType == 'HOST';
+    final senderId = m['senderId']?.toString();
+    final isMe = (currentUserId != null && senderId != null && senderId == currentUserId) ||
+        (senderType == 'HOST');
     final isSys = isSystemMessage(m);
     final msgType = isSys
         ? 'SYSTEM'
@@ -250,12 +262,15 @@ class UnifiedChatMessage {
 
   factory UnifiedChatMessage.fromCommunityCollab(
     Map<String, dynamic> m,
-    String mySenderType,
-  ) {
+    String mySenderType, {
+    String? currentUserId,
+  }) {
     final senderType = (m['senderType'] ?? 'REQUESTER')
         .toString()
         .toUpperCase();
-    final isMe = senderType == mySenderType.toUpperCase();
+    final senderId = m['senderId']?.toString();
+    final isMe = (currentUserId != null && senderId != null && senderId == currentUserId) ||
+        (senderType == mySenderType.toUpperCase());
     final isSys = isSystemMessage(m);
     final msgType = isSys
         ? 'SYSTEM'
@@ -278,11 +293,21 @@ class UnifiedChatMessage {
     );
   }
 
-  factory UnifiedChatMessage.fromBrandCommunity(Map<String, dynamic> m) {
-    final senderType = (m['senderType'] ?? 'COMMUNITY')
-        .toString()
-        .toUpperCase();
-    final isMe = senderType == 'COMMUNITY';
+  factory UnifiedChatMessage.fromBrandCommunity(
+    Map<String, dynamic> m, {
+    String currentRole = 'COMMUNITY',
+    String? mySenderType,
+    String? currentUserId,
+  }) {
+    final senderType = (m['senderType'] ?? '').toString().toUpperCase();
+    final senderId = m['senderId']?.toString();
+    final isBrand = currentRole.toUpperCase() == 'BRAND';
+    final expectedSender = isBrand ? 'REQUESTER' : 'TARGET';
+    final isMe = (currentUserId != null && senderId != null && senderId == currentUserId) ||
+        (mySenderType != null && senderType == mySenderType.toUpperCase()) ||
+        (senderType == expectedSender) ||
+        (isBrand && senderType == 'BRAND') ||
+        (!isBrand && senderType == 'COMMUNITY');
     final isSys = isSystemMessage(m);
     final msgType = isSys
         ? 'SYSTEM'
@@ -350,6 +375,15 @@ List<Map<String, dynamic>> _extractList(dynamic data) {
         .toList();
   }
   if (data is Map) {
+    // Check direct keys first
+    for (final k in ['threads', 'chats', 'messages', 'items']) {
+      if (data[k] is List) {
+        return (data[k] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+    }
     if (data['data'] is List) {
       return (data['data'] as List)
           .whereType<Map>()
@@ -409,7 +443,10 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
       safeGet('/spaces/chats', {'role': spaceRole}),
       safeGet('/space-host/chats', {'role': 'HOST'}),
       safeGet('/community-collaboration/chats'),
-      safeGet('/brand-community-collaboration/chats', {'asRole': 'COMMUNITY'}),
+      safeGet(
+        '/brand-community-collaboration/chats',
+        {'asRole': accountRole == AccountRole.brand ? 'BRAND' : 'COMMUNITY'},
+      ),
     ]);
 
     if (results[0] != null) sponsorshipAccepted = _extractList(results[0]);
@@ -454,14 +491,18 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
         dealStatus == 'CLOSED' ||
         (dealStatus == 'APPROVED' && paymentStatus == 'PAID');
 
+    final isBrand = accountRole == AccountRole.brand;
+    final defaultCounterpartName = isBrand ? 'Community' : 'Brand';
+    final defaultCounterpartType = isBrand ? 'COMMUNITY' : 'BRAND';
+
     activeMap[catKey]!.add(
       UnifiedActiveThread(
         id: (t['id'] ?? '').toString(),
         category: catKey,
         kind: isCampaign ? 'CAMPAIGN' : 'SPONSORSHIP',
-        counterpartName: (t['counterpartName'] ?? 'Brand').toString(),
+        counterpartName: (t['counterpartName'] ?? defaultCounterpartName).toString(),
         counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
-        counterpartType: (t['counterpartType'] ?? 'BRAND').toString(),
+        counterpartType: (t['counterpartType'] ?? defaultCounterpartType).toString(),
         title:
             (t['proposalName'] ??
                     (isCampaign ? 'Brand Campaign' : 'Sponsorship Proposal'))
@@ -601,15 +642,17 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   // Brand Community Threads
   for (final t in brandCommunityThreads) {
     if (t['chatStatus'] == 'ACCEPTED') {
-      activeMap['brands']!.add(
+      final isBrandUser = accountRole == AccountRole.brand;
+      final categoryKey = isBrandUser ? 'communities' : 'brands';
+      activeMap[categoryKey]!.add(
         UnifiedActiveThread(
           id: (t['id'] ?? '').toString(),
-          category: 'brands',
+          category: categoryKey,
           kind: 'COMMUNITY_COLLAB',
-          counterpartName: (t['counterpartName'] ?? 'Brand').toString(),
+          counterpartName: (t['counterpartName'] ?? (isBrandUser ? 'Community' : 'Brand')).toString(),
           counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
-          counterpartType: 'BRAND',
-          title: 'Brand Collaboration',
+          counterpartType: (isBrandUser ? 'COMMUNITY' : 'BRAND'),
+          title: isBrandUser ? 'Community Collaboration' : 'Brand Collaboration',
           subtitle: (t['counterpartName'] ?? '').toString(),
           lastMessagePreview: t['lastMessagePreview'] as String?,
           lastMessageAt: t['lastMessageAt'] as String?,
@@ -629,49 +672,95 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   // Sponsorship Requests
   for (final t in sponsorshipRequested) {
     final isCampaign = t['campaignId'] != null;
-    if (!isCampaign) {
-      // Incoming: Brand interested in Host proposal
-      requests.add(
-        UnifiedRequestItem(
-          id: (t['id'] ?? '').toString(),
-          category: 'sponsorships',
-          kind: 'SPONSORSHIP',
-          direction: 'INCOMING',
-          status: 'REQUESTED',
-          counterpartName: (t['counterpartName'] ?? 'Brand').toString(),
-          counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
-          counterpartType: 'BRAND',
-          title: (t['proposalName'] ?? 'Sponsorship Proposal').toString(),
-          description: 'This brand is interested in your proposal.',
-          createdAt: t['createdAt'] as String?,
-          lastMessagePreview: t['lastMessagePreview'] as String?,
-          isIncoming: true,
-          rawItem: t,
-        ),
-      );
+    final isBrandUser = accountRole == AccountRole.brand;
+    if (isBrandUser) {
+      if (isCampaign) {
+        // Incoming: Community applied to Brand campaign
+        requests.add(
+          UnifiedRequestItem(
+            id: (t['id'] ?? '').toString(),
+            category: 'campaigns',
+            kind: 'CAMPAIGN',
+            direction: 'INCOMING',
+            status: 'REQUESTED',
+            counterpartName: (t['counterpartName'] ?? 'Community').toString(),
+            counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
+            counterpartType: 'COMMUNITY',
+            title: (t['proposalName'] ?? 'Campaign Application').toString(),
+            description: 'This community applied to your campaign.',
+            createdAt: t['createdAt'] as String?,
+            lastMessagePreview: t['lastMessagePreview'] as String?,
+            isIncoming: true,
+            rawItem: t,
+          ),
+        );
+      } else {
+        // Outgoing: Brand requested sponsorship from community proposal
+        requests.add(
+          UnifiedRequestItem(
+            id: (t['id'] ?? '').toString(),
+            category: 'sponsorships',
+            kind: 'SPONSORSHIP',
+            direction: 'OUTGOING',
+            status: 'REQUESTED',
+            counterpartName: (t['counterpartName'] ?? 'Community').toString(),
+            counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
+            counterpartType: t['counterpartType'] == 'SPACE' ? 'SPACE' : 'COMMUNITY',
+            title: (t['proposalName'] ?? 'Sponsorship Interest').toString(),
+            description: 'You expressed interest in this proposal. Awaiting community acceptance.',
+            createdAt: t['createdAt'] as String?,
+            lastMessagePreview: t['lastMessagePreview'] as String?,
+            isIncoming: false,
+            rawItem: t,
+          ),
+        );
+      }
     } else {
-      // Outgoing: Host applied to campaign
-      requests.add(
-        UnifiedRequestItem(
-          id: (t['id'] ?? '').toString(),
-          category: 'campaigns',
-          kind: 'CAMPAIGN',
-          direction: 'OUTGOING',
-          status: 'REQUESTED',
-          counterpartName: (t['counterpartName'] ?? 'Brand').toString(),
-          counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
-          counterpartType: 'BRAND',
-          title: (t['proposalName'] ?? 'Brand Campaign').toString(),
-          description:
-              'You showed interest in this campaign. Awaiting brand approval.',
-          createdAt: t['createdAt'] as String?,
-          lastMessagePreview: t['lastMessagePreview'] as String?,
-          isIncoming: false,
-          rawItem: t,
-        ),
-      );
+      if (!isCampaign) {
+        // Incoming: Brand interested in Host proposal
+        requests.add(
+          UnifiedRequestItem(
+            id: (t['id'] ?? '').toString(),
+            category: 'sponsorships',
+            kind: 'SPONSORSHIP',
+            direction: 'INCOMING',
+            status: 'REQUESTED',
+            counterpartName: (t['counterpartName'] ?? 'Brand').toString(),
+            counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
+            counterpartType: 'BRAND',
+            title: (t['proposalName'] ?? 'Sponsorship Proposal').toString(),
+            description: 'This brand is interested in your proposal.',
+            createdAt: t['createdAt'] as String?,
+            lastMessagePreview: t['lastMessagePreview'] as String?,
+            isIncoming: true,
+            rawItem: t,
+          ),
+        );
+      } else {
+        // Outgoing: Host applied to campaign
+        requests.add(
+          UnifiedRequestItem(
+            id: (t['id'] ?? '').toString(),
+            category: 'campaigns',
+            kind: 'CAMPAIGN',
+            direction: 'OUTGOING',
+            status: 'REQUESTED',
+            counterpartName: (t['counterpartName'] ?? 'Brand').toString(),
+            counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
+            counterpartType: 'BRAND',
+            title: (t['proposalName'] ?? 'Brand Campaign').toString(),
+            description:
+                'You showed interest in this campaign. Awaiting brand approval.',
+            createdAt: t['createdAt'] as String?,
+            lastMessagePreview: t['lastMessagePreview'] as String?,
+            isIncoming: false,
+            rawItem: t,
+          ),
+        );
+      }
     }
   }
+
 
   // Space Requests
   final isSpacePartner = accountRole == AccountRole.space;
@@ -884,7 +973,9 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
 final chatMessagesProvider = FutureProvider.autoDispose
     .family<List<UnifiedChatMessage>, UnifiedActiveThread>((ref, thread) async {
       final api = ref.watch(apiClientProvider);
-      final accountRole = ref.watch(authControllerProvider).role;
+      final authState = ref.watch(authControllerProvider);
+      final accountRole = authState.role;
+      final currentUserId = authState.uid;
       final sponsorshipRole = accountRole == AccountRole.brand
           ? 'BRAND'
           : 'HOST';
@@ -904,6 +995,7 @@ final chatMessagesProvider = FutureProvider.autoDispose
                   (m) => UnifiedChatMessage.fromSponsorship(
                     m,
                     currentRole: sponsorshipRole,
+                    currentUserId: currentUserId,
                   ),
                 )
                 .toList();
@@ -919,6 +1011,7 @@ final chatMessagesProvider = FutureProvider.autoDispose
                   (m) => UnifiedChatMessage.fromSpace(
                     m,
                     currentRole: spaceRole,
+                    currentUserId: currentUserId,
                   ),
                 )
                 .toList();
@@ -929,23 +1022,31 @@ final chatMessagesProvider = FutureProvider.autoDispose
             );
             final list = _extractList(res.data);
             return list
-                .map((m) => UnifiedChatMessage.fromSpaceHost(m))
+                .map((m) => UnifiedChatMessage.fromSpaceHost(m, currentUserId: currentUserId))
                 .toList();
           case 'COMMUNITY_COLLAB':
             if (thread.category == 'brands') {
+              final brandCollabRole = accountRole == AccountRole.brand ? 'BRAND' : 'COMMUNITY';
               final res = await api.dio.get<dynamic>(
                 '/brand-community-collaboration/chats/$id/messages',
-                queryParameters: {'asRole': 'COMMUNITY'},
+                queryParameters: {'asRole': brandCollabRole},
               );
+              final data = res.data is Map ? (res.data['data'] ?? res.data) : res.data;
+              final mySenderType = data is Map ? data['mySenderType']?.toString() : null;
               final list = _extractList(res.data);
               return list
-                  .map((m) => UnifiedChatMessage.fromBrandCommunity(m))
+                  .map((m) => UnifiedChatMessage.fromBrandCommunity(
+                        m,
+                        currentRole: brandCollabRole,
+                        mySenderType: mySenderType,
+                        currentUserId: currentUserId,
+                      ))
                   .toList();
             } else {
               final res = await api.dio.get<dynamic>(
                 '/community-collaboration/chats/$id/messages',
               );
-              final data = res.data is Map ? res.data['data'] : res.data;
+              final data = res.data is Map ? (res.data['data'] ?? res.data) : res.data;
               final mySenderType = data is Map
                   ? (data['mySenderType'] ?? 'REQUESTER').toString()
                   : 'REQUESTER';
@@ -953,7 +1054,11 @@ final chatMessagesProvider = FutureProvider.autoDispose
               return list
                   .map(
                     (m) =>
-                        UnifiedChatMessage.fromCommunityCollab(m, mySenderType),
+                        UnifiedChatMessage.fromCommunityCollab(
+                          m,
+                          mySenderType,
+                          currentUserId: currentUserId,
+                        ),
                   )
                   .toList();
             }

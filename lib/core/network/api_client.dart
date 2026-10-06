@@ -52,6 +52,121 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
+  Future<Map<String, dynamic>> getBrandProfile() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/brands/me',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> updateBrandProfile(Map<String, dynamic> payload) async {
+    final response = await dio.patch<Map<String, dynamic>>(
+      '/brands/me',
+      data: payload,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> getBrandTeamMembers() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/brands/members',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> inviteBrandTeamMember(String email) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/brands/members',
+      data: {'email': email},
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<void> removeBrandTeamMember(String memberId) async {
+    await dio.delete<void>(
+      '/brands/members/$memberId',
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
+  Future<void> setBrandMemberPermission(String memberId, bool canManageMembers) async {
+    await dio.patch<void>(
+      '/brands/members/$memberId/permission',
+      data: {'canManageMembers': canManageMembers},
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
+  Future<Map<String, dynamic>> markSponsorshipInterest(String id) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/sponsorships/published/$id/interest',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<void> deleteProposal(String id) async {
+    await dio.delete<dynamic>(
+      '/sponsorships/$id',
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
+  Future<List<dynamic>> getMyCampaigns() async {
+    final response = await dio.get<dynamic>(
+      '/campaigns',
+      options: Options(headers: _authHeaders()),
+    );
+    final dynamic raw = response.data;
+    if (raw is List) return raw;
+    if (raw is Map) {
+      final inner = raw['data'] ?? raw['campaigns'];
+      if (inner is List) return inner;
+      if (inner is Map && inner['campaigns'] is List) {
+        return inner['campaigns'] as List;
+      }
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createCampaign(Map<String, dynamic> payload) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/campaigns',
+      data: payload,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> updateCampaign(String id, Map<String, dynamic> payload) async {
+    final response = await dio.patch<Map<String, dynamic>>(
+      '/campaigns/$id',
+      data: payload,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<void> deleteCampaign(String id) async {
+    await dio.delete<void>(
+      '/campaigns/$id',
+      options: Options(headers: _authHeaders()),
+    );
+  }
+
+  Future<Map<String, dynamic>> generateCampaignDraft(String prompt) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/campaigns/copilot/generate-draft',
+      data: {'prompt': prompt},
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
   Future<Map<String, dynamic>> getHostTeamMembers() async {
     final response = await dio.get<Map<String, dynamic>>(
       '/hosts/community/members',
@@ -59,6 +174,8 @@ class ApiClient {
     );
     return _unwrapData(response.data);
   }
+
+  Future<Map<String, dynamic>> getCommunityTeamMembers() => getHostTeamMembers();
 
   Future<Map<String, dynamic>> inviteHostTeamMember(String email) async {
     final response = await dio.post<Map<String, dynamic>>(

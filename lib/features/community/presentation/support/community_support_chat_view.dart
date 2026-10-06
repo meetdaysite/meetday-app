@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/domain/account_role.dart';
+import '../../../auth/state/auth_provider.dart';
 import '../providers/support_chat_provider.dart';
 
 /// Meetday Support Chat screen matching the web dashboard MeetdayChatPanel.
@@ -139,11 +141,17 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
 
     final replyId = _replyingTo?.id;
 
+    final role = ref.read(authControllerProvider).role;
+    final contextParam = role == AccountRole.brand
+        ? 'BRAND'
+        : (role == AccountRole.space ? 'SPACE' : 'HOST');
+
     try {
       final res = await sendSupportChatMessageApi(
         api,
         content: text,
         replyToId: replyId,
+        context: contextParam,
       );
 
       _textController.clear();
@@ -377,6 +385,10 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                   Navigator.pop(ctx);
 
                   setState(() => _isSending = true);
+                  final role = ref.read(authControllerProvider).role;
+                  final contextParam = role == AccountRole.brand
+                      ? 'BRAND'
+                      : (role == AccountRole.space ? 'SPACE' : 'HOST');
                   try {
                     final api = ref.read(apiClientProvider);
                     await sendSupportChatMessageApi(
@@ -384,6 +396,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                       content: '',
                       mediaUrl: url,
                       replyToId: _replyingTo?.id,
+                      context: contextParam,
                     );
                     setState(() => _replyingTo = null);
                     ref.invalidate(supportChatMessagesProvider);
@@ -835,6 +848,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
       );
     }
 
+    final isBrand = ref.watch(authControllerProvider).role == AccountRole.brand;
     final isMine = m.isMine;
     final isBot = m.isBot;
     final isHighlighted = _highlightedMessageId == m.id;
@@ -843,6 +857,12 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
     final timeString = m.createdAt != null
         ? DateFormat('hh:mm a').format(m.createdAt!)
         : '';
+
+    final isRedBubble = isMine && isBrand;
+    final bubbleColor = isMine
+        ? (isBrand ? MeetdayColors.primaryRed : MeetdayColors.accentYellow)
+        : const Color(0xFFF3F4F6);
+    final contentTextColor = isRedBubble ? Colors.white : const Color(0xFF111111);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -925,7 +945,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
             ),
           ),
 
-          // Message Bubble: NO border and NO shadow as requested by user
+          // Message Bubble
           ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.76,
@@ -933,8 +953,8 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                // isMine: Meetday Yellow (#FFC940), admin/bot: grey (#F3F4F6) only
-                color: isMine ? MeetdayColors.accentYellow : const Color(0xFFF3F4F6),
+                // Sent by brand: RED; Sent by others: Yellow; Received: Grey
+                color: bubbleColor,
                 borderRadius: isMine
                     ? const BorderRadius.only(
                         topLeft: Radius.circular(16),
@@ -960,11 +980,15 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
-                          color: Colors.black.withAlpha(20),
+                          color: isRedBubble
+                              ? Colors.black.withAlpha(50)
+                              : Colors.black.withAlpha(20),
                           borderRadius: BorderRadius.circular(8),
                           border: Border(
                             left: BorderSide(
-                              color: isMine ? Colors.black.withAlpha(120) : MeetdayColors.primaryRed,
+                              color: isRedBubble
+                                  ? Colors.white
+                                  : (isMine ? Colors.black.withAlpha(120) : MeetdayColors.primaryRed),
                               width: 3.5,
                             ),
                           ),
@@ -977,7 +1001,9 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                               style: GoogleFonts.poppins(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w800,
-                                color: Colors.black87,
+                                color: isRedBubble
+                                    ? Colors.white.withAlpha(220)
+                                    : Colors.black87,
                               ),
                             ),
                             if (m.replyTo!.hasMedia)
@@ -986,7 +1012,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                                 style: GoogleFonts.poppins(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
+                                  color: isRedBubble ? Colors.white : Colors.black87,
                                 ),
                               ),
                             if (m.replyTo!.content.isNotEmpty)
@@ -997,7 +1023,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                                 style: GoogleFonts.poppins(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w500,
-                                  color: Colors.black87,
+                                  color: isRedBubble ? Colors.white : Colors.black87,
                                 ),
                               ),
                           ],
@@ -1071,7 +1097,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                       style: GoogleFonts.poppins(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w500,
-                        color: const Color(0xFF111111),
+                        color: contentTextColor,
                         height: 1.35,
                       ),
                     ),

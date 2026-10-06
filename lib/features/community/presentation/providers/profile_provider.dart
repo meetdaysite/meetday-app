@@ -43,3 +43,36 @@ final updateHostProfileProvider = FutureProvider.autoDispose.family<Map<String, 
   ref.invalidate(hostProfileProvider);
   return response;
 });
+
+/// Fetches the authenticated brand's own profile (/brands/me)
+final brandProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    return await api.getBrandProfile();
+  } catch (e) {
+    return <String, dynamic>{};
+  }
+});
+
+/// Fetches the team members of the brand (/brands/members)
+final brandTeamMembersProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    return await api.getBrandTeamMembers();
+  } catch (e) {
+    return <String, dynamic>{
+      'members': <dynamic>[],
+      'viewerCanManage': false,
+      'viewerIsOwner': false,
+    };
+  }
+});
+
+/// Mutation to update the brand profile (/brands/me)
+final updateBrandProfileProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, Map<String, dynamic>>((ref, data) async {
+  final api = ref.watch(apiClientProvider);
+  final response = await api.updateBrandProfile(data);
+  ref.invalidate(brandProfileProvider);
+  return response;
+});
+

@@ -975,11 +975,15 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
             ),
           ],
 
-          // Active Proposals Section
-          // Proposals section: ONLY displayed in Brand View mode, fetching approved proposals
-          if (widget.isBrandPreview) ...[
+          // Active Proposals Section: ONLY displayed on Brand side (when user is Brand or in brand preview)
+          if (widget.isBrandPreview || ref.watch(authControllerProvider).role == AccountRole.brand) ...[
             Builder(builder: (context) {
-              final approvedProposals = widget.activeProposals.where((p) {
+              final publishedProposals = ref.watch(publishedProposalsProvider).asData?.value ?? [];
+              final effectiveProposals = widget.activeProposals.isNotEmpty
+                  ? widget.activeProposals
+                  : getCommunityMatchingProposals(widget.community, publishedProposals);
+
+              final approvedProposals = effectiveProposals.where((p) {
                 final status = (p['status'] ?? '').toString().toUpperCase();
                 return status == 'PUBLISHED' || status == 'APPROVED';
               }).toList();
@@ -1019,76 +1023,26 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                     )
                   else
                     ...approvedProposals.map((p) {
-                      final title = (p['title'] ?? p['name'] ?? 'Proposal').toString();
-                      final dateLabel = (p['dateLabel'] ?? '').toString();
-                      final hasCash = p['hasCash'] == true;
-                      final hasBarter = p['hasBarter'] == true;
                       final propId = (p['id'] ?? '').toString();
-                      return GestureDetector(
+                      return ProposalListItemCard(
+                        proposal: p,
                         onTap: () {
                           if (widget.onProposalClick != null) {
                             widget.onProposalClick!(propId);
                           } else {
                             showDialog<void>(
                               context: context,
-                              builder: (ctx) => ProposalDetailDialog(proposal: p),
+                              barrierColor: Colors.black.withAlpha(200),
+                              builder: (ctx) => ProposalDetailDialog(
+                                proposal: p,
+                                isBrand: true,
+                                onChatStarted: () {
+                                  widget.onSelectTab?.call(5);
+                                },
+                              ),
                             );
                           }
                         },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.black, width: 2.2),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black,
-                                offset: Offset(2.5, 2.5),
-                                blurRadius: 0,
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      title,
-                                      style: GoogleFonts.bricolageGrotesque(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w800,
-                                        color: const Color(0xFF111111),
-                                      ),
-                                    ),
-                                    if (dateLabel.isNotEmpty) ...[
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        dateLabel,
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 11,
-                                          color: const Color(0xFF667085),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              if (hasCash) ...[
-                                const SizedBox(width: 4),
-                                _badgeTag('CASH', const Color(0xFFDCFCE7), Colors.black),
-                              ],
-                              if (hasBarter) ...[
-                                const SizedBox(width: 4),
-                                _badgeTag('BARTER', MeetdayColors.accentYellow, Colors.black),
-                              ],
-                            ],
-                          ),
-                        ),
                       );
                     }),
                 ],
@@ -1173,24 +1127,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     );
   }
 
-  Widget _badgeTag(String text, Color bg, Color textCol) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.black, width: 1.2),
-      ),
-      child: Text(
-        text,
-        style: GoogleFonts.poppins(
-          fontSize: 8.5,
-          fontWeight: FontWeight.w900,
-          color: textCol,
-        ),
-      ),
-    );
-  }
+
 
   Widget _fallbackLogo(String name) {
     final initials = name.length > 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();

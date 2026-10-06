@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../auth/domain/account_role.dart';
+import '../../../auth/state/auth_provider.dart';
 
 // ─── Data Models ─────────────────────────────────────────────────────────────
 
@@ -93,9 +95,13 @@ class SupportChatMessage {
 
 final supportChatMessagesProvider = FutureProvider.autoDispose<List<SupportChatMessage>>((ref) async {
   final api = ref.watch(apiClientProvider);
+  final role = ref.watch(authControllerProvider).role;
+  final contextParam = role == AccountRole.brand
+      ? 'BRAND'
+      : (role == AccountRole.space ? 'SPACE' : 'HOST');
 
   try {
-    final res = await api.dio.get<dynamic>('/meetday-chat/messages', queryParameters: {'context': 'HOST'});
+    final res = await api.dio.get<dynamic>('/meetday-chat/messages', queryParameters: {'context': contextParam});
     final data = res.data;
 
     List<dynamic> list = [];
