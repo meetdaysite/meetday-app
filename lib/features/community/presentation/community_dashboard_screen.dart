@@ -20,6 +20,7 @@ import 'support/community_support_chat_view.dart';
 enum CommunityDashboardTab {
   dashboard,
   proposals,
+  campaigns,
   hubs,
   communities,
   deals,
@@ -34,6 +35,8 @@ extension CommunityDashboardTabX on CommunityDashboardTab {
         return 'Dashboard';
       case CommunityDashboardTab.proposals:
         return 'Experience Proposals';
+      case CommunityDashboardTab.campaigns:
+        return 'Brand Campaigns';
       case CommunityDashboardTab.hubs:
         return 'Community Hubs';
       case CommunityDashboardTab.communities:
@@ -53,6 +56,8 @@ extension CommunityDashboardTabX on CommunityDashboardTab {
         return Icons.dashboard_rounded;
       case CommunityDashboardTab.proposals:
         return Icons.description_rounded;
+      case CommunityDashboardTab.campaigns:
+        return Icons.campaign_rounded;
       case CommunityDashboardTab.hubs:
         return Icons.calendar_today_rounded;
       case CommunityDashboardTab.communities:
@@ -80,6 +85,7 @@ class CommunityDashboardScreen extends ConsumerStatefulWidget {
   static const List<CommunityDashboardTab> tabs = [
     CommunityDashboardTab.dashboard,
     CommunityDashboardTab.proposals,
+    CommunityDashboardTab.campaigns,
     CommunityDashboardTab.hubs,
     CommunityDashboardTab.communities,
     CommunityDashboardTab.deals,
@@ -307,7 +313,7 @@ class _CommunityDashboardScreenState
               : TabBarView(
                   controller: _tabController,
                   physics: const NeverScrollableScrollPhysics(),
-                  children: [
+              children: [
                     _DashboardTabBody(
                       displayName: displayName,
                       profileName: profileName,
@@ -316,6 +322,9 @@ class _CommunityDashboardScreenState
                       onNavigateToTab: _onTabSelected,
                     ),
                     _ProposalTabBody(role: effectiveRole),
+                    CampaignsScreen(
+                      onBack: () => _onTabSelected(0),
+                    ),
                     _ExploreTabBody(
                       role: effectiveRole,
                       onNavigateToTab: _onTabSelected,
@@ -429,7 +438,7 @@ class _DashboardTabBody extends ConsumerWidget {
                 title: h['title'] ?? 'Hub',
                 memberCount: h['memberCount'] ?? '0',
                 imageUrl: h['logoUrl'] as String?,
-                onTap: () => onNavigateToTab(2),
+                onTap: () => onNavigateToTab(3),
               ))
           .toList(),
       loading: () => [_LoadingCard()],
@@ -771,7 +780,7 @@ class _DashboardTabBody extends ConsumerWidget {
           subtitle:
               'Discover venues and hubs for offline activations and community events.',
           actionLabel: 'View All Hubs >',
-          onActionTap: () => onNavigateToTab(2),
+          onActionTap: () => onNavigateToTab(3),
         ),
         const SizedBox(height: 10),
         hubCards.isEmpty
@@ -834,7 +843,7 @@ class _DashboardTabBody extends ConsumerWidget {
           subtitle:
               'Discover verified creator and host communities on Meetday.',
           actionLabel: 'View All Communities >',
-          onActionTap: () => onNavigateToTab(3),
+          onActionTap: () => onNavigateToTab(4),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -856,7 +865,7 @@ class _DashboardTabBody extends ConsumerWidget {
           subtitle:
               'View locked deal terms and submitted deliverables reports.',
           actionLabel: 'Go to Chats >',
-          onActionTap: () => onNavigateToTab(4),
+          onActionTap: () => onNavigateToTab(5),
         ),
         const SizedBox(height: 10),
         dealsAsync.when(
