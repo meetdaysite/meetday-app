@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -5,6 +9,8 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/state/auth_provider.dart';
+import '../widgets/google_venue_autocomplete_field.dart';
 
 /// Full-featured Experience / Sponsorship Proposal Creation & Editing screen.
 /// Replicates meetday-frontend's `proposal/page.tsx` with live backend connectivity.
@@ -36,8 +42,17 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
 
   // State
   String? _imageUrl;
+  String? _imageKey;
+  PlatformFile? _proposalImageFile;
+  Uint8List? _proposalImageBytes;
   String? _docUrl;
+  String? _docKey;
   String _docName = '';
+  PlatformFile? _proposalDocumentFile;
+  int _proposalDocumentSize = 0;
+  PlatformFile? _copilotDocFile;
+  String? _copilotDocText;
+  bool _copilotDocUploading = false;
 
   DateTime? _startDate;
   DateTime? _endDate;
@@ -77,7 +92,9 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
     _videoUrlController = TextEditingController(text: p?['videoUrl']?.toString() ?? '');
 
     _imageUrl = p?['imageUrl'] as String?;
+    _imageKey = p?['imageKey']?.toString();
     _docUrl = p?['docUrl'] as String?;
+    _docKey = p?['docKey'] as String?;
     _docName = (p?['docName'] ?? '').toString();
 
     // Dates
@@ -166,6 +183,144 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
     } catch (_) {
       // Non-blocking fallback
     }
+  }
+
+  Future<void> _pickCopilotDocument(StateSetter setDialogState) async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'docx', 'pptx'],
+      );
+      if (files.isEmpty) return;
+      final file = files.single;
+      final extension = file.extension?.toLowerCase();
+      if (!const ['pdf', 'docx', 'pptx'].contains(extension)) return;
+      final size = await file.length();
+      if (size == null || size > 10 * 1024 * 1024) {
+        throw StateError('Document size cannot exceed 10 MB.');
+      }
+
+      setDialogState(() => _copilotDocUploading = true);
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(await file.readAsBytes(), filename: file.name),
+      });
+      final response = await ref.read(apiClientProvider).dio.post<dynamic>(
+        '/sponsorships/copilot/extract-document',
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+      final body = response.data;
+      final data = body is Map ? (body['data'] ?? body) : null;
+      final extractedText = data is Map ? data['text']?.toString().trim() : null;
+      if (extractedText == null || extractedText.isEmpty) {
+        throw const FormatException('No readable text was found in that document.');
+      }
+      if (mounted) {
+        setState(() {
+          _copilotDocFile = file;
+          _copilotDocText = extractedText;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not read AI context document: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setDialogState(() => _copilotDocUploading = false);
+    }
+  }
+
+  String _documentContentType(PlatformFile file) {
+    return switch (file.extension?.toLowerCase()) {
+      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      _ => 'application/pdf',
+    };
+  }
+
+  Future<void> _pickProposalDocument() async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+      );
+      if (files.isEmpty) return;
+      final file = files.single;
+      final size = await file.length();
+      if (size == null || size > 10 * 1024 * 1024) {
+        throw StateError('PDF size cannot exceed 10 MB.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _proposalDocumentFile = file;
+        _proposalDocumentSize = size;
+        _docName = file.name;
+        _docUrl = null;
+        _docKey = null;
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not select proposal PDF: $error')),
+        );
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _uploadProposalDocument(ApiClient api, PlatformFile file) async {
+    final contentType = _documentContentType(file);
+    final response = await api.dio.post<dynamic>(
+      '/storage/upload-url',
+      data: {'context': 'SPONSORSHIP_DOCUMENT', 'contentType': contentType},
+    );
+    final body = response.data;
+    final data = body is Map ? (body['data'] ?? body) : null;
+    if (data is! Map || data['uploadUrl'] == null || data['key'] == null) {
+      throw const FormatException('Storage did not return an upload URL and key.');
+    }
+    final bytes = await file.readAsBytes();
+    await Dio().put<dynamic>(
+      data['uploadUrl'].toString(),
+      data: bytes,
+      options: Options(
+        headers: {'Content-Type': contentType},
+        responseType: ResponseType.plain,
+      ),
+    );
+    _docKey = data['key'].toString();
+    _docName = file.name;
+    _proposalDocumentSize = bytes.length;
+    return {
+      'docKey': _docKey,
+      'docName': _docName,
+      'docType': contentType,
+      'docSize': _proposalDocumentSize,
+    };
+  }
+
+  Future<String> _uploadSponsorshipImage(ApiClient api, PlatformFile file) async {
+    final extension = file.extension?.toLowerCase();
+    final contentType = extension == 'png' ? 'image/png' : 'image/jpeg';
+    final response = await api.dio.post<dynamic>(
+      '/storage/upload-url',
+      data: {'context': 'SPONSORSHIP_MEDIA', 'contentType': contentType},
+    );
+    final body = response.data;
+    final data = body is Map ? (body['data'] ?? body) : null;
+    if (data is! Map || data['uploadUrl'] == null || data['key'] == null) {
+      throw const FormatException('Storage did not return an upload URL and key.');
+    }
+    await Dio().put<dynamic>(
+      data['uploadUrl'].toString(),
+      data: await file.readAsBytes(),
+      options: Options(
+        headers: {'Content-Type': contentType},
+        responseType: ResponseType.plain,
+      ),
+    );
+    return data['key'].toString();
   }
 
   void _addAudienceTag(String tag) {
@@ -268,9 +423,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
   // ── AI Copilot Prompt & Generation ─────────────────────────────────────────
 
   Future<void> _showAiCopilotDialog() async {
-    final promptController = TextEditingController(
-      text: 'Annual tech summit with 300 developers, keynotes, and sponsor booths in Bengaluru',
-    );
+    final promptController = TextEditingController();
     bool isGenerating = false;
 
     await showDialog<void>(
@@ -337,6 +490,39 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _copilotDocUploading
+                          ? 'Reading document...'
+                          : _copilotDocFile?.name ?? 'Optional PDF, DOCX, or PPTX context (max 10 MB)',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(fontSize: 9, color: Colors.black54),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: isGenerating || _copilotDocUploading
+                        ? null
+                        : () => _pickCopilotDocument(setDialogState),
+                    icon: _copilotDocUploading
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.attach_file, size: 16),
+                    label: const Text('Attach'),
+                  ),
+                  if (_copilotDocFile != null)
+                    IconButton(
+                      tooltip: 'Remove context document',
+                      onPressed: () => setDialogState(() {
+                        _copilotDocFile = null;
+                        _copilotDocText = null;
+                      }),
+                      icon: const Icon(Icons.close, size: 17),
+                    ),
+                ],
+              ),
             ],
           ),
           actions: [
@@ -361,7 +547,21 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                   ? null
                   : () async {
                       final prompt = promptController.text.trim();
-                      if (prompt.isEmpty) return;
+                      if (prompt.length < 20 || prompt.length > 8000) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Describe the proposal in 20 to 8,000 characters.')),
+                        );
+                        return;
+                      }
+                      final combinedPrompt = _copilotDocText == null
+                          ? prompt
+                          : '$prompt\n\nAdditional context from an uploaded document:\n$_copilotDocText';
+                      if (combinedPrompt.length > 8000) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Prompt plus document context exceeds 8,000 characters.')),
+                        );
+                        return;
+                      }
 
                       final messenger = ScaffoldMessenger.of(context);
 
@@ -370,7 +570,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                         final api = ref.read(apiClientProvider);
                         final res = await api.dio.post<dynamic>(
                           '/sponsorships/copilot/generate-draft',
-                          data: {'prompt': prompt},
+                          data: {'prompt': combinedPrompt},
                         );
 
                         if (res.statusCode == 200 || res.statusCode == 201) {
@@ -384,20 +584,22 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                             if (data['age_group'] != null) _ageGroupController.text = data['age_group'].toString();
                             if (data['guest_count'] != null) _guestCountController.text = data['guest_count'].toString();
 
-                            if (data['audience_profile'] is List) {
-                              _audienceTags = (data['audience_profile'] as List).map((e) => e.toString()).toList();
-                            }
-                            if (data['sponsor_tiers'] is List) {
-                              final tiers = (data['sponsor_tiers'] as List).whereType<Map>().toList();
-                              if (tiers.isNotEmpty) {
-                                _sponsorTiers = tiers.map((t) {
-                                  return {
-                                    'name': (t['name'] ?? '').toString(),
-                                    'price': (t['price'] ?? '').toString(),
-                                  };
-                                }).toList();
-                              }
-                            }
+                            _audienceTags = (data['audience_profile'] as List?)
+                                    ?.map((e) => e.toString())
+                                    .toList() ??
+                                [];
+                            final tiers = (data['sponsor_tiers'] as List?)
+                                    ?.whereType<Map>()
+                                    .toList() ??
+                                [];
+                            _sponsorTiers = tiers.isEmpty
+                                ? [{'name': '', 'price': ''}]
+                                : tiers.map((t) => {
+                                      'name': (t['name'] ?? '').toString(),
+                                      'price': (t['price'] ?? '').toString(),
+                                    }).toList();
+                            _copilotDocFile = null;
+                            _copilotDocText = null;
                           });
 
                           if (ctx.mounted) Navigator.pop(ctx);
@@ -437,140 +639,38 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
 
   // ── Image Picker / URL Sheet ───────────────────────────────────────────────
 
-  void _showImagePickerSheet() {
-    final urlController = TextEditingController(text: _imageUrl ?? '');
-    final presets = [
-      'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800',
-      'https://images.unsplash.com/photo-1511578314322-379afb476865?w=800',
-      'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800',
-      'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
-      'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=800',
-    ];
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        side: BorderSide(color: Colors.black, width: 2.5),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Project Logo / Cover Image',
-              style: GoogleFonts.bricolageGrotesque(fontSize: 18, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Enter an image URL or choose from curated event covers (1:1 aspect ratio recommended).',
-              style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.black, width: 1.8),
-              ),
-              child: TextField(
-                controller: urlController,
-                style: GoogleFonts.poppins(fontSize: 12),
-                decoration: const InputDecoration(
-                  hintText: 'https://...',
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  filled: false,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Or pick a cover template:',
-              style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 60,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: presets.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, idx) {
-                  final pUrl = presets[idx];
-                  return GestureDetector(
-                    onTap: () {
-                      urlController.text = pUrl;
-                    },
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.black, width: 1.5),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8.5),
-                        child: Image.network(pUrl, fit: BoxFit.cover),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MeetdayColors.primaryRed,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Colors.black, width: 2),
-                  ),
-                ),
-                onPressed: () {
-                  final url = urlController.text.trim();
-                  if (url.isNotEmpty) {
-                    setState(() => _imageUrl = url);
-                  }
-                  Navigator.pop(ctx);
-                },
-                child: Text('Set Image', style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _showImagePickerSheet() async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['jpg', 'jpeg', 'png'],
+      );
+      if (files.isEmpty) return;
+      final file = files.single;
+      final size = await file.length();
+      if (size == null || size > 5 * 1024 * 1024) {
+        throw StateError('Image size cannot exceed 5 MB.');
+      }
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _proposalImageFile = file;
+        _proposalImageBytes = bytes;
+        _imageUrl = null;
+        _imageKey = null;
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not select project image: $error')),
+        );
+      }
+    }
   }
 
   // ── Document Picker Sheet ──────────────────────────────────────────────────
 
   void _showDocumentPickerSheet() {
-    final urlController = TextEditingController(text: _docUrl ?? '');
-    final nameController = TextEditingController(text: _docName.isNotEmpty ? _docName : 'Sponsorship_Pitch_Deck.pdf');
-
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -599,55 +699,35 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Enter a direct PDF document or pitch deck link to attach to your sponsorship proposal.',
+              'Choose a PDF pitch deck. Maximum file size: 10 MB.',
               style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54),
             ),
-            const SizedBox(height: 12),
-            Text('Document Name', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
             Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFFF9FAFB),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.black, width: 1.8),
               ),
-              child: TextField(
-                controller: nameController,
-                style: GoogleFonts.poppins(fontSize: 12),
-                decoration: const InputDecoration(
-                  hintText: 'Sponsorship_Deck.pdf',
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  filled: false,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text('Document PDF URL', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.black, width: 1.8),
-              ),
-              child: TextField(
-                controller: urlController,
-                style: GoogleFonts.poppins(fontSize: 12),
-                decoration: const InputDecoration(
-                  hintText: 'https://.../deck.pdf',
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  filled: false,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
+              child: Row(
+                children: [
+                  const Icon(Icons.picture_as_pdf_outlined, color: MeetdayColors.primaryRed),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _proposalDocumentFile?.name ?? (_docName.isNotEmpty ? _docName : 'No PDF selected'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _pickProposalDocument,
+                    icon: const Icon(Icons.attach_file, size: 16),
+                    label: const Text('Choose PDF'),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -665,14 +745,11 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                   ),
                 ),
                 onPressed: () {
-                  final url = urlController.text.trim();
-                  if (url.isNotEmpty) {
-                    setState(() {
-                      _docUrl = url;
-                      _docName = nameController.text.trim().isNotEmpty
-                          ? nameController.text.trim()
-                          : 'Proposal_Document.pdf';
-                    });
+                  if (_proposalDocumentFile == null && (_docKey == null || _docKey!.isEmpty)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Choose a PDF proposal document.')),
+                    );
+                    return;
                   }
                   Navigator.pop(ctx);
                 },
@@ -713,7 +790,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
         );
         return;
       }
-      if (_imageUrl == null || _imageUrl!.isEmpty) {
+      if (_proposalImageFile == null && (_imageKey == null || _imageKey!.isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Project Logo / Cover Image is required'),
@@ -807,7 +884,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
           }
         }
       }
-      if (_docUrl == null || _docUrl!.isEmpty) {
+      if (_proposalDocumentFile == null && (_docKey == null || _docKey!.isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Proposal Document file / PDF is required'),
@@ -852,17 +929,20 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
         'sponsorshipType': _sponsorshipType,
         'sponsorTiers': _sponsorshipType == 'BARTER' ? [] : filteredTiers,
       };
-
-      if (_imageUrl != null && _imageUrl!.isNotEmpty) {
-        payload['imageKey'] = _imageUrl;
-        payload['imageUrl'] = _imageUrl;
+      if (!_isEditing) {
+        payload['actorType'] = ref.read(authControllerProvider).role?.backendAccountType ?? 'HOST';
       }
-      if (_docUrl != null && _docUrl!.isNotEmpty) {
-        payload['docKey'] = _docUrl;
-        payload['docUrl'] = _docUrl;
-        payload['docName'] = _docName.isNotEmpty ? _docName : 'Proposal_Document.pdf';
-        payload['docType'] = 'application/pdf';
-        payload['docSize'] = 1024 * 1024;
+
+      if (_proposalImageFile != null) {
+        payload['imageKey'] = await _uploadSponsorshipImage(api, _proposalImageFile!);
+      } else if (_imageKey != null && _imageKey!.isNotEmpty) {
+        payload['imageKey'] = _imageKey;
+      }
+      if (_proposalDocumentFile != null) {
+        payload.addAll(await _uploadProposalDocument(api, _proposalDocumentFile!));
+      } else if (_docKey != null && _docKey!.isNotEmpty) {
+        payload['docKey'] = _docKey;
+        payload['docName'] = _docName;
       }
       if (_videoUrlController.text.trim().isNotEmpty) {
         payload['videoUrl'] = _videoUrlController.text.trim();
@@ -1190,17 +1270,19 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                           clipBehavior: Clip.antiAlias,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: _imageUrl != null && _imageUrl!.isNotEmpty
-                                ? Image.network(
-                                    _imageUrl!,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => const Center(
-                                      child: Icon(Icons.broken_image_rounded, size: 24, color: Colors.black38),
-                                    ),
-                                  )
-                                : const Center(
-                                    child: Icon(Icons.image_outlined, size: 26, color: Colors.black38),
-                                  ),
+                            child: _proposalImageBytes != null
+                                ? Image.memory(_proposalImageBytes!, fit: BoxFit.cover)
+                                : _imageUrl != null && _imageUrl!.isNotEmpty
+                                    ? Image.network(
+                                        _imageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => const Center(
+                                          child: Icon(Icons.broken_image_rounded, size: 24, color: Colors.black38),
+                                        ),
+                                      )
+                                    : const Center(
+                                        child: Icon(Icons.image_outlined, size: 26, color: Colors.black38),
+                                      ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1226,7 +1308,9 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                       const Icon(Icons.add_photo_alternate_outlined, size: 16, color: Colors.black),
                                       const SizedBox(width: 6),
                                       Text(
-                                        _imageUrl != null ? 'Change Image' : 'Choose Image',
+                                        _proposalImageFile != null || _imageKey != null || _imageUrl != null
+                                          ? 'Change Image'
+                                          : 'Choose Image',
                                         style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700),
                                       ),
                                     ],
@@ -1344,29 +1428,16 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                           children: [
                             Expanded(
                               flex: 3,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF9FAFB),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.black, width: 1.8),
-                                ),
-                                child: TextFormField(
-                                  initialValue: v['venue'],
-                                  style: GoogleFonts.poppins(fontSize: 12),
-                                  onChanged: (val) => _venues[idx]['venue'] = val,
-                                  decoration: InputDecoration(
-                                    hintText: 'Venue (e.g. Palace Grounds)',
-                                    hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    disabledBorder: InputBorder.none,
-                                    errorBorder: InputBorder.none,
-                                    filled: false,
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    isDense: true,
-                                  ),
-                                ),
+                              child: GoogleVenueAutocompleteField(
+                                key: ValueKey('proposal-venue-$idx'),
+                                value: v['venue'] ?? '',
+                                placeholder: 'Venue (e.g. Palace Grounds)',
+                                onChanged: (value) => _venues[idx]['venue'] = value,
+                                onCitySelected: (city) {
+                                  if ((_venues[idx]['city'] ?? '').trim().isEmpty) {
+                                    setState(() => _venues[idx]['city'] = city);
+                                  }
+                                },
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -1379,6 +1450,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                   border: Border.all(color: Colors.black, width: 1.8),
                                 ),
                                 child: TextFormField(
+                                  key: ValueKey('proposal-city-$idx-${v['city']}'),
                                   initialValue: v['city'],
                                   style: GoogleFonts.poppins(fontSize: 12),
                                   onChanged: (val) => _venues[idx]['city'] = val,
@@ -1610,7 +1682,9 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                 ],
                               ),
                               child: Text(
-                                _docUrl != null ? 'Change' : 'Attach',
+                                _proposalDocumentFile != null || _docKey != null || _docUrl != null
+                                  ? 'Change'
+                                  : 'Attach',
                                 style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800),
                               ),
                             ),

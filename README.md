@@ -20,6 +20,18 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
 
 For staging or production, provide both `APP_ENV` and `API_BASE_URL` at build/run time. Firebase platform configuration files are required before using real login on a device.
 
+## Google Places
+
+Proposal venue autocomplete uses the native Places SDK. Supply platform-restricted keys for Android (`com.meetday.app.meetday_app`, plus its signing SHA-1) and iOS (`com.meetday.app.meetdayApp`); do not use the browser-referrer-restricted `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` as a mobile key.
+
+```bash
+flutter run \
+	--dart-define=GOOGLE_MAPS_API_KEY_ANDROID=YOUR_ANDROID_PLACES_KEY \
+	--dart-define=GOOGLE_MAPS_API_KEY_IOS=YOUR_IOS_PLACES_KEY
+```
+
+Without this define, venue fields remain manually editable but Google suggestions are unavailable.
+
 ## Firebase
 
 The Flutter app uses the same `meetday-dev` Firebase project as the web frontend. Android, iOS, and web apps are registered in that Firebase project. The generated Android and iOS registration files are included in the project.

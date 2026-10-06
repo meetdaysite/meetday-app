@@ -2640,6 +2640,16 @@ class _HubTabBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(authControllerProvider).role;
+    if (role == AccountRole.space) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('Community Space discovery is available to Brand and Community accounts.'),
+        ),
+      );
+    }
+
     final hubsAsync = ref.watch(dashboardHubsProvider);
 
     return RefreshIndicator(
@@ -2743,9 +2753,12 @@ class _HubTabBody extends ConsumerWidget {
                   final title = (h['title'] ?? 'Hub').toString();
                   final memberCount = (h['memberCount'] ?? '0').toString();
                   final locations = (h['locations'] as List?)?.join(', ') ?? '';
-                  final subtitle = locations.isNotEmpty
-                      ? '$memberCount capacity · $locations'
-                      : '$memberCount capacity';
+                  final businessName = (h['businessName'] ?? '').toString();
+                  final subtitle = [
+                    if (businessName.isNotEmpty) businessName,
+                    '$memberCount capacity',
+                    if (locations.isNotEmpty) locations,
+                  ].join(' · ');
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),

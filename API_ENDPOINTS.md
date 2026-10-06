@@ -1,3 +1,7 @@
+# Historical API Contract (Not Live)
+
+> This file's examples below are an earlier mock API specification and do not match the current backend. Use [MOBILE_BACKEND_ENDPOINT_AUDIT.md](MOBILE_BACKEND_ENDPOINT_AUDIT.md) for the audited Flutter call sites, actual NestJS routes, and confirmed mismatches.
+
 # Meetday Community App - API Endpoints
 
 All endpoints should return JSON responses with proper error handling.

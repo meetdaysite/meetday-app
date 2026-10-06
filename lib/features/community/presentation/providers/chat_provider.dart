@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../auth/domain/account_role.dart';
+import '../../../auth/state/auth_provider.dart';
 
 // ─── Data Models ─────────────────────────────────────────────────────────────
 
@@ -27,7 +29,8 @@ class UnifiedRequestItem {
 
   final String id;
   final String category; // 'sponsorships', 'spaces', 'communities', 'brands'
-  final String kind; // 'SPONSORSHIP', 'CAMPAIGN', 'SPACE_INTEREST', 'SPACE_HOST', 'COMMUNITY_COLLAB'
+  final String
+  kind; // 'SPONSORSHIP', 'CAMPAIGN', 'SPACE_INTEREST', 'SPACE_HOST', 'COMMUNITY_COLLAB'
   final String direction; // 'INCOMING', 'OUTGOING'
   final String status; // 'REQUESTED', 'ACCEPTED', 'DECLINED'
   final String counterpartName;
@@ -109,11 +112,16 @@ class UnifiedChatMessage {
 
   bool get isDeleted => deletedAt != null;
   bool get isEdited => editedAt != null;
-  bool get isAdmin => senderType == 'ADMIN' || senderType == 'BOT' || senderType == 'SYSTEM';
-  bool get isSystem => messageType == 'SYSTEM' || content.toLowerCase().contains('[system]') || isSystemMessage(raw);
+  bool get isAdmin =>
+      senderType == 'ADMIN' || senderType == 'BOT' || senderType == 'SYSTEM';
+  bool get isSystem =>
+      messageType == 'SYSTEM' ||
+      content.toLowerCase().contains('[system]') ||
+      isSystemMessage(raw);
 
   static bool isSystemMessage(Map<String, dynamic> m) {
-    if ((m['messageType'] ?? '').toString().toUpperCase() == 'SYSTEM') return true;
+    if ((m['messageType'] ?? '').toString().toUpperCase() == 'SYSTEM')
+      return true;
     final content = (m['content'] ?? '').toString().toLowerCase();
     if (content.contains('[system]')) return true;
     if (content.contains('deal is locked') ||
@@ -151,11 +159,18 @@ class UnifiedChatMessage {
     return null;
   }
 
-  factory UnifiedChatMessage.fromSponsorship(Map<String, dynamic> m) {
+  factory UnifiedChatMessage.fromSponsorship(
+    Map<String, dynamic> m, {
+    String currentRole = 'HOST',
+  }) {
     final senderType = (m['senderType'] ?? 'HOST').toString().toUpperCase();
-    final isMe = senderType == 'HOST';
+    final isMe = senderType == currentRole.toUpperCase();
     final isSys = isSystemMessage(m);
-    final msgType = isSys ? 'SYSTEM' : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT')).toString().toUpperCase();
+    final msgType = isSys
+        ? 'SYSTEM'
+        : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT'))
+              .toString()
+              .toUpperCase();
 
     return UnifiedChatMessage(
       id: (m['id'] ?? '').toString(),
@@ -173,10 +188,16 @@ class UnifiedChatMessage {
   }
 
   factory UnifiedChatMessage.fromSpace(Map<String, dynamic> m) {
-    final senderType = (m['senderType'] ?? 'COMMUNITY').toString().toUpperCase();
+    final senderType = (m['senderType'] ?? 'COMMUNITY')
+        .toString()
+        .toUpperCase();
     final isMe = senderType == 'COMMUNITY';
     final isSys = isSystemMessage(m);
-    final msgType = isSys ? 'SYSTEM' : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT')).toString().toUpperCase();
+    final msgType = isSys
+        ? 'SYSTEM'
+        : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT'))
+              .toString()
+              .toUpperCase();
 
     return UnifiedChatMessage(
       id: (m['id'] ?? '').toString(),
@@ -197,7 +218,11 @@ class UnifiedChatMessage {
     final senderType = (m['senderType'] ?? 'HOST').toString().toUpperCase();
     final isMe = senderType == 'HOST';
     final isSys = isSystemMessage(m);
-    final msgType = isSys ? 'SYSTEM' : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT')).toString().toUpperCase();
+    final msgType = isSys
+        ? 'SYSTEM'
+        : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT'))
+              .toString()
+              .toUpperCase();
 
     return UnifiedChatMessage(
       id: (m['id'] ?? '').toString(),
@@ -214,11 +239,20 @@ class UnifiedChatMessage {
     );
   }
 
-  factory UnifiedChatMessage.fromCommunityCollab(Map<String, dynamic> m, String mySenderType) {
-    final senderType = (m['senderType'] ?? 'REQUESTER').toString().toUpperCase();
+  factory UnifiedChatMessage.fromCommunityCollab(
+    Map<String, dynamic> m,
+    String mySenderType,
+  ) {
+    final senderType = (m['senderType'] ?? 'REQUESTER')
+        .toString()
+        .toUpperCase();
     final isMe = senderType == mySenderType.toUpperCase();
     final isSys = isSystemMessage(m);
-    final msgType = isSys ? 'SYSTEM' : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT')).toString().toUpperCase();
+    final msgType = isSys
+        ? 'SYSTEM'
+        : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT'))
+              .toString()
+              .toUpperCase();
 
     return UnifiedChatMessage(
       id: (m['id'] ?? '').toString(),
@@ -236,10 +270,16 @@ class UnifiedChatMessage {
   }
 
   factory UnifiedChatMessage.fromBrandCommunity(Map<String, dynamic> m) {
-    final senderType = (m['senderType'] ?? 'COMMUNITY').toString().toUpperCase();
+    final senderType = (m['senderType'] ?? 'COMMUNITY')
+        .toString()
+        .toUpperCase();
     final isMe = senderType == 'COMMUNITY';
     final isSys = isSystemMessage(m);
-    final msgType = isSys ? 'SYSTEM' : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT')).toString().toUpperCase();
+    final msgType = isSys
+        ? 'SYSTEM'
+        : (m['mediaKey'] != null ? 'IMAGE' : (m['messageType'] ?? 'TEXT'))
+              .toString()
+              .toUpperCase();
 
     return UnifiedChatMessage(
       id: (m['id'] ?? '').toString(),
@@ -295,17 +335,26 @@ class ChatHubData {
 
 List<Map<String, dynamic>> _extractList(dynamic data) {
   if (data is List) {
-    return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return data
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
   if (data is Map) {
     if (data['data'] is List) {
-      return (data['data'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      return (data['data'] as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
     }
     if (data['data'] is Map) {
       final inner = data['data'];
       for (final k in ['threads', 'chats', 'messages', 'items']) {
         if (inner[k] is List) {
-          return (inner[k] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+          return (inner[k] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
         }
       }
     }
@@ -317,6 +366,8 @@ List<Map<String, dynamic>> _extractList(dynamic data) {
 
 final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   final api = ref.watch(apiClientProvider);
+  final accountRole = ref.watch(authControllerProvider).role;
+  final sponsorshipRole = accountRole == AccountRole.brand ? 'BRAND' : 'HOST';
 
   // 1. Fetch raw data across all 5 endpoints in parallel
   List<Map<String, dynamic>> sponsorshipAccepted = [];
@@ -337,8 +388,14 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
     }
 
     final results = await Future.wait([
-      safeGet('/sponsorships/chats', {'status': 'ACCEPTED', 'role': 'HOST'}),
-      safeGet('/sponsorships/chats', {'status': 'REQUESTED', 'role': 'HOST'}),
+      safeGet('/sponsorships/chats', {
+        'status': 'ACCEPTED',
+        'role': sponsorshipRole,
+      }),
+      safeGet('/sponsorships/chats', {
+        'status': 'REQUESTED',
+        'role': sponsorshipRole,
+      }),
       safeGet('/spaces/chats', {'role': 'COMMUNITY'}),
       safeGet('/space-host/chats', {'role': 'HOST'}),
       safeGet('/community-collaboration/chats'),
@@ -369,11 +426,23 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
     final isCampaign = t['campaignId'] != null;
     final catKey = isCampaign ? 'campaigns' : 'sponsorships';
     final deal = t['deal'] is Map ? (t['deal'] as Map) : null;
-    final dealStatus = (t['dealStatus'] ?? deal?['status'] ?? '').toString().toUpperCase();
-    final paymentStatus = (t['paymentStatus'] ?? deal?['paymentStatus'] ?? '').toString().toUpperCase();
+    final dealStatus = (t['dealStatus'] ?? deal?['status'] ?? '')
+        .toString()
+        .toUpperCase();
+    final paymentStatus = (t['paymentStatus'] ?? deal?['paymentStatus'] ?? '')
+        .toString()
+        .toUpperCase();
 
-    final isLocked = t['isDealLocked'] == true || t['dealLocked'] == true || dealStatus == 'APPROVED' || dealStatus == 'LOCKED';
-    final isClosed = t['isDealClosed'] == true || t['dealClosed'] == true || dealStatus == 'CLOSED' || (dealStatus == 'APPROVED' && paymentStatus == 'PAID');
+    final isLocked =
+        t['isDealLocked'] == true ||
+        t['dealLocked'] == true ||
+        dealStatus == 'APPROVED' ||
+        dealStatus == 'LOCKED';
+    final isClosed =
+        t['isDealClosed'] == true ||
+        t['dealClosed'] == true ||
+        dealStatus == 'CLOSED' ||
+        (dealStatus == 'APPROVED' && paymentStatus == 'PAID');
 
     activeMap[catKey]!.add(
       UnifiedActiveThread(
@@ -383,12 +452,17 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
         counterpartName: (t['counterpartName'] ?? 'Brand').toString(),
         counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
         counterpartType: (t['counterpartType'] ?? 'BRAND').toString(),
-        title: (t['proposalName'] ?? (isCampaign ? 'Brand Campaign' : 'Sponsorship Proposal')).toString(),
+        title:
+            (t['proposalName'] ??
+                    (isCampaign ? 'Brand Campaign' : 'Sponsorship Proposal'))
+                .toString(),
         subtitle: (t['counterpartName'] ?? '').toString(),
         lastMessagePreview: t['lastMessagePreview'] as String?,
         lastMessageAt: t['lastMessageAt'] as String?,
         createdAt: t['createdAt'] as String?,
-        unreadCount: (t['unreadCount'] is num) ? (t['unreadCount'] as num).toInt() : 0,
+        unreadCount: (t['unreadCount'] is num)
+            ? (t['unreadCount'] as num).toInt()
+            : 0,
         hasUnreadMention: t['hasUnreadMention'] == true,
         isDealLocked: isLocked,
         isDealClosed: isClosed,
@@ -401,11 +475,23 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   for (final t in spaceThreads) {
     if (t['chatStatus'] == 'ACCEPTED') {
       final deal = t['deal'] is Map ? (t['deal'] as Map) : null;
-      final dealStatus = (t['dealStatus'] ?? deal?['status'] ?? '').toString().toUpperCase();
-      final paymentStatus = (t['paymentStatus'] ?? deal?['paymentStatus'] ?? '').toString().toUpperCase();
+      final dealStatus = (t['dealStatus'] ?? deal?['status'] ?? '')
+          .toString()
+          .toUpperCase();
+      final paymentStatus = (t['paymentStatus'] ?? deal?['paymentStatus'] ?? '')
+          .toString()
+          .toUpperCase();
 
-      final isLocked = t['isDealLocked'] == true || t['dealLocked'] == true || dealStatus == 'APPROVED' || dealStatus == 'LOCKED';
-      final isClosed = t['isDealClosed'] == true || t['dealClosed'] == true || dealStatus == 'CLOSED' || (dealStatus == 'APPROVED' && paymentStatus == 'PAID');
+      final isLocked =
+          t['isDealLocked'] == true ||
+          t['dealLocked'] == true ||
+          dealStatus == 'APPROVED' ||
+          dealStatus == 'LOCKED';
+      final isClosed =
+          t['isDealClosed'] == true ||
+          t['dealClosed'] == true ||
+          dealStatus == 'CLOSED' ||
+          (dealStatus == 'APPROVED' && paymentStatus == 'PAID');
 
       activeMap['spaces']!.add(
         UnifiedActiveThread(
@@ -420,7 +506,9 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           lastMessagePreview: t['lastMessagePreview'] as String?,
           lastMessageAt: t['lastMessageAt'] as String?,
           createdAt: t['createdAt'] as String?,
-          unreadCount: (t['unreadCount'] is num) ? (t['unreadCount'] as num).toInt() : 0,
+          unreadCount: (t['unreadCount'] is num)
+              ? (t['unreadCount'] as num).toInt()
+              : 0,
           isDealLocked: isLocked,
           isDealClosed: isClosed,
           rawThread: t,
@@ -433,11 +521,23 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   for (final t in spaceHostThreads) {
     if (t['chatStatus'] == 'ACCEPTED') {
       final deal = t['deal'] is Map ? (t['deal'] as Map) : null;
-      final dealStatus = (t['dealStatus'] ?? deal?['status'] ?? '').toString().toUpperCase();
-      final paymentStatus = (t['paymentStatus'] ?? deal?['paymentStatus'] ?? '').toString().toUpperCase();
+      final dealStatus = (t['dealStatus'] ?? deal?['status'] ?? '')
+          .toString()
+          .toUpperCase();
+      final paymentStatus = (t['paymentStatus'] ?? deal?['paymentStatus'] ?? '')
+          .toString()
+          .toUpperCase();
 
-      final isLocked = t['isDealLocked'] == true || t['dealLocked'] == true || dealStatus == 'APPROVED' || dealStatus == 'LOCKED';
-      final isClosed = t['isDealClosed'] == true || t['dealClosed'] == true || dealStatus == 'CLOSED' || (dealStatus == 'APPROVED' && paymentStatus == 'PAID');
+      final isLocked =
+          t['isDealLocked'] == true ||
+          t['dealLocked'] == true ||
+          dealStatus == 'APPROVED' ||
+          dealStatus == 'LOCKED';
+      final isClosed =
+          t['isDealClosed'] == true ||
+          t['dealClosed'] == true ||
+          dealStatus == 'CLOSED' ||
+          (dealStatus == 'APPROVED' && paymentStatus == 'PAID');
 
       activeMap['spaces']!.add(
         UnifiedActiveThread(
@@ -452,7 +552,9 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           lastMessagePreview: t['lastMessagePreview'] as String?,
           lastMessageAt: t['lastMessageAt'] as String?,
           createdAt: t['createdAt'] as String?,
-          unreadCount: (t['unreadCount'] is num) ? (t['unreadCount'] as num).toInt() : 0,
+          unreadCount: (t['unreadCount'] is num)
+              ? (t['unreadCount'] as num).toInt()
+              : 0,
           isDealLocked: isLocked,
           isDealClosed: isClosed,
           rawThread: t,
@@ -477,7 +579,9 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           lastMessagePreview: t['lastMessagePreview'] as String?,
           lastMessageAt: t['lastMessageAt'] as String?,
           createdAt: t['createdAt'] as String?,
-          unreadCount: (t['unreadCount'] is num) ? (t['unreadCount'] as num).toInt() : 0,
+          unreadCount: (t['unreadCount'] is num)
+              ? (t['unreadCount'] as num).toInt()
+              : 0,
           rawThread: t,
         ),
       );
@@ -500,7 +604,9 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           lastMessagePreview: t['lastMessagePreview'] as String?,
           lastMessageAt: t['lastMessageAt'] as String?,
           createdAt: t['createdAt'] as String?,
-          unreadCount: (t['unreadCount'] is num) ? (t['unreadCount'] as num).toInt() : 0,
+          unreadCount: (t['unreadCount'] is num)
+              ? (t['unreadCount'] as num).toInt()
+              : 0,
           rawThread: t,
         ),
       );
@@ -546,7 +652,8 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
           counterpartType: 'BRAND',
           title: (t['proposalName'] ?? 'Brand Campaign').toString(),
-          description: 'You showed interest in this campaign. Awaiting brand approval.',
+          description:
+              'You showed interest in this campaign. Awaiting brand approval.',
           createdAt: t['createdAt'] as String?,
           lastMessagePreview: t['lastMessagePreview'] as String?,
           isIncoming: false,
@@ -656,23 +763,52 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
 
   // Sort requests by newest first
   requests.sort((a, b) {
-    final tA = a.createdAt != null ? DateTime.tryParse(a.createdAt!)?.millisecondsSinceEpoch ?? 0 : 0;
-    final tB = b.createdAt != null ? DateTime.tryParse(b.createdAt!)?.millisecondsSinceEpoch ?? 0 : 0;
+    final tA = a.createdAt != null
+        ? DateTime.tryParse(a.createdAt!)?.millisecondsSinceEpoch ?? 0
+        : 0;
+    final tB = b.createdAt != null
+        ? DateTime.tryParse(b.createdAt!)?.millisecondsSinceEpoch ?? 0
+        : 0;
     return tB.compareTo(tA);
   });
 
   // Calculate unread & pending counts per category
-  final spUnread = activeMap['sponsorships']!.fold<int>(0, (s, t) => s + t.unreadCount);
-  final campUnread = activeMap['campaigns']!.fold<int>(0, (s, t) => s + t.unreadCount);
-  final spcUnread = activeMap['spaces']!.fold<int>(0, (s, t) => s + t.unreadCount);
-  final comUnread = activeMap['communities']!.fold<int>(0, (s, t) => s + t.unreadCount);
-  final brUnread = activeMap['brands']!.fold<int>(0, (s, t) => s + t.unreadCount);
+  final spUnread = activeMap['sponsorships']!.fold<int>(
+    0,
+    (s, t) => s + t.unreadCount,
+  );
+  final campUnread = activeMap['campaigns']!.fold<int>(
+    0,
+    (s, t) => s + t.unreadCount,
+  );
+  final spcUnread = activeMap['spaces']!.fold<int>(
+    0,
+    (s, t) => s + t.unreadCount,
+  );
+  final comUnread = activeMap['communities']!.fold<int>(
+    0,
+    (s, t) => s + t.unreadCount,
+  );
+  final brUnread = activeMap['brands']!.fold<int>(
+    0,
+    (s, t) => s + t.unreadCount,
+  );
 
-  final spPending = requests.where((r) => r.category == 'sponsorships' && r.direction == 'INCOMING').length;
-  final campPending = requests.where((r) => r.category == 'campaigns' && r.direction == 'INCOMING').length;
-  final spcPending = requests.where((r) => r.category == 'spaces' && r.direction == 'INCOMING').length;
-  final comPending = requests.where((r) => r.category == 'communities' && r.direction == 'INCOMING').length;
-  final brPending = requests.where((r) => r.category == 'brands' && r.direction == 'INCOMING').length;
+  final spPending = requests
+      .where((r) => r.category == 'sponsorships' && r.direction == 'INCOMING')
+      .length;
+    final campPending = requests
+      .where((r) => r.category == 'campaigns')
+      .length;
+  final spcPending = requests
+      .where((r) => r.category == 'spaces' && r.direction == 'INCOMING')
+      .length;
+  final comPending = requests
+      .where((r) => r.category == 'communities' && r.direction == 'INCOMING')
+      .length;
+  final brPending = requests
+      .where((r) => r.category == 'brands' && r.direction == 'INCOMING')
+      .length;
 
   final categories = [
     CategoryDefinition(
@@ -702,7 +838,8 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
     CategoryDefinition(
       key: 'communities',
       label: 'Communities',
-      description: 'Partner, cross-promote, and co-host with other communities.',
+      description:
+          'Partner, cross-promote, and co-host with other communities.',
       badgeCount: comUnread,
       activeCount: activeMap['communities']!.length,
       pendingRequestsCount: comPending,
@@ -731,119 +868,179 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
 
 // ─── Thread Messages Provider ────────────────────────────────────────────────
 
-final chatMessagesProvider = FutureProvider.autoDispose.family<List<UnifiedChatMessage>, UnifiedActiveThread>((ref, thread) async {
-  final api = ref.watch(apiClientProvider);
-  final id = thread.id;
+final chatMessagesProvider = FutureProvider.autoDispose
+    .family<List<UnifiedChatMessage>, UnifiedActiveThread>((ref, thread) async {
+      final api = ref.watch(apiClientProvider);
+      final accountRole = ref.watch(authControllerProvider).role;
+      final sponsorshipRole = accountRole == AccountRole.brand
+          ? 'BRAND'
+          : 'HOST';
+      final id = thread.id;
 
-  try {
-    switch (thread.kind) {
-      case 'SPONSORSHIP':
-      case 'CAMPAIGN':
-        final res = await api.dio.get<dynamic>('/sponsorships/chats/$id/messages', queryParameters: {'role': 'HOST'});
-        final list = _extractList(res.data);
-        return list.map((m) => UnifiedChatMessage.fromSponsorship(m)).toList();
-      case 'SPACE_INTEREST':
-        final res = await api.dio.get<dynamic>('/spaces/chats/$id/messages', queryParameters: {'role': 'COMMUNITY'});
-        final list = _extractList(res.data);
-        return list.map((m) => UnifiedChatMessage.fromSpace(m)).toList();
-      case 'SPACE_HOST':
-        final res = await api.dio.get<dynamic>('/space-host/chats/$id/messages', queryParameters: {'role': 'HOST'});
-        final list = _extractList(res.data);
-        return list.map((m) => UnifiedChatMessage.fromSpaceHost(m)).toList();
-      case 'COMMUNITY_COLLAB':
-        if (thread.category == 'brands') {
-          final res = await api.dio.get<dynamic>('/brand-community-collaboration/chats/$id/messages', queryParameters: {'asRole': 'COMMUNITY'});
-          final list = _extractList(res.data);
-          return list.map((m) => UnifiedChatMessage.fromBrandCommunity(m)).toList();
-        } else {
-          final res = await api.dio.get<dynamic>('/community-collaboration/chats/$id/messages');
-          final data = res.data is Map ? res.data['data'] : res.data;
-          final mySenderType = data is Map ? (data['mySenderType'] ?? 'REQUESTER').toString() : 'REQUESTER';
-          final list = _extractList(res.data);
-          return list.map((m) => UnifiedChatMessage.fromCommunityCollab(m, mySenderType)).toList();
+      try {
+        switch (thread.kind) {
+          case 'SPONSORSHIP':
+          case 'CAMPAIGN':
+            final res = await api.dio.get<dynamic>(
+              '/sponsorships/chats/$id/messages',
+              queryParameters: {'role': sponsorshipRole},
+            );
+            final list = _extractList(res.data);
+            return list
+                .map(
+                  (m) => UnifiedChatMessage.fromSponsorship(
+                    m,
+                    currentRole: sponsorshipRole,
+                  ),
+                )
+                .toList();
+          case 'SPACE_INTEREST':
+            final res = await api.dio.get<dynamic>(
+              '/spaces/chats/$id/messages',
+              queryParameters: {'role': 'COMMUNITY'},
+            );
+            final list = _extractList(res.data);
+            return list.map((m) => UnifiedChatMessage.fromSpace(m)).toList();
+          case 'SPACE_HOST':
+            final res = await api.dio.get<dynamic>(
+              '/space-host/chats/$id/messages',
+              queryParameters: {'role': 'HOST'},
+            );
+            final list = _extractList(res.data);
+            return list
+                .map((m) => UnifiedChatMessage.fromSpaceHost(m))
+                .toList();
+          case 'COMMUNITY_COLLAB':
+            if (thread.category == 'brands') {
+              final res = await api.dio.get<dynamic>(
+                '/brand-community-collaboration/chats/$id/messages',
+                queryParameters: {'asRole': 'COMMUNITY'},
+              );
+              final list = _extractList(res.data);
+              return list
+                  .map((m) => UnifiedChatMessage.fromBrandCommunity(m))
+                  .toList();
+            } else {
+              final res = await api.dio.get<dynamic>(
+                '/community-collaboration/chats/$id/messages',
+              );
+              final data = res.data is Map ? res.data['data'] : res.data;
+              final mySenderType = data is Map
+                  ? (data['mySenderType'] ?? 'REQUESTER').toString()
+                  : 'REQUESTER';
+              final list = _extractList(res.data);
+              return list
+                  .map(
+                    (m) =>
+                        UnifiedChatMessage.fromCommunityCollab(m, mySenderType),
+                  )
+                  .toList();
+            }
+          default:
+            return [];
         }
-      default:
+      } catch (e) {
+        debugPrint('Error fetching chat messages: $e');
         return [];
-    }
-  } catch (e) {
-    debugPrint('Error fetching chat messages: $e');
-    return [];
-  }
-});
+      }
+    });
 
 // ─── Thread Deal & Report Providers ──────────────────────────────────────────
 
-final threadDealProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, UnifiedActiveThread>((ref, thread) async {
-  final api = ref.watch(apiClientProvider);
-  final id = thread.id;
+final threadDealProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>?, UnifiedActiveThread>((ref, thread) async {
+      final api = ref.watch(apiClientProvider);
+      final id = thread.id;
 
-  try {
-    if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
-      final res = await api.dio.get<dynamic>('/sponsorships/chats/$id/deal');
-      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-    } else if (thread.kind == 'SPACE_INTEREST') {
-      final res = await api.dio.get<dynamic>('/spaces/chats/$id/deal');
-      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-    } else if (thread.kind == 'SPACE_HOST') {
-      final res = await api.dio.get<dynamic>('/space-host/chats/$id/deal');
-      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-    }
-  } catch (e) {
-    debugPrint('Error fetching deal: $e');
-  }
-  return null;
-});
+      try {
+        if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
+          final res = await api.dio.get<dynamic>(
+            '/sponsorships/chats/$id/deal',
+          );
+          final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
+          if (data is Map<String, dynamic>) return data;
+          if (data is Map) return Map<String, dynamic>.from(data);
+        } else if (thread.kind == 'SPACE_INTEREST') {
+          final res = await api.dio.get<dynamic>('/spaces/chats/$id/deal');
+          final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
+          if (data is Map<String, dynamic>) return data;
+          if (data is Map) return Map<String, dynamic>.from(data);
+        } else if (thread.kind == 'SPACE_HOST') {
+          final res = await api.dio.get<dynamic>('/space-host/chats/$id/deal');
+          final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
+          if (data is Map<String, dynamic>) return data;
+          if (data is Map) return Map<String, dynamic>.from(data);
+        }
+      } catch (e) {
+        debugPrint('Error fetching deal: $e');
+      }
+      return null;
+    });
 
-final threadReportProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, UnifiedActiveThread>((ref, thread) async {
-  final api = ref.watch(apiClientProvider);
-  final id = thread.id;
+final threadReportProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>?, UnifiedActiveThread>((ref, thread) async {
+      final api = ref.watch(apiClientProvider);
+      final id = thread.id;
 
-  try {
-    if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
-      final res = await api.dio.get<dynamic>('/sponsorships/chats/$id/deal/report');
-      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-    } else if (thread.kind == 'SPACE_INTEREST') {
-      final res = await api.dio.get<dynamic>('/spaces/chats/$id/deal/report');
-      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-    } else if (thread.kind == 'SPACE_HOST') {
-      final res = await api.dio.get<dynamic>('/space-host/chats/$id/deal/report');
-      final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-    }
-  } catch (e) {
-    debugPrint('Error fetching report: $e');
-  }
-  return null;
-});
+      try {
+        if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
+          final res = await api.dio.get<dynamic>(
+            '/sponsorships/chats/$id/deal/report',
+          );
+          final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
+          if (data is Map<String, dynamic>) return data;
+          if (data is Map) return Map<String, dynamic>.from(data);
+        } else if (thread.kind == 'SPACE_INTEREST') {
+          final res = await api.dio.get<dynamic>(
+            '/spaces/chats/$id/deal/report',
+          );
+          final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
+          if (data is Map<String, dynamic>) return data;
+          if (data is Map) return Map<String, dynamic>.from(data);
+        }
+      } catch (e) {
+        debugPrint('Error fetching report: $e');
+      }
+      return null;
+    });
 
 // ─── Chat Actions API Helpers ────────────────────────────────────────────────
 
-Future<void> editChatMessageApi(ApiClient api, UnifiedActiveThread thread, String messageId, String newContent) async {
+Future<void> editChatMessageApi(
+  ApiClient api,
+  UnifiedActiveThread thread,
+  String messageId,
+  String newContent,
+) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
-    await api.dio.patch<dynamic>('/sponsorships/chats/$id/messages/$messageId', data: {'content': newContent});
+    await api.dio.patch<dynamic>(
+      '/sponsorships/chats/$id/messages/$messageId',
+      data: {'content': newContent},
+    );
   } else if (thread.kind == 'SPACE_INTEREST') {
-    await api.dio.patch<dynamic>('/spaces/chats/$id/messages/$messageId', data: {'content': newContent});
+    await api.dio.patch<dynamic>(
+      '/spaces/chats/$id/messages/$messageId',
+      data: {'content': newContent},
+    );
   } else if (thread.kind == 'SPACE_HOST') {
-    await api.dio.patch<dynamic>('/space-host/chats/$id/messages/$messageId', data: {'content': newContent});
+    await api.dio.patch<dynamic>(
+      '/space-host/chats/$id/messages/$messageId',
+      data: {'content': newContent},
+    );
   }
 }
 
-Future<void> deleteChatMessageApi(ApiClient api, UnifiedActiveThread thread, String messageId) async {
+Future<void> deleteChatMessageApi(
+  ApiClient api,
+  UnifiedActiveThread thread,
+  String messageId,
+) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
-    await api.dio.delete<dynamic>('/sponsorships/chats/$id/messages/$messageId');
+    await api.dio.delete<dynamic>(
+      '/sponsorships/chats/$id/messages/$messageId',
+    );
   } else if (thread.kind == 'SPACE_INTEREST') {
     await api.dio.delete<dynamic>('/spaces/chats/$id/messages/$messageId');
   } else if (thread.kind == 'SPACE_HOST') {
@@ -851,13 +1048,24 @@ Future<void> deleteChatMessageApi(ApiClient api, UnifiedActiveThread thread, Str
   }
 }
 
-Future<void> saveDealApi(ApiClient api, UnifiedActiveThread thread, Map<String, dynamic> payload, {bool isUpdate = false}) async {
+Future<void> saveDealApi(
+  ApiClient api,
+  UnifiedActiveThread thread,
+  Map<String, dynamic> payload, {
+  bool isUpdate = false,
+}) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
     if (isUpdate) {
-      await api.dio.patch<dynamic>('/sponsorships/chats/$id/deal', data: payload);
+      await api.dio.patch<dynamic>(
+        '/sponsorships/chats/$id/deal',
+        data: payload,
+      );
     } else {
-      await api.dio.post<dynamic>('/sponsorships/chats/$id/deal', data: payload);
+      await api.dio.post<dynamic>(
+        '/sponsorships/chats/$id/deal',
+        data: payload,
+      );
     }
   } else if (thread.kind == 'SPACE_INTEREST') {
     if (isUpdate) {
@@ -874,17 +1082,26 @@ Future<void> saveDealApi(ApiClient api, UnifiedActiveThread thread, Map<String, 
   }
 }
 
-Future<void> saveReportApi(ApiClient api, UnifiedActiveThread thread, Map<String, dynamic> payload) async {
+Future<void> saveReportApi(
+  ApiClient api,
+  UnifiedActiveThread thread,
+  Map<String, dynamic> payload,
+) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
-    await api.dio.put<dynamic>('/sponsorships/chats/$id/deal/report', data: payload);
+    await api.dio.put<dynamic>(
+      '/sponsorships/chats/$id/deal/report',
+      data: payload,
+    );
   } else if (thread.kind == 'SPACE_INTEREST') {
     await api.dio.put<dynamic>('/spaces/chats/$id/deal/report', data: payload);
   } else if (thread.kind == 'SPACE_HOST') {
-    await api.dio.put<dynamic>('/space-host/chats/$id/deal/report', data: payload);
+    await api.dio.put<dynamic>(
+      '/space-host/chats/$id/deal/report',
+      data: payload,
+    );
   }
 }
-
 Future<void> approveDealApi(ApiClient api, UnifiedActiveThread thread) async {
   final id = thread.id;
   if (thread.kind == 'SPONSORSHIP' || thread.kind == 'CAMPAIGN') {
@@ -907,4 +1124,3 @@ Future<void> requestDealChangesApi(ApiClient api, UnifiedActiveThread thread, {S
     await api.dio.post<dynamic>('/space-host/chats/$id/deal/request-changes', data: body);
   }
 }
-

@@ -33,17 +33,29 @@ String _formatDateRange(String? start, String? end) {
 }
 
 Map<String, dynamic> _mapProposalItem(Map item) {
-  final name = (item['name'] ?? item['title'] ?? item['briefTitle'] ?? 'Untitled Proposal').toString();
+  final name =
+      (item['name'] ??
+              item['title'] ??
+              item['briefTitle'] ??
+              'Untitled Proposal')
+          .toString();
   final about = (item['about'] ?? '').toString();
   final imageUrl = item['imageUrl'] as String?;
   final eventDate = item['eventDate']?.toString();
   final eventEndDate = item['eventEndDate']?.toString();
   final dateLabel = _formatDateRange(eventDate, eventEndDate);
 
-  final venues = (item['venues'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
-  final venueCities = (item['venueCities'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
-  final venue = item['venue']?.toString() ?? (venues.isNotEmpty ? venues.first : '');
-  final city = item['city']?.toString() ?? (venueCities.isNotEmpty ? venueCities.first : '');
+  final venues =
+      (item['venues'] as List?)?.map((e) => e.toString()).toList() ??
+      <String>[];
+  final venueCities =
+      (item['venueCities'] as List?)?.map((e) => e.toString()).toList() ??
+      <String>[];
+  final venue =
+      item['venue']?.toString() ?? (venues.isNotEmpty ? venues.first : '');
+  final city =
+      item['city']?.toString() ??
+      (venueCities.isNotEmpty ? venueCities.first : '');
 
   final guestCount = (item['guestCount'] ?? '').toString();
   final ageGroup = (item['ageGroup'] ?? '').toString();
@@ -57,23 +69,38 @@ Map<String, dynamic> _mapProposalItem(Map item) {
   final isCompleted = _isEventCompleted(eventEndDate ?? eventDate);
   final effectiveStatus = isCompleted ? 'COMPLETED' : rawStatus;
 
-  final sponsorshipType = (item['sponsorshipType'] ?? 'CASH').toString().toUpperCase();
+  final sponsorshipType = (item['sponsorshipType'] ?? 'CASH')
+      .toString()
+      .toUpperCase();
   final hasCash = sponsorshipType == 'CASH' || sponsorshipType == 'BOTH';
   final hasBarter = sponsorshipType == 'BARTER' || sponsorshipType == 'BOTH';
 
-  final sponsorTiers = (item['sponsorTiers'] as List?)
+  final sponsorTiers =
+      (item['sponsorTiers'] as List?)
           ?.whereType<Map>()
-          .map((t) => {
-                'name': (t['name'] ?? '').toString(),
-                'price': (t['price'] ?? '').toString(),
-              })
+          .map(
+            (t) => {
+              'name': (t['name'] ?? '').toString(),
+              'price': (t['price'] ?? '').toString(),
+            },
+          )
           .toList() ??
       <Map<String, dynamic>>[];
 
-  final hostProfile = item['hostProfile'] is Map ? item['hostProfile'] as Map : null;
-  final hostName = (hostProfile?['displayName'] ?? item['hostName'] ?? item['communityName'] ?? '').toString();
-  final hostProfileId = (item['hostProfileId'] ?? hostProfile?['id'] ?? '').toString();
-  final communityId = (item['communityId'] ?? hostProfile?['communityProfile']?['id'] ?? '').toString();
+  final hostProfile = item['hostProfile'] is Map
+      ? item['hostProfile'] as Map
+      : null;
+  final hostName =
+      (hostProfile?['displayName'] ??
+              item['hostName'] ??
+              item['communityName'] ??
+              '')
+          .toString();
+  final hostProfileId = (item['hostProfileId'] ?? hostProfile?['id'] ?? '')
+      .toString();
+  final communityId =
+      (item['communityId'] ?? hostProfile?['communityProfile']?['id'] ?? '')
+          .toString();
 
   return <String, dynamic>{
     'id': (item['id'] ?? '').toString(),
@@ -81,6 +108,7 @@ Map<String, dynamic> _mapProposalItem(Map item) {
     'title': name,
     'about': about,
     'imageUrl': imageUrl,
+    'imageKey': item['imageKey'],
     'eventDate': eventDate,
     'eventEndDate': eventEndDate,
     'dateLabel': dateLabel,
@@ -90,9 +118,12 @@ Map<String, dynamic> _mapProposalItem(Map item) {
     'venueCities': venueCities,
     'guestCount': guestCount,
     'ageGroup': ageGroup,
-    'audienceProfile': (item['audienceProfile'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+    'audienceProfile':
+        (item['audienceProfile'] as List?)?.map((e) => e.toString()).toList() ??
+        <String>[],
     'videoUrl': videoUrl,
     'docUrl': docUrl,
+    'docKey': item['docKey'],
     'docName': docName,
     'docType': docType,
     'docSize': docSize,
@@ -110,91 +141,70 @@ Map<String, dynamic> _mapProposalItem(Map item) {
   };
 }
 
-// Host's Own Proposals (fetches strictly from /sponsorships/me for host/community accounts)
-// Brands discover all approved proposals from /sponsorships/published.
-final dashboardProposalsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final api = ref.watch(apiClientProvider);
-  final authState = ref.watch(authControllerProvider);
-  final isBrand = authState.role == AccountRole.brand;
-
-  if (isBrand) {
-    // Brands discover all published proposals across communities
-    try {
-      final pubResponse = await api.dio.get<dynamic>('/sponsorships/published');
-      if (pubResponse.statusCode == 200) {
-        final pubData = pubResponse.data;
-        List<dynamic> pubList = [];
-        if (pubData is Map && pubData.containsKey('data')) {
-          final inner = pubData['data'];
-          if (inner is Map && inner.containsKey('proposals')) {
-            pubList = inner['proposals'] ?? [];
-          } else if (inner is List) {
-            pubList = inner;
+// The proposal tab shows the authenticated account's own proposals.
+final dashboardProposalsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+      final api = ref.watch(apiClientProvider);
+      final authState = ref.watch(authControllerProvider);
+      final role = authState.role ?? AccountRole.community;
+      final List<Map<String, dynamic>> myProposals = [];
+      try {
+        final response = await api.dio.get<dynamic>(
+          '/sponsorships/me',
+          queryParameters: {'actorType': role.backendAccountType},
+        );
+        if (response.statusCode == 200) {
+          final responseData = response.data;
+          List<dynamic> list = [];
+          if (responseData is Map && responseData.containsKey('data')) {
+            final inner = responseData['data'];
+            if (inner is Map && inner.containsKey('proposals')) {
+              list = inner['proposals'] ?? [];
+            } else if (inner is List) {
+              list = inner;
+            }
+          }
+          for (final p in list.whereType<Map>()) {
+            myProposals.add(_mapProposalItem(p));
           }
         }
-        return pubList.whereType<Map>().map(_mapProposalItem).toList();
+      } catch (e) {
+        debugPrint('Could not fetch /sponsorships/me: $e');
       }
-    } catch (e) {
-      debugPrint('Error fetching brand published proposals: $e');
-    }
-    return [];
-  }
 
-  // Community Hosts: strictly fetch ONLY the host's own proposals from /sponsorships/me
-  final List<Map<String, dynamic>> myProposals = [];
-  try {
-    final response = await api.dio.get<dynamic>('/sponsorships/me');
-    if (response.statusCode == 200) {
-      final responseData = response.data;
-      List<dynamic> list = [];
-      if (responseData is Map && responseData.containsKey('data')) {
-        final inner = responseData['data'];
-        if (inner is Map && inner.containsKey('proposals')) {
-          list = inner['proposals'] ?? [];
-        } else if (inner is List) {
-          list = inner;
-        }
-      }
-      for (final p in list.whereType<Map>()) {
-        myProposals.add(_mapProposalItem(p));
-      }
-    }
-  } catch (e) {
-    debugPrint('Could not fetch /sponsorships/me: $e');
-  }
-
-  return myProposals;
-});
+      return myProposals;
+    });
 
 // Published proposals across all communities on Meetday (from /sponsorships/published)
 // Used when viewing any particular community profile to show proposals created by THAT specific community.
-final publishedProposalsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final api = ref.watch(apiClientProvider);
-  final List<Map<String, dynamic>> publishedList = [];
+final publishedProposalsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+      final api = ref.watch(apiClientProvider);
+      final List<Map<String, dynamic>> publishedList = [];
 
-  try {
-    final response = await api.dio.get<dynamic>('/sponsorships/published');
-    if (response.statusCode == 200) {
-      final responseData = response.data;
-      List<dynamic> list = [];
-      if (responseData is Map && responseData.containsKey('data')) {
-        final inner = responseData['data'];
-        if (inner is Map && inner.containsKey('proposals')) {
-          list = inner['proposals'] ?? [];
-        } else if (inner is List) {
-          list = inner;
+      try {
+        final response = await api.dio.get<dynamic>('/sponsorships/published');
+        if (response.statusCode == 200) {
+          final responseData = response.data;
+          List<dynamic> list = [];
+          if (responseData is Map && responseData.containsKey('data')) {
+            final inner = responseData['data'];
+            if (inner is Map && inner.containsKey('proposals')) {
+              list = inner['proposals'] ?? [];
+            } else if (inner is List) {
+              list = inner;
+            }
+          }
+          for (final p in list.whereType<Map>()) {
+            publishedList.add(_mapProposalItem(p));
+          }
         }
+      } catch (e) {
+        debugPrint('Error fetching /sponsorships/published: $e');
       }
-      for (final p in list.whereType<Map>()) {
-        publishedList.add(_mapProposalItem(p));
-      }
-    }
-  } catch (e) {
-    debugPrint('Error fetching /sponsorships/published: $e');
-  }
 
-  return publishedList;
-});
+      return publishedList;
+    });
 
 // Helper function to filter proposals created by a specific community
 List<Map<String, dynamic>> getCommunityMatchingProposals(
@@ -203,7 +213,10 @@ List<Map<String, dynamic>> getCommunityMatchingProposals(
 ) {
   final cId = (community['id'] ?? '').toString();
   final cHostId = (community['hostProfileId'] ?? '').toString();
-  final cName = (community['name'] ?? community['title'] ?? '').toString().toLowerCase().trim();
+  final cName = (community['name'] ?? community['title'] ?? '')
+      .toString()
+      .toLowerCase()
+      .trim();
 
   return proposals.where((p) {
     // 1. Match by community profile ID
@@ -212,14 +225,20 @@ List<Map<String, dynamic>> getCommunityMatchingProposals(
 
     // 2. Match by host profile ID
     final pHostId = (p['hostProfileId'] ?? '').toString();
-    if (cHostId.isNotEmpty && pHostId.isNotEmpty && pHostId == cHostId) return true;
+    if (cHostId.isNotEmpty && pHostId.isNotEmpty && pHostId == cHostId)
+      return true;
     if (cId.isNotEmpty && pHostId.isNotEmpty && pHostId == cId) return true;
 
     // 3. Match by host displayName / community name
-    final pHostName = (p['hostName'] ?? p['displayName'] ?? '').toString().toLowerCase().trim();
+    final pHostName = (p['hostName'] ?? p['displayName'] ?? '')
+        .toString()
+        .toLowerCase()
+        .trim();
     if (cName.isNotEmpty && pHostName.isNotEmpty) {
       if (cName == pHostName) return true;
-      if (cName.length >= 4 && (pHostName.contains(cName) || cName.contains(pHostName))) return true;
+      if (cName.length >= 4 &&
+          (pHostName.contains(cName) || cName.contains(pHostName)))
+        return true;
     }
 
     return false;
@@ -266,11 +285,13 @@ final dashboardHubsProvider = FutureProvider.autoDispose<List<Map<String, dynami
             return <String, dynamic>{
               'id': (m['id'] ?? '').toString(),
               'title': (m['name'] ?? m['businessName'] ?? m['spaceName'] ?? 'Untitled Hub').toString(),
+              'businessName': (m['businessName'] ?? '').toString(),
               'memberCount': capacity.toString(),
               'venueCapacity': capacity.toString(),
               'numberOfVenues': (m['numberOfVenues'] ?? '1').toString(),
               'logoUrl': m['logoUrl'] ?? m['posterUrl'] as String?,
               'locations': locations,
+              'operatingCities': locations,
               'about': (m['about'] ?? '').toString(),
               'raw': m,
             };
@@ -325,67 +346,78 @@ final dashboardCommunitiesProvider = FutureProvider.autoDispose((ref) async {
             final about = (item['about'] ?? '').toString();
             final avgGuestCount = (item['avgGuestCount'] ?? '').toString();
             final experiencesPerYear = (item['experiencesPerYear'] ?? '').toString();
+        final operatingCities =
+            (item['operatingCities'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            <String>[];
 
-            final operatingCities = (item['operatingCities'] as List?)
-                    ?.map((e) => e.toString())
-                    .toList() ??
-                <String>[];
+        final socialLinks = item['socialLinks'] is Map
+            ? item['socialLinks'] as Map
+            : null;
 
-            final socialLinks = item['socialLinks'] is Map ? item['socialLinks'] as Map : null;
+        final categories =
+            (item['categories'] as List?)
+                ?.whereType<Map>()
+                .map(
+                  (cat) => {
+                    'id': (cat['id'] ?? '').toString(),
+                    'name': (cat['name'] ?? '').toString(),
+                  },
+                )
+                .toList() ??
+            <Map<String, String>>[];
 
-            final categories = (item['categories'] as List?)
-                    ?.whereType<Map>()
-                    .map((cat) => {
-                          'id': (cat['id'] ?? '').toString(),
-                          'name': (cat['name'] ?? '').toString(),
-                        })
-                    .toList() ??
-                <Map<String, String>>[];
+        final pastEvents =
+            (item['pastEvents'] as List?)
+                ?.whereType<Map>()
+                .map(
+                  (pe) => {
+                    'name': (pe['name'] ?? '').toString(),
+                    'description': (pe['description'] ?? '').toString(),
+                    'imageUrls':
+                        (pe['imageUrls'] as List?)
+                            ?.map((u) => u.toString())
+                            .toList() ??
+                        <String>[],
+                  },
+                )
+                .toList() ??
+            <Map<String, dynamic>>[];
 
-            final pastEvents = (item['pastEvents'] as List?)
-                    ?.whereType<Map>()
-                    .map((pe) => {
-                          'name': (pe['name'] ?? '').toString(),
-                          'description': (pe['description'] ?? '').toString(),
-                          'imageUrls': (pe['imageUrls'] as List?)
-                                  ?.map((u) => u.toString())
-                                  .toList() ??
-                              <String>[],
-                        })
-                    .toList() ??
-                <Map<String, dynamic>>[];
+        final brandsWorkedWith =
+            (item['brandsWorkedWith'] as List?)
+                ?.whereType<Map>()
+                .map(
+                  (b) => {
+                    'name': (b['brandName'] ?? b['name'] ?? '').toString(),
+                    'logoUrl': (b['logoUrl'] ?? '').toString(),
+                    'url': (b['url'] ?? '').toString(),
+                  },
+                )
+                .toList() ??
+            <Map<String, dynamic>>[];
 
-            final brandsWorkedWith = (item['brandsWorkedWith'] as List?)
-                    ?.whereType<Map>()
-                    .map((b) => {
-                          'name': (b['brandName'] ?? b['name'] ?? '').toString(),
-                          'logoUrl': (b['logoUrl'] ?? '').toString(),
-                          'url': (b['url'] ?? '').toString(),
-                        })
-                    .toList() ??
-                <Map<String, dynamic>>[];
-
-            return <String, dynamic>{
-              'id': (item['id'] ?? '').toString(),
-              'hostProfileId': (item['hostProfileId'] ?? '').toString(),
-              'title': name,
-              'name': name,
-              'memberCount': memberCount,
-              'size': memberCount,
-              'logoUrl': logoUrl,
-              'imageUrl': logoUrl,
-              'secondaryImageUrl': secondaryImageUrl,
-              'about': about,
-              'avgGuestCount': avgGuestCount,
-              'experiencesPerYear': experiencesPerYear,
-              'operatingCities': operatingCities,
-              'socialLinks': socialLinks,
-              'categories': categories,
-              'pastEvents': pastEvents,
-              'brandsWorkedWith': brandsWorkedWith,
-            };
-          })
-          .toList();
+        return <String, dynamic>{
+          'id': (item['id'] ?? '').toString(),
+          'hostProfileId': (item['hostProfileId'] ?? '').toString(),
+          'title': name,
+          'name': name,
+          'memberCount': memberCount,
+          'size': memberCount,
+          'logoUrl': logoUrl,
+          'imageUrl': logoUrl,
+          'secondaryImageUrl': secondaryImageUrl,
+          'about': about,
+          'avgGuestCount': avgGuestCount,
+          'experiencesPerYear': experiencesPerYear,
+          'operatingCities': operatingCities,
+          'socialLinks': socialLinks,
+          'categories': categories,
+          'pastEvents': pastEvents,
+          'brandsWorkedWith': brandsWorkedWith,
+        };
+      }).toList();
       print('Final communities: $result');
       return result;
     }
@@ -551,13 +583,20 @@ final supportConversationsProvider = FutureProvider.autoDispose((ref) async {
 
       final result = chats
           .whereType<Map>()
-          .map((item) => {
-                'id': item['id'] ?? '',
-                'participantName': item['counterpartName'] ?? item['participantName'] ?? 'Support',
-                'lastMessage': item['lastMessage'] ?? item['lastMessageText'] ?? '',
-                'lastMessageTime': item['lastMessageTime'] ?? item['lastMessageAt'] ?? '',
-                'unreadCount': item['unreadCount'] ?? 0,
-              })
+          .map(
+            (item) => {
+              'id': item['id'] ?? '',
+              'participantName':
+                  item['counterpartName'] ??
+                  item['participantName'] ??
+                  'Support',
+              'lastMessage':
+                  item['lastMessage'] ?? item['lastMessageText'] ?? '',
+              'lastMessageTime':
+                  item['lastMessageTime'] ?? item['lastMessageAt'] ?? '',
+              'unreadCount': item['unreadCount'] ?? 0,
+            },
+          )
           .toList();
       print('Final chats: $result');
       return result;
@@ -586,14 +625,21 @@ final allConversationsProvider = FutureProvider.autoDispose((ref) async {
 
       return chats
           .whereType<Map>()
-          .map((item) => {
-                'id': item['id'] ?? '',
-                'participantName': item['counterpartName'] ?? item['participantName'] ?? 'Unknown',
-                'lastMessage': item['lastMessage'] ?? item['lastMessageText'] ?? '',
-                'lastMessageTime': item['lastMessageTime'] ?? item['lastMessageAt'] ?? '',
-                'unreadCount': item['unreadCount'] ?? 0,
-                'type': item['type'] ?? 'sponsorship',
-              })
+          .map(
+            (item) => {
+              'id': item['id'] ?? '',
+              'participantName':
+                  item['counterpartName'] ??
+                  item['participantName'] ??
+                  'Unknown',
+              'lastMessage':
+                  item['lastMessage'] ?? item['lastMessageText'] ?? '',
+              'lastMessageTime':
+                  item['lastMessageTime'] ?? item['lastMessageAt'] ?? '',
+              'unreadCount': item['unreadCount'] ?? 0,
+              'type': item['type'] ?? 'sponsorship',
+            },
+          )
           .toList();
     }
     return [];
@@ -631,8 +677,18 @@ final unreadNotificationsCountProvider = FutureProvider.autoDispose<int>((ref) a
 
 String _monthName(int month) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return months[month - 1];
 }

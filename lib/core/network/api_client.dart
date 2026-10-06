@@ -147,7 +147,13 @@ class ApiClient {
 
   Future<bool> checkConnection() async {
     try {
-      await dio.get<void>('/health');
+      final apiUri = Uri.parse(_config.baseUrl);
+      final healthUri = apiUri.replace(
+        path: '/health',
+        query: null,
+        fragment: null,
+      );
+      await dio.getUri<void>(healthUri);
       return true;
     } on DioException {
       return false;
@@ -156,17 +162,17 @@ class ApiClient {
 
   Future<dynamic> getRequest(String path) async {
     final response = await dio.get<dynamic>(path);
-    return response.data;
+    return _unwrapResponseData(response.data);
   }
 
   Future<dynamic> postRequest(String path, [dynamic data]) async {
     final response = await dio.post<dynamic>(path, data: data);
-    return response.data;
+    return _unwrapResponseData(response.data);
   }
 
   Future<dynamic> putRequest(String path, [dynamic data]) async {
     final response = await dio.put<dynamic>(path, data: data);
-    return response.data;
+    return _unwrapResponseData(response.data);
   }
 
   Future<dynamic> uploadFile(String path, String filePath) async {
@@ -174,7 +180,14 @@ class ApiClient {
       'file': await MultipartFile.fromFile(filePath),
     });
     final response = await dio.post<dynamic>(path, data: formData);
-    return response.data;
+    return _unwrapResponseData(response.data);
+  }
+
+  dynamic _unwrapResponseData(dynamic response) {
+    if (response is Map && response.containsKey('data')) {
+      return response['data'];
+    }
+    return response;
   }
 
   Map<String, String> _authHeaders() {

@@ -1,4 +1,15 @@
+import 'package:flutter/foundation.dart';
+
 enum AppEnvironment { dev, staging, prod }
+
+const _androidGooglePlacesApiKey = String.fromEnvironment('GOOGLE_MAPS_API_KEY_ANDROID');
+const _iosGooglePlacesApiKey = String.fromEnvironment('GOOGLE_MAPS_API_KEY_IOS');
+
+String get googleMapsApiKey => switch (defaultTargetPlatform) {
+      TargetPlatform.android => _androidGooglePlacesApiKey,
+      TargetPlatform.iOS => _iosGooglePlacesApiKey,
+      _ => '',
+    };
 
 class AppConfig {
   const AppConfig({
@@ -16,7 +27,7 @@ class AppConfig {
   String get name => environment.name;
 
   factory AppConfig.fromEnvironment() {
-    const envName = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
+    const envName = String.fromEnvironment('APP_ENV', defaultValue: 'prod');
     const baseUrl = String.fromEnvironment(
       'API_BASE_URL',
       defaultValue:

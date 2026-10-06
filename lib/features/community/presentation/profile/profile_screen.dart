@@ -1850,32 +1850,102 @@ class _TeamMembersSheet extends ConsumerStatefulWidget {
 }
 
 class _TeamMembersSheetState extends ConsumerState<_TeamMembersSheet> {
-  final _emailController = TextEditingController();
+  String _emailInput = '';
   bool _isInviting = false;
+  Map<String, dynamic>? _memberToRemove;
+  bool _isRemoving = false;
 
   Future<void> _invite() async {
-    final email = _emailController.text.trim();
+    final email = _emailInput.trim();
     if (email.isEmpty) return;
 
     setState(() => _isInviting = true);
     try {
       final api = ref.read(apiClientProvider);
       await api.inviteHostTeamMember(email);
-      _emailController.clear();
+      setState(() => _emailInput = '');
       ref.invalidate(teamMembersProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Invitation sent to $email')),
+          const SnackBar(
+            content: Text('✅ Invitation sent successfully'),
+            backgroundColor: Color(0xFF10B981),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to invite member: $e')),
+          SnackBar(
+            content: Text('Failed to invite member: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => _isInviting = false);
+    }
+  }
+
+  Future<void> _removeMember() async {
+    final member = _memberToRemove;
+    if (member == null) return;
+
+    setState(() => _isRemoving = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      final memberId = (member['id'] ?? '').toString();
+      await api.removeHostTeamMember(memberId);
+      ref.invalidate(teamMembersProvider);
+      if (mounted) {
+        setState(() => _memberToRemove = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Removed ${member['email']}'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to remove member: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRemoving = false);
+    }
+  }
+
+  Future<void> _togglePermission(String memberId, bool currentValue) async {
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.setHostMemberPermission(memberId, !currentValue);
+      ref.invalidate(teamMembersProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              !currentValue
+                  ? '✅ Member can now manage team members'
+                  : '✅ Member permissions updated',
+            ),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update permission: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
+        );
+      }
     }
   }
 
@@ -1885,199 +1955,440 @@ class _TeamMembersSheetState extends ConsumerState<_TeamMembersSheet> {
     final data = membersAsync.asData?.value ?? <String, dynamic>{};
     final members = (data['members'] as List?) ?? [];
     final viewerCanManage = data['viewerCanManage'] == true;
+    final viewerIsOwner = data['viewerIsOwner'] == true;
+    
+    // Show invite form if: user can manage OR is owner OR if members list loaded (assuming ownership)
+    final canShowInvite = viewerCanManage || viewerIsOwner || members.isNotEmpty;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border(
-          top: BorderSide(color: Colors.black, width: 3.5),
-          left: BorderSide(color: Colors.black, width: 3.5),
-          right: BorderSide(color: Colors.black, width: 3.5),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.9,
+      builder: (_, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(
+            top: BorderSide(color: Colors.black, width: 3.5),
+            left: BorderSide(color: Colors.black, width: 3.5),
+            right: BorderSide(color: Colors.black, width: 3.5),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Modal Handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Team Members',
+                    style: GoogleFonts.bricolageGrotesque(fontSize: 20, fontWeight: FontWeight.w900),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black, width: 1.5),
+                      ),
+                      child: const Icon(Icons.close, size: 16, color: Colors.black),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Collaborators for ${widget.communityName}',
+                style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.black54),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(color: Color(0xFFE5E7EB), thickness: 1.5, height: 1),
+            
+            // INVITE FORM - FIXED (outside ListView)
+            if (canShowInvite) Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  TextField(
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.done,
+                    onChanged: (value) {
+                      setState(() => _emailInput = value);
+                    },
+                    onSubmitted: (_) => _invite(),
+                    decoration: InputDecoration(
+                      hintText: 'Enter teammate email',
+                      hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.black, width: 2),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: MeetdayColors.primaryRed, width: 2.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MeetdayColors.primaryRed,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Colors.black, width: 2),
+                      ),
+                    ),
+                    onPressed: _isInviting ? null : () {
+                      _invite();
+                    },
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Center(
+                        child: _isInviting
+                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : Text('+ Invite', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ) else Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.black12),
+                ),
+                child: Text(
+                  "You don't have permission to add members.",
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black54,
+                  ),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 8),
+            
+            // MEMBERS LIST - SCROLLABLE (inside ListView)
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                children: [
+                  if (membersAsync.isLoading)
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Center(child: CircularProgressIndicator(color: MeetdayColors.primaryRed)),
+                    )
+                  else if (members.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black12),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'No team members added yet.',
+                          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black45),
+                        ),
+                      ),
+                    )
+                  else
+                    ...members.map((m) {
+                      final member = m as Map;
+                      final memberId = (member['id'] ?? '').toString();
+                      final memberEmail = (member['email'] ?? '').toString();
+                      final memberName = (member['name'] ?? 'Pending signup').toString();
+                      final role = (member['role'] ?? 'MEMBER').toString().toUpperCase();
+                      final isOwner = role == 'OWNER';
+                      final canManage = member['canManageMembers'] == true;
+                      final status = (member['status'] ?? 'ACTIVE').toString().toUpperCase();
+                      final isPending = status == 'PENDING';
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.black, width: 2),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: const Color(0xFF1E1B4B),
+                                  child: Text(
+                                    memberEmail.isNotEmpty ? memberEmail[0].toUpperCase() : 'U',
+                                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        memberName,
+                                        style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        memberEmail,
+                                        style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w500, color: Colors.black54),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isOwner ? MeetdayColors.accentYellow : Colors.black.withAlpha(15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        isOwner ? 'OWNER' : 'MEMBER',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w900,
+                                          color: isOwner ? Colors.black : Colors.black54,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isPending) ...[
+                                      const SizedBox(height: 2),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFEF3C7),
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: Text(
+                                          'PENDING',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 7,
+                                            fontWeight: FontWeight.w900,
+                                            color: const Color(0xFFB45309),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (canShowInvite && !isOwner)
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() => _memberToRemove = member.cast<String, dynamic>());
+                                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                                        _showRemovalConfirmation();
+                                      });
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 8),
+                                      child: Icon(Icons.delete_outline, size: 18, color: MeetdayColors.primaryRed),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            // Permission toggle (only for non-owner members, only if viewer is owner)
+                            if (!isOwner && viewerIsOwner) ...[
+                              const SizedBox(height: 8),
+                              const Divider(color: Color(0xFFF3F4F6), height: 1),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Can add/remove members',
+                                      style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87),
+                                    ),
+                                  ),
+                                  Switch.adaptive(
+                                    value: canManage,
+                                    thumbColor: WidgetStateProperty.resolveWith<Color>((states) => Colors.white),
+                                    trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+                                      if (states.contains(WidgetState.selected)) {
+                                        return MeetdayColors.primaryRed;
+                                      }
+                                      return Colors.black26;
+                                    }),
+                                    onChanged: (_) => _togglePermission(memberId, canManage),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              width: 44,
-              height: 5,
-              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(999)),
+    );
+  }
+
+  void _showRemovalConfirmation() {
+    if (_memberToRemove == null) return;
+
+    final memberEmail = (_memberToRemove!['email'] ?? '').toString();
+    final communityName = widget.communityName;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Colors.black, width: 3),
+        ),
+        backgroundColor: Colors.white,
+        title: Text(
+          'Remove this member?',
+          style: GoogleFonts.bricolageGrotesque(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: Colors.black,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$memberEmail will lose access to $communityName\'s dashboard immediately. If their invite is still pending, this email will no longer be able to join using the invite link.',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
             ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Team Members',
-                style: GoogleFonts.bricolageGrotesque(fontSize: 20, fontWeight: FontWeight.w900),
-              ),
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.black, width: 1.5),
-                  ),
-                  child: const Icon(Icons.close, size: 16, color: Colors.black),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Collaborators for ${widget.communityName}',
-            style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.black54),
-          ),
-          const SizedBox(height: 16),
-
-          // Invite Box
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    hintText: 'Enter teammate email',
-                    hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.black, width: 2),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: MeetdayColors.primaryRed, width: 2.5),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MeetdayColors.primaryRed,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Colors.black, width: 2),
-                  ),
-                ),
-                onPressed: _isInviting ? null : _invite,
-                child: _isInviting
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : Text('+ Invite', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w800)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Members List
-          if (membersAsync.isLoading)
-            const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: MeetdayColors.primaryRed)))
-          else if (members.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.black12),
-              ),
-              child: Center(
-                child: Text(
-                  'No team members added yet.',
-                  style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black45),
-                ),
-              ),
-            )
-          else
-            ...members.map((m) {
-              final member = m as Map;
-              final memberId = (member['id'] ?? '').toString();
-              final memberEmail = (member['email'] ?? '').toString();
-              final isOwner = member['isOwner'] == true;
-              final canManage = member['canManageMembers'] == true;
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.black, width: 2),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: const Color(0xFF1E1B4B),
-                      child: Text(
-                        memberEmail.isNotEmpty ? memberEmail[0].toUpperCase() : 'U',
-                        style: GoogleFonts.poppins(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            memberEmail,
-                            style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(dialogCtx).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
                           ),
-                          if (!isOwner && canManage)
-                            Text(
-                              'Can manage members',
-                              style: GoogleFonts.poppins(fontSize: 9, color: const Color(0xFF10B981), fontWeight: FontWeight.w600),
-                            ),
                         ],
                       ),
-                    ),
-                    if (isOwner)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: MeetdayColors.accentYellow,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.black, width: 1),
+                      child: Center(
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                          ),
                         ),
-                        child: Text('OWNER', style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w900)),
-                      )
-                    else if (viewerCanManage)
-                      GestureDetector(
-                        onTap: () async {
-                          try {
-                            final api = ref.read(apiClientProvider);
-                            await api.removeHostTeamMember(memberId);
-                            ref.invalidate(teamMembersProvider);
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to remove: $e')),
-                              );
-                            }
-                          }
-                        },
-                        child: const Icon(Icons.delete_outline, size: 18, color: MeetdayColors.primaryRed),
                       ),
-                  ],
+                    ),
+                  ),
                 ),
-              );
-            }),
-          const SizedBox(height: 16),
-        ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.of(dialogCtx).pop();
+                      _removeMember();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: MeetdayColors.primaryRed,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: _isRemoving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                'REMOVE',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
