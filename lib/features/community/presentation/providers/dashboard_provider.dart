@@ -144,9 +144,13 @@ Map<String, dynamic> _mapProposalItem(Map item) {
 // The proposal tab shows the authenticated account's own proposals.
 final dashboardProposalsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-      final api = ref.watch(apiClientProvider);
       final authState = ref.watch(authControllerProvider);
-      final role = authState.role ?? AccountRole.community;
+      if (authState.status != AuthStatus.authenticated || authState.role == null) {
+        return <Map<String, dynamic>>[];
+      }
+
+      final api = ref.watch(apiClientProvider);
+      final role = authState.role!;
       final List<Map<String, dynamic>> myProposals = [];
       try {
         final response = await api.dio.get<dynamic>(
@@ -531,6 +535,7 @@ final brandCampaignsProvider = FutureProvider.autoDispose<List<Map<String, dynam
 // Dashboard Deals/Locked Deals & Reports (authenticated real data)
 final dashboardDealsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.watch(apiClientProvider);
+  final accountRole = ref.watch(authControllerProvider).role;
   try {
     // 1. Try brand billing if user is brand
     try {
@@ -557,6 +562,8 @@ final dashboardDealsProvider = FutureProvider.autoDispose<List<Map<String, dynam
     } catch (_) {
       // Not brand or /sponsorships/billing 403, fall through to host/community chats
     }
+
+    if (accountRole == AccountRole.brand) return <Map<String, dynamic>>[];
 
     // 2. Fetch accepted sponsorship chats for host/community
     final chatRes = await api.dio.get<dynamic>(

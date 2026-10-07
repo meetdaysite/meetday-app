@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -35,15 +36,13 @@ const List<String> _kGoalOptions = [
 /// Replicates `meetday-frontend` (/brand/dashboard/campaigns) with full creation,
 /// editing, status filtering, and live backend connectivity.
 class BrandCampaignsScreen extends ConsumerStatefulWidget {
-  const BrandCampaignsScreen({
-    super.key,
-    this.onBack,
-  });
+  const BrandCampaignsScreen({super.key, this.onBack});
 
   final VoidCallback? onBack;
 
   @override
-  ConsumerState<BrandCampaignsScreen> createState() => _BrandCampaignsScreenState();
+  ConsumerState<BrandCampaignsScreen> createState() =>
+      _BrandCampaignsScreenState();
 }
 
 class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
@@ -91,10 +90,18 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
     return campaignsAsync.when(
       data: (campaigns) {
         final allCount = campaigns.length;
-        final publishedCount = campaigns.where((c) => c['status'] == 'PUBLISHED').length;
-        final underReviewCount = campaigns.where((c) => c['status'] == 'UNDER_REVIEW').length;
-        final draftCount = campaigns.where((c) => c['status'] == 'DRAFT').length;
-        final rejectedCount = campaigns.where((c) => c['status'] == 'REJECTED').length;
+        final publishedCount = campaigns
+            .where((c) => c['status'] == 'PUBLISHED')
+            .length;
+        final underReviewCount = campaigns
+            .where((c) => c['status'] == 'UNDER_REVIEW')
+            .length;
+        final draftCount = campaigns
+            .where((c) => c['status'] == 'DRAFT')
+            .length;
+        final rejectedCount = campaigns
+            .where((c) => c['status'] == 'REJECTED')
+            .length;
 
         final filtered = campaigns.where((c) {
           if (_selectedFilter != 'ALL' && c['status'] != _selectedFilter) {
@@ -104,9 +111,13 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
             final q = _searchQuery.toLowerCase().trim();
             final name = (c['name'] ?? '').toString().toLowerCase();
             final desc = (c['description'] ?? '').toString().toLowerCase();
-            final locs = (c['locations'] as List?)?.join(' ').toLowerCase() ?? '';
+            final locs =
+                (c['locations'] as List?)?.join(' ').toLowerCase() ?? '';
             final goals = (c['goal'] ?? '').toString().toLowerCase();
-            if (!name.contains(q) && !desc.contains(q) && !locs.contains(q) && !goals.contains(q)) {
+            if (!name.contains(q) &&
+                !desc.contains(q) &&
+                !locs.contains(q) &&
+                !goals.contains(q)) {
               return false;
             }
           }
@@ -191,7 +202,10 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                     GestureDetector(
                       onTap: () => _openCreateCampaignModal(),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: MeetdayColors.primaryRed,
                           borderRadius: BorderRadius.circular(12),
@@ -207,7 +221,11 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.add_rounded, size: 15, color: Colors.white),
+                            const Icon(
+                              Icons.add_rounded,
+                              size: 15,
+                              color: Colors.white,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'CREATE CAMPAIGN',
@@ -232,18 +250,34 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                   onChanged: (val) => setState(() => _searchQuery = val),
                   decoration: InputDecoration(
                     hintText: 'Search campaigns by name, location, or goal...',
-                    hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Colors.black54),
+                    hintStyle: GoogleFonts.poppins(
+                      fontSize: 11.5,
+                      color: Colors.black38,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      size: 18,
+                      color: Colors.black54,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Colors.black, width: 1.8),
+                      borderSide: const BorderSide(
+                        color: Colors.black,
+                        width: 1.8,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: MeetdayColors.primaryRed, width: 2.5),
+                      borderSide: const BorderSide(
+                        color: MeetdayColors.primaryRed,
+                        width: 2.5,
+                      ),
                     ),
                   ),
                 ),
@@ -259,14 +293,21 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: GestureDetector(
-                          onTap: () => setState(() => _selectedFilter = seg['key']!),
+                          onTap: () =>
+                              setState(() => _selectedFilter = seg['key']!),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: isSelected ? Colors.black : Colors.white,
                               borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: Colors.black, width: 1.6),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 1.6,
+                              ),
                               boxShadow: isSelected
                                   ? const [
                                       BoxShadow(
@@ -282,7 +323,9 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                               style: GoogleFonts.poppins(
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.w800,
-                                color: isSelected ? Colors.white : Colors.black87,
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.black87,
                               ),
                             ),
                           ),
@@ -313,7 +356,11 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.rocket_launch_rounded, size: 40, color: Colors.black38),
+                        const Icon(
+                          Icons.rocket_launch_rounded,
+                          size: 40,
+                          color: Colors.black38,
+                        ),
                         const SizedBox(height: 12),
                         Text(
                           'No campaigns found',
@@ -329,19 +376,29 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                               ? 'Launch your first campaign brief to collaborate with verified host communities.'
                               : 'No campaigns found for the "$_selectedFilter" status filter.',
                           textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(fontSize: 12, color: Colors.black54),
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         GestureDetector(
                           onTap: () => _openCreateCampaignModal(),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
                             decoration: BoxDecoration(
                               color: MeetdayColors.accentYellow,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.black, width: 2),
                               boxShadow: const [
-                                BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(2, 2),
+                                  blurRadius: 0,
+                                ),
                               ],
                             ),
                             child: Text(
@@ -392,7 +449,9 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
     final offerType = (c['offerType'] ?? 'CASH').toString().toUpperCase();
     final budgetAmount = c['budgetAmount'];
     final budgetCurrency = (c['budgetCurrency'] ?? '₹').toString();
-    final locations = (c['locations'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
+    final locations =
+        (c['locations'] as List?)?.map((e) => e.toString()).toList() ??
+        <String>[];
     final goals = (c['goal'] ?? '').toString();
     final startDate = c['startDate']?.toString();
     final endDate = c['endDate']?.toString();
@@ -414,11 +473,7 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.black, width: 2.5),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(3, 3),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
         ],
       ),
       child: Material(
@@ -455,7 +510,10 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFDCFCE7),
                         borderRadius: BorderRadius.circular(8),
@@ -472,11 +530,19 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                     ),
                     if (startDate != null && startDate.isNotEmpty) ...[
                       const SizedBox(width: 8),
-                      const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.black54),
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 12,
+                        color: Colors.black54,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         _formatDate(startDate, endDate),
-                        style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.black54),
+                        style: GoogleFonts.poppins(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black54,
+                        ),
                       ),
                     ],
                   ],
@@ -486,7 +552,11 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'Goals: $goals',
-                    style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87),
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -499,7 +569,10 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                     runSpacing: 4,
                     children: locations.take(3).map((loc) {
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(6),
@@ -507,7 +580,11 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                         ),
                         child: Text(
                           loc,
-                          style: GoogleFonts.poppins(fontSize: 9.5, fontWeight: FontWeight.w600, color: Colors.black87),
+                          style: GoogleFonts.poppins(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
                         ),
                       );
                     }).toList(),
@@ -553,7 +630,11 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
       ),
       child: Text(
         label,
-        style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w900, color: fg),
+        style: GoogleFonts.poppins(
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          color: fg,
+        ),
       ),
     );
   }
@@ -571,7 +652,20 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
   }
 
   String _monthName(int m) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return months[(m - 1).clamp(0, 11)];
   }
 }
@@ -591,10 +685,12 @@ class _BrandCampaignDetailSheet extends ConsumerStatefulWidget {
   final VoidCallback onSuccess;
 
   @override
-  ConsumerState<_BrandCampaignDetailSheet> createState() => _BrandCampaignDetailSheetState();
+  ConsumerState<_BrandCampaignDetailSheet> createState() =>
+      _BrandCampaignDetailSheetState();
 }
 
-class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailSheet> {
+class _BrandCampaignDetailSheetState
+    extends ConsumerState<_BrandCampaignDetailSheet> {
   bool _isSubmitting = false;
   bool _isDeleting = false;
 
@@ -632,13 +728,27 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Colors.black, width: 2)),
-        title: Text('Delete Campaign', style: GoogleFonts.bricolageGrotesque(fontWeight: FontWeight.w800)),
-        content: Text('Are you sure you want to delete this campaign brief?', style: GoogleFonts.poppins(fontSize: 12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.black, width: 2),
+        ),
+        title: Text(
+          'Delete Campaign',
+          style: GoogleFonts.bricolageGrotesque(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'Are you sure you want to delete this campaign brief?',
+          style: GoogleFonts.poppins(fontSize: 12),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: MeetdayColors.primaryRed),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MeetdayColors.primaryRed,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
@@ -665,7 +775,10 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete: $e'), backgroundColor: MeetdayColors.primaryRed),
+          SnackBar(
+            content: Text('Failed to delete: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
         );
       }
     } finally {
@@ -679,8 +792,12 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
     final name = (c['name'] ?? 'Campaign').toString();
     final status = (c['status'] ?? 'DRAFT').toString().toUpperCase();
     final goals = (c['goal'] ?? '').toString();
-    final locations = (c['locations'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
-    final audience = (c['audience'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
+    final locations =
+        (c['locations'] as List?)?.map((e) => e.toString()).toList() ??
+        <String>[];
+    final audience =
+        (c['audience'] as List?)?.map((e) => e.toString()).toList() ??
+        <String>[];
     final description = (c['description'] ?? '').toString();
     final offerType = (c['offerType'] ?? 'CASH').toString().toUpperCase();
     final budgetAmount = c['budgetAmount'];
@@ -709,7 +826,10 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
               child: Container(
                 width: 44,
                 height: 5,
-                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(999)),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -721,14 +841,21 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
                 Expanded(
                   child: Text(
                     name,
-                    style: GoogleFonts.bricolageGrotesque(fontSize: 20, fontWeight: FontWeight.w900),
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
                     padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(color: const Color(0xFFF3F4F6), shape: BoxShape.circle, border: Border.all(color: Colors.black, width: 1.5)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.black, width: 1.5),
+                    ),
                     child: const Icon(Icons.close, size: 16),
                   ),
                 ),
@@ -744,44 +871,88 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
                 GestureDetector(
                   onTap: widget.onEdit,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.black, width: 1.5),
-                      boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0)],
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(1.5, 1.5),
+                          blurRadius: 0,
+                        ),
+                      ],
                     ),
-                    child: Text('EDIT BRIEF', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800)),
+                    child: Text(
+                      'EDIT BRIEF',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ),
                 if (status == 'DRAFT' || status == 'REJECTED')
                   GestureDetector(
                     onTap: _isSubmitting ? null : _submitForApproval,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: MeetdayColors.primaryRed,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.black, width: 1.5),
-                        boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0)],
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(1.5, 1.5),
+                            blurRadius: 0,
+                          ),
+                        ],
                       ),
                       child: Text(
                         _isSubmitting ? 'SUBMITTING…' : 'SUBMIT FOR APPROVAL',
-                        style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white),
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
                 GestureDetector(
                   onTap: _isDeleting ? null : _deleteCampaign,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.black, width: 1.5),
-                      boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0)],
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(1.5, 1.5),
+                          blurRadius: 0,
+                        ),
+                      ],
                     ),
-                    child: Text('DELETE', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: MeetdayColors.primaryRed)),
+                    child: Text(
+                      'DELETE',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: MeetdayColors.primaryRed,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -798,16 +969,25 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
             if (barterElements.isNotEmpty)
               _detailRow('Barter Elements', barterElements),
             if (startDate != null && startDate.isNotEmpty)
-              _detailRow('Dates', '$startDate ${endDate != null ? 'to $endDate' : ''}'),
-            if (goals.isNotEmpty)
-              _detailRow('Goals', goals),
+              _detailRow(
+                'Dates',
+                '$startDate ${endDate != null ? 'to $endDate' : ''}',
+              ),
+            if (goals.isNotEmpty) _detailRow('Goals', goals),
             if (locations.isNotEmpty)
               _detailRow('Locations', locations.join(', ')),
             if (audience.isNotEmpty)
               _detailRow('Target Audience', audience.join(', ')),
             if (description.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text('Description', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black54)),
+              Text(
+                'Description',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black54,
+                ),
+              ),
               const SizedBox(height: 4),
               Container(
                 width: double.infinity,
@@ -817,7 +997,13 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.black12),
                 ),
-                child: Text(description, style: GoogleFonts.poppins(fontSize: 12, color: Colors.black87)),
+                child: Text(
+                  description,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.black87,
+                  ),
+                ),
               ),
             ],
           ],
@@ -834,10 +1020,24 @@ class _BrandCampaignDetailSheetState extends ConsumerState<_BrandCampaignDetailS
         children: [
           SizedBox(
             width: 110,
-            child: Text(label, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black54)),
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.black54,
+              ),
+            ),
           ),
           Expanded(
-            child: Text(value, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87)),
+            child: Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
           ),
         ],
       ),
@@ -858,16 +1058,20 @@ class _BrandCampaignFormSheet extends ConsumerStatefulWidget {
   final VoidCallback onSuccess;
 
   @override
-  ConsumerState<_BrandCampaignFormSheet> createState() => _BrandCampaignFormSheetState();
+  ConsumerState<_BrandCampaignFormSheet> createState() =>
+      _BrandCampaignFormSheetState();
 }
 
-class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet> {
+class _BrandCampaignFormSheetState
+    extends ConsumerState<_BrandCampaignFormSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _budgetAmountController;
   late final TextEditingController _barterElementsController;
   late final TextEditingController _descriptionController;
-  final TextEditingController _locationInputController = TextEditingController();
-  final TextEditingController _customAudienceInputController = TextEditingController();
+  final TextEditingController _locationInputController =
+      TextEditingController();
+  final TextEditingController _customAudienceInputController =
+      TextEditingController();
   final TextEditingController _aiPromptController = TextEditingController();
 
   List<String> _goals = [];
@@ -881,6 +1085,9 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
 
   bool _isAiOpen = false;
   bool _isAiGenerating = false;
+  bool _isExtractingDocument = false;
+  String? _copilotDocumentName;
+  String? _copilotDocumentText;
   bool _isSaving = false;
 
   bool get _isEditing => widget.initialCampaign != null;
@@ -889,10 +1096,18 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
   void initState() {
     super.initState();
     final c = widget.initialCampaign;
-    _nameController = TextEditingController(text: (c?['name'] ?? '').toString());
-    _budgetAmountController = TextEditingController(text: c?['budgetAmount']?.toString() ?? '');
-    _barterElementsController = TextEditingController(text: (c?['barterElements'] ?? '').toString());
-    _descriptionController = TextEditingController(text: (c?['description'] ?? '').toString());
+    _nameController = TextEditingController(
+      text: (c?['name'] ?? '').toString(),
+    );
+    _budgetAmountController = TextEditingController(
+      text: c?['budgetAmount']?.toString() ?? '',
+    );
+    _barterElementsController = TextEditingController(
+      text: (c?['barterElements'] ?? '').toString(),
+    );
+    _descriptionController = TextEditingController(
+      text: (c?['description'] ?? '').toString(),
+    );
 
     _offerType = (c?['offerType'] ?? 'CASH').toString().toUpperCase();
     _budgetCurrency = (c?['budgetCurrency'] ?? 'INR').toString();
@@ -908,9 +1123,16 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
       _locations = (c!['locations'] as List).map((e) => e.toString()).toList();
     }
     if (c?['audience'] is List) {
-      final rawAudience = (c!['audience'] as List).map((e) => e.toString()).toList();
-      _audience = rawAudience.where((a) => _kAudienceOptions.contains(a)).toList();
-      final custom = rawAudience.firstWhere((a) => !_kAudienceOptions.contains(a), orElse: () => '');
+      final rawAudience = (c!['audience'] as List)
+          .map((e) => e.toString())
+          .toList();
+      _audience = rawAudience
+          .where((a) => _kAudienceOptions.contains(a))
+          .toList();
+      final custom = rawAudience.firstWhere(
+        (a) => !_kAudienceOptions.contains(a),
+        orElse: () => '',
+      );
       if (custom.isNotEmpty) {
         _showCustomAudience = true;
         _customAudienceInputController.text = custom;
@@ -918,7 +1140,9 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
     }
     if (c?['startDate'] != null) {
       try {
-        _startDate = DateTime.parse(c!['startDate'].toString().substring(0, 10));
+        _startDate = DateTime.parse(
+          c!['startDate'].toString().substring(0, 10),
+        );
       } catch (_) {}
     }
     if (c?['endDate'] != null) {
@@ -943,7 +1167,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
   void _showToast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600)),
+        content: Text(
+          msg,
+          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
         backgroundColor: MeetdayColors.primaryRed,
       ),
     );
@@ -1027,7 +1254,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
       _showToast('Description is required.');
       return;
     }
-    final wordCount = description.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    final wordCount = description
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .length;
     if (wordCount > 250) {
       _showToast('Description cannot exceed 250 words.');
       return;
@@ -1043,7 +1273,8 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
     }
 
     final finalAudience = [..._audience];
-    if (_showCustomAudience && _customAudienceInputController.text.trim().isNotEmpty) {
+    if (_showCustomAudience &&
+        _customAudienceInputController.text.trim().isNotEmpty) {
       finalAudience.add(_customAudienceInputController.text.trim());
     }
     if (finalAudience.isEmpty) {
@@ -1130,39 +1361,62 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
     final prompt = _aiPromptController.text.trim();
     if (prompt.isEmpty) return;
 
-    final wordCount = prompt.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    final wordCount = prompt
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .length;
     if (wordCount < 20) {
-      _showToast('Describe your campaign in a minimum of 20 words to continue.');
+      _showToast(
+        'Describe your campaign in a minimum of 20 words to continue.',
+      );
       return;
     }
 
     setState(() => _isAiGenerating = true);
     try {
       final api = ref.read(apiClientProvider);
-      final res = await api.generateCampaignDraft(prompt);
+      final completePrompt = _copilotDocumentText == null
+          ? prompt
+          : '$prompt\n\nAdditional context from an uploaded document:\n$_copilotDocumentText';
+      final res = await api.generateCampaignDraft(completePrompt);
       if (mounted) {
         setState(() {
-          if (res['name'] != null) _nameController.text = res['name'].toString();
-          if (res['description'] != null) _descriptionController.text = res['description'].toString();
+          if (res['name'] != null)
+            _nameController.text = res['name'].toString();
+          if (res['description'] != null)
+            _descriptionController.text = res['description'].toString();
           if (res['goal'] != null) {
             _goals = [res['goal'].toString()];
           }
           if (res['locations'] is List) {
-            _locations = (res['locations'] as List).map((e) => e.toString()).toList();
+            _locations = (res['locations'] as List)
+                .map((e) => e.toString())
+                .toList();
           }
           if (res['audience'] is List) {
-            final raw = (res['audience'] as List).map((e) => e.toString()).toList();
-            _audience = raw.where((a) => _kAudienceOptions.contains(a)).toList();
-            final custom = raw.firstWhere((a) => !_kAudienceOptions.contains(a), orElse: () => '');
+            final raw = (res['audience'] as List)
+                .map((e) => e.toString())
+                .toList();
+            _audience = raw
+                .where((a) => _kAudienceOptions.contains(a))
+                .toList();
+            final custom = raw.firstWhere(
+              (a) => !_kAudienceOptions.contains(a),
+              orElse: () => '',
+            );
             if (custom.isNotEmpty) {
               _showCustomAudience = true;
               _customAudienceInputController.text = custom;
             }
           }
-          if (res['offer_type'] != null) _offerType = res['offer_type'].toString().toUpperCase();
-          if (res['budget_amount'] != null) _budgetAmountController.text = res['budget_amount'].toString();
-          if (res['budget_currency'] != null) _budgetCurrency = res['budget_currency'].toString();
-          if (res['barter_elements'] != null) _barterElementsController.text = res['barter_elements'].toString();
+          if (res['offer_type'] != null)
+            _offerType = res['offer_type'].toString().toUpperCase();
+          if (res['budget_amount'] != null)
+            _budgetAmountController.text = res['budget_amount'].toString();
+          if (res['budget_currency'] != null)
+            _budgetCurrency = res['budget_currency'].toString();
+          if (res['barter_elements'] != null)
+            _barterElementsController.text = res['barter_elements'].toString();
           _isAiOpen = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1178,6 +1432,46 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
       }
     } finally {
       if (mounted) setState(() => _isAiGenerating = false);
+    }
+  }
+
+  Future<void> _pickCopilotDocument() async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'docx', 'pptx'],
+      );
+      if (files.isEmpty) return;
+
+      final file = files.first;
+      final path = file.path;
+      if (path == null || path.isEmpty) {
+        _showToast('Could not access that document. Try another file.');
+        return;
+      }
+      final fileSize = await file.length();
+      if (fileSize != null && fileSize > 10 * 1024 * 1024) {
+        _showToast('Choose a document smaller than 10 MB.');
+        return;
+      }
+
+      setState(() => _isExtractingDocument = true);
+      final text = await ref
+          .read(apiClientProvider)
+          .extractCampaignCopilotDocument(path);
+      if (!mounted) return;
+      if (text.trim().isEmpty) {
+        _showToast('No readable text was found in that document.');
+        return;
+      }
+      setState(() {
+        _copilotDocumentName = file.name;
+        _copilotDocumentText = text;
+      });
+    } catch (error) {
+      if (mounted) _showToast('Could not extract document text: $error');
+    } finally {
+      if (mounted) setState(() => _isExtractingDocument = false);
     }
   }
 
@@ -1232,7 +1526,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                     ),
                     Text(
                       'Provide campaign details to match with host communities',
-                      style: GoogleFonts.poppins(fontSize: 10.5, color: Colors.black54),
+                      style: GoogleFonts.poppins(
+                        fontSize: 10.5,
+                        color: Colors.black54,
+                      ),
                     ),
                   ],
                 ),
@@ -1283,7 +1580,11 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                                 color: MeetdayColors.primaryRed,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.auto_awesome, color: Colors.white, size: 15),
+                              child: const Icon(
+                                Icons.auto_awesome,
+                                color: Colors.white,
+                                size: 15,
+                              ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -1301,26 +1602,38 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                                         TextSpan(text: 'Start with our '),
                                         TextSpan(
                                           text: 'AI Companion',
-                                          style: TextStyle(color: MeetdayColors.primaryRed),
+                                          style: TextStyle(
+                                            color: MeetdayColors.primaryRed,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                   Text(
                                     'Describe your campaign in a few words, we fill the rest.',
-                                    style: GoogleFonts.poppins(fontSize: 10, color: Colors.black54),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 10,
+                                      color: Colors.black54,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                             GestureDetector(
-                              onTap: () => setState(() => _isAiOpen = !_isAiOpen),
+                              onTap: () =>
+                                  setState(() => _isAiOpen = !_isAiOpen),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.black,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.black, width: 1.5),
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 1.5,
+                                  ),
                                 ),
                                 child: Text(
                                   _isAiOpen ? 'Close' : 'Draft with AI',
@@ -1338,7 +1651,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                           const SizedBox(height: 12),
                           Text(
                             'Describe your campaign in a minimum of 20 words to continue',
-                            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700),
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                           const SizedBox(height: 6),
                           TextField(
@@ -1347,20 +1663,69 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                             decoration: InputDecoration(
                               hintText:
                                   'e.g. We want to sample our new energy drink at rooftop networking meetups for young professionals in Bangalore and Mumbai over the next quarter.',
-                              hintStyle: GoogleFonts.poppins(fontSize: 11, color: Colors.black38),
+                              hintStyle: GoogleFonts.poppins(
+                                fontSize: 11,
+                                color: Colors.black38,
+                              ),
                               filled: true,
                               fillColor: Colors.white,
                               contentPadding: const EdgeInsets.all(10),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+                                borderSide: const BorderSide(
+                                  color: Colors.black,
+                                  width: 1.5,
+                                ),
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+                                borderSide: const BorderSide(
+                                  color: Colors.black,
+                                  width: 1.5,
+                                ),
                               ),
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _isExtractingDocument
+                                ? null
+                                : _pickCopilotDocument,
+                            icon: _isExtractingDocument
+                                ? const SizedBox(
+                                    width: 15,
+                                    height: 15,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.upload_file_rounded,
+                                    size: 17,
+                                  ),
+                            label: Text(
+                              _isExtractingDocument
+                                  ? 'Reading document…'
+                                  : _copilotDocumentName ??
+                                        'Add PDF, DOCX or PPTX (optional)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_copilotDocumentName != null)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: _isExtractingDocument
+                                    ? null
+                                    : () => setState(() {
+                                        _copilotDocumentName = null;
+                                        _copilotDocumentText = null;
+                                      }),
+                                icon: const Icon(Icons.close_rounded, size: 15),
+                                label: const Text('Remove document'),
+                              ),
+                            ),
                           const SizedBox(height: 8),
                           Align(
                             alignment: Alignment.centerRight,
@@ -1369,12 +1734,17 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                                 backgroundColor: Colors.black,
                                 foregroundColor: Colors.white,
                                 elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 8,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              onPressed: _isAiGenerating ? null : _generateAiDraft,
+                              onPressed: _isAiGenerating
+                                  ? null
+                                  : _generateAiDraft,
                               child: _isAiGenerating
                                   ? const SizedBox(
                                       width: 14,
@@ -1404,7 +1774,9 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                 _fieldLabel('Campaign Name *'),
                 TextField(
                   controller: _nameController,
-                  decoration: _inputDecoration('e.g., "Figma Q3 Sampling Campaign"'),
+                  decoration: _inputDecoration(
+                    'e.g., "Figma Q3 Sampling Campaign"',
+                  ),
                 ),
                 const SizedBox(height: 14),
 
@@ -1415,7 +1787,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                     _fieldLabel('Description *'),
                     Text(
                       'Max 250 words',
-                      style: GoogleFonts.poppins(fontSize: 10, color: Colors.black45),
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: Colors.black45,
+                      ),
                     ),
                   ],
                 ),
@@ -1446,9 +1821,14 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                         });
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
                         decoration: BoxDecoration(
-                          color: selected ? MeetdayColors.accentYellow : const Color(0xFFF8FAFC),
+                          color: selected
+                              ? MeetdayColors.accentYellow
+                              : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: Colors.black,
@@ -1485,7 +1865,9 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                     Expanded(
                       child: TextField(
                         controller: _locationInputController,
-                        decoration: _inputDecoration('e.g., "Delhi", "Mumbai" (press Add or Enter)'),
+                        decoration: _inputDecoration(
+                          'e.g., "Delhi", "Mumbai" (press Add or Enter)',
+                        ),
                         onSubmitted: (_) => _addLocation(),
                       ),
                     ),
@@ -1496,11 +1878,22 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                         foregroundColor: Colors.black,
                         side: const BorderSide(color: Colors.black, width: 1.8),
                         elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       onPressed: _addLocation,
-                      child: Text('Add', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800)),
+                      child: Text(
+                        'Add',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -1511,7 +1904,13 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                     runSpacing: 6,
                     children: _locations.map((loc) {
                       return Chip(
-                        label: Text(loc, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700)),
+                        label: Text(
+                          loc,
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         deleteIcon: const Icon(Icons.close, size: 12),
                         onDeleted: () => setState(() => _locations.remove(loc)),
                         backgroundColor: const Color(0xFFF1F5F9),
@@ -1523,7 +1922,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                   const SizedBox(height: 4),
                   Text(
                     'Add at least one targeted region.',
-                    style: GoogleFonts.poppins(fontSize: 10, color: Colors.black45),
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.black45,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -1547,9 +1949,14 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                           });
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
-                            color: selected ? const Color(0xFF6C32D1) : const Color(0xFFF8FAFC),
+                            color: selected
+                                ? const Color(0xFF6C32D1)
+                                : const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: Colors.black,
@@ -1577,11 +1984,20 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                       );
                     }),
                     GestureDetector(
-                      onTap: () => setState(() => _showCustomAudience = !_showCustomAudience),
+                      onTap: () => setState(
+                        () => _showCustomAudience = !_showCustomAudience,
+                      ),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                          color: (_showCustomAudience || _customAudienceInputController.text.isNotEmpty)
+                          color:
+                              (_showCustomAudience ||
+                                  _customAudienceInputController
+                                      .text
+                                      .isNotEmpty)
                               ? const Color(0xFF6C32D1)
                               : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(10),
@@ -1592,7 +2008,11 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                           style: GoogleFonts.poppins(
                             fontSize: 10.5,
                             fontWeight: FontWeight.w700,
-                            color: (_showCustomAudience || _customAudienceInputController.text.isNotEmpty)
+                            color:
+                                (_showCustomAudience ||
+                                    _customAudienceInputController
+                                        .text
+                                        .isNotEmpty)
                                 ? Colors.white
                                 : Colors.black87,
                           ),
@@ -1605,7 +2025,9 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                   const SizedBox(height: 8),
                   TextField(
                     controller: _customAudienceInputController,
-                    decoration: _inputDecoration('Type custom audience description...'),
+                    decoration: _inputDecoration(
+                      'Type custom audience description...',
+                    ),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -1618,7 +2040,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                       child: GestureDetector(
                         onTap: _pickStartDate,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(12),
@@ -1626,17 +2051,25 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.black54),
+                              const Icon(
+                                Icons.calendar_today_rounded,
+                                size: 14,
+                                color: Colors.black54,
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   _startDate != null
-                                      ? DateFormat('yyyy-MM-dd').format(_startDate!)
+                                      ? DateFormat(
+                                          'yyyy-MM-dd',
+                                        ).format(_startDate!)
                                       : 'Start Date *',
                                   style: GoogleFonts.poppins(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: _startDate != null ? Colors.black : Colors.black38,
+                                    color: _startDate != null
+                                        ? Colors.black
+                                        : Colors.black38,
                                   ),
                                 ),
                               ),
@@ -1650,7 +2083,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                       child: GestureDetector(
                         onTap: _pickEndDate,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(12),
@@ -1658,17 +2094,25 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.event_available_rounded, size: 14, color: Colors.black54),
+                              const Icon(
+                                Icons.event_available_rounded,
+                                size: 14,
+                                color: Colors.black54,
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   _endDate != null
-                                      ? DateFormat('yyyy-MM-dd').format(_endDate!)
+                                      ? DateFormat(
+                                          'yyyy-MM-dd',
+                                        ).format(_endDate!)
                                       : 'End Date *',
                                   style: GoogleFonts.poppins(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: _endDate != null ? Colors.black : Colors.black38,
+                                    color: _endDate != null
+                                        ? Colors.black
+                                        : Colors.black38,
                                   ),
                                 ),
                               ),
@@ -1695,9 +2139,14 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                             alignment: Alignment.center,
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             decoration: BoxDecoration(
-                              color: selected ? MeetdayColors.primaryRed : const Color(0xFFF8FAFC),
+                              color: selected
+                                  ? MeetdayColors.primaryRed
+                                  : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.black, width: selected ? 2 : 1.2),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: selected ? 2 : 1.2,
+                              ),
                               boxShadow: selected
                                   ? const [
                                       BoxShadow(
@@ -1748,12 +2197,22 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                           child: DropdownButton<String>(
                             value: _budgetCurrency,
                             items: const [
-                              DropdownMenuItem(value: 'INR', child: Text('INR (₹)')),
-                              DropdownMenuItem(value: 'USD', child: Text('USD (\$)')),
-                              DropdownMenuItem(value: 'EUR', child: Text('EUR (€)')),
+                              DropdownMenuItem(
+                                value: 'INR',
+                                child: Text('INR (₹)'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'USD',
+                                child: Text('USD (\$)'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'EUR',
+                                child: Text('EUR (€)'),
+                              ),
                             ],
                             onChanged: (val) {
-                              if (val != null) setState(() => _budgetCurrency = val);
+                              if (val != null)
+                                setState(() => _budgetCurrency = val);
                             },
                             style: GoogleFonts.poppins(
                               fontSize: 12,
@@ -1790,9 +2249,13 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Colors.black, width: 2),
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        onPressed: _isSaving ? null : () => _handleSave(submitForReview: false),
+                        onPressed: _isSaving
+                            ? null
+                            : () => _handleSave(submitForReview: false),
                         child: Text(
                           'Save As Draft',
                           style: GoogleFonts.poppins(
@@ -1813,10 +2276,15 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.black, width: 2),
+                            side: const BorderSide(
+                              color: Colors.black,
+                              width: 2,
+                            ),
                           ),
                         ),
-                        onPressed: _isSaving ? null : () => _handleSave(submitForReview: true),
+                        onPressed: _isSaving
+                            ? null
+                            : () => _handleSave(submitForReview: true),
                         child: _isSaving
                             ? const SizedBox(
                                 width: 16,
@@ -1874,7 +2342,10 @@ class _BrandCampaignFormSheetState extends ConsumerState<_BrandCampaignFormSheet
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: MeetdayColors.primaryRed, width: 2.2),
+        borderSide: const BorderSide(
+          color: MeetdayColors.primaryRed,
+          width: 2.2,
+        ),
       ),
     );
   }

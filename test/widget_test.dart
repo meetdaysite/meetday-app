@@ -25,12 +25,12 @@ class FakeSecureStorage implements AppSecureStorage {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('brand signup requires Terms consent before Google onboarding', (tester) async {
+  testWidgets('brand signup requires Terms consent before Google onboarding', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: MaterialApp(
-          home: LoginScreen(role: AccountRole.brand),
-        ),
+        child: MaterialApp(home: LoginScreen(role: AccountRole.brand)),
       ),
     );
     await tester.pumpAndSettle();
@@ -67,6 +67,22 @@ void main() {
     expect(
       container.read(authControllerProvider).status,
       AuthStatus.unauthenticated,
+    );
+  });
+
+  test('brand return paths accept internal brand routes only', () {
+    expect(
+      validatedBrandReturnPath('/brand/proposal/proposal-123'),
+      '/brand/proposal/proposal-123',
+    );
+    expect(validatedBrandReturnPath('/community-dashboard'), isNull);
+    expect(
+      validatedBrandReturnPath('https://example.com/brand/proposal/123'),
+      isNull,
+    );
+    expect(
+      validatedBrandReturnPath('//example.com/brand/proposal/123'),
+      isNull,
     );
   });
 }

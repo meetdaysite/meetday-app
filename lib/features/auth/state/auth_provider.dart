@@ -34,6 +34,30 @@ class FlutterSecureStorageAdapter implements AppSecureStorage {
 
 enum AuthStatus { unknown, authenticated, unauthenticated, onboarding }
 
+String? validatedBrandReturnPath(String? value) {
+  if (value == null || value.isEmpty) return null;
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.hasAuthority ||
+      !uri.path.startsWith('/brand/')) {
+    return null;
+  }
+  return uri.toString();
+}
+
+class PendingBrandRedirectNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? value) => state = validatedBrandReturnPath(value);
+}
+
+final pendingBrandRedirectProvider =
+    NotifierProvider<PendingBrandRedirectNotifier, String?>(
+      PendingBrandRedirectNotifier.new,
+    );
+
 class AuthState {
   const AuthState({required this.status, this.uid, this.role});
 
@@ -195,7 +219,8 @@ class AuthController extends Notifier<AuthState> {
       return;
     }
 
-    final isAuthenticated = (token != null && token.isNotEmpty) || fbUser != null;
+    final isAuthenticated =
+        (token != null && token.isNotEmpty) || fbUser != null;
 
     state = AuthState(
       status: isAuthenticated
@@ -209,11 +234,11 @@ class AuthController extends Notifier<AuthState> {
   void _listenForIdTokenChanges() {
     if (_idTokenSubscription != null) return;
     try {
-      _idTokenSubscription = FirebaseAuth.instance.idTokenChanges().listen(
-        (user) {
-          if (user != null) unawaited(_syncFirebaseToken(user));
-        },
-      );
+      _idTokenSubscription = FirebaseAuth.instance.idTokenChanges().listen((
+        user,
+      ) {
+        if (user != null) unawaited(_syncFirebaseToken(user));
+      });
     } catch (_) {
       // Firebase may not be configured in tests or platform bootstrap.
     }
@@ -306,9 +331,12 @@ class AuthController extends Notifier<AuthState> {
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      final result = await FirebaseAuth.instance.signInWithCredential(credential);
+      final result = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
       final user = result.user;
-      if (user == null) throw const AuthException('Google account was not found.');
+      if (user == null)
+        throw const AuthException('Google account was not found.');
 
       final token = await user.getIdToken(true);
       if (token == null || token.isEmpty) {
@@ -323,7 +351,9 @@ class AuthController extends Notifier<AuthState> {
           await FirebaseAuth.instance.signOut();
           await _googleSignIn.signOut();
           api.setIdToken(null);
-          throw const AuthException('A brand account already exists. Log in instead.');
+          throw const AuthException(
+            'A brand account already exists. Log in instead.',
+          );
         }
       } on DioException catch (error) {
         if (error.response?.statusCode != 404) rethrow;
@@ -355,9 +385,11 @@ class AuthController extends Notifier<AuthState> {
     String? aboutCompany,
     String? workEmail,
     String? contactPhone,
+    String? logoKey,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw const AuthException('Sign in with Google to continue.');
+    if (user == null)
+      throw const AuthException('Sign in with Google to continue.');
 
     final token = await user.getIdToken(true);
     if (token == null || token.isEmpty) {
@@ -377,8 +409,10 @@ class AuthController extends Notifier<AuthState> {
           'categoryIds': categoryIds,
           'socialLinks': {
             if (website?.trim().isNotEmpty == true) 'website': website!.trim(),
-            if (instagram?.trim().isNotEmpty == true) 'instagram': instagram!.trim(),
-            if (linkedin?.trim().isNotEmpty == true) 'linkedin': linkedin!.trim(),
+            if (instagram?.trim().isNotEmpty == true)
+              'instagram': instagram!.trim(),
+            if (linkedin?.trim().isNotEmpty == true)
+              'linkedin': linkedin!.trim(),
           },
         },
       );
@@ -396,6 +430,7 @@ class AuthController extends Notifier<AuthState> {
       if (workEmail?.trim().isNotEmpty == true) 'workEmail': workEmail!.trim(),
       if (contactPhone?.trim().isNotEmpty == true)
         'contactPhone': contactPhone!.trim(),
+      if (logoKey?.trim().isNotEmpty == true) 'logoKey': logoKey!.trim(),
     };
     if (profileUpdates.isNotEmpty) {
       try {
@@ -471,10 +506,7 @@ class AuthController extends Notifier<AuthState> {
           final firstName = names.isNotEmpty ? names[0] : 'User';
           final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
 
-          final registerData = {
-            'firstName': firstName,
-            'lastName': lastName,
-          };
+          final registerData = {'firstName': firstName, 'lastName': lastName};
 
           // Add role-specific required fields
           if (role == AccountRole.brand) {

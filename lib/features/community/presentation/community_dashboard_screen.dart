@@ -11,6 +11,7 @@ import '../../auth/state/auth_provider.dart';
 import 'campaigns/brand_campaigns_screen.dart';
 import 'campaigns/campaigns_screen.dart';
 import 'chat/community_chat_hub.dart';
+import 'deals/brand_deals_screen.dart';
 import 'providers/chat_provider.dart';
 import 'community_detail_screen.dart';
 import 'profile/profile_screen.dart';
@@ -29,6 +30,7 @@ enum CommunityDashboardTab {
   support,
   notifications,
   experiences,
+  brandChats,
 }
 
 extension CommunityDashboardTabX on CommunityDashboardTab {
@@ -52,6 +54,8 @@ extension CommunityDashboardTabX on CommunityDashboardTab {
         return 'Notifications';
       case CommunityDashboardTab.experiences:
         return 'Campaigns';
+      case CommunityDashboardTab.brandChats:
+        return 'Chats';
     }
   }
 
@@ -75,6 +79,8 @@ extension CommunityDashboardTabX on CommunityDashboardTab {
         return Icons.notifications_rounded;
       case CommunityDashboardTab.experiences:
         return Icons.auto_awesome_rounded;
+      case CommunityDashboardTab.brandChats:
+        return Icons.chat_bubble_rounded;
     }
   }
 }
@@ -87,8 +93,9 @@ class ExploreSubViewNotifier extends Notifier<String> {
   set state(String value) => super.state = value;
 }
 
-final exploreSubViewProvider =
-    NotifierProvider<ExploreSubViewNotifier, String>(ExploreSubViewNotifier.new);
+final exploreSubViewProvider = NotifierProvider<ExploreSubViewNotifier, String>(
+  ExploreSubViewNotifier.new,
+);
 
 class CommunityDashboardScreen extends ConsumerStatefulWidget {
   const CommunityDashboardScreen({
@@ -110,6 +117,7 @@ class CommunityDashboardScreen extends ConsumerStatefulWidget {
     CommunityDashboardTab.support,
     CommunityDashboardTab.notifications,
     CommunityDashboardTab.experiences,
+    CommunityDashboardTab.brandChats,
   ];
 
   @override
@@ -122,6 +130,8 @@ class _CommunityDashboardScreenState
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _currentTabIndex = 0;
+  int _chatHubRouteVersion = 0;
+  ChatHubInitialTarget? _chatHubInitialTarget;
 
   @override
   void initState() {
@@ -153,42 +163,70 @@ class _CommunityDashboardScreenState
     _tabController.animateTo(index);
   }
 
+  void _openNotificationTarget(ChatHubInitialTarget target, AccountRole role) {
+    setState(() {
+      _chatHubInitialTarget = target;
+      _chatHubRouteVersion++;
+    });
+    _onTabSelected(role == AccountRole.brand ? 9 : 5);
+  }
+
+  void _openNotificationDestination(int index) => _onTabSelected(index);
+
   @override
   Widget build(BuildContext context) {
     final api = ref.watch(apiClientProvider);
     final authState = ref.watch(authControllerProvider);
-    final effectiveRole = widget.roleOverride ?? authState.role ?? AccountRole.community;
+    final effectiveRole =
+        widget.roleOverride ?? authState.role ?? AccountRole.community;
 
     return FutureBuilder<Map<String, dynamic>>(
-      future: widget.profileFuture ??
+      future:
+          widget.profileFuture ??
           (() async {
             final token = await const FlutterSecureStorage().read(
               key: 'firebase_id_token',
             );
             api.setIdToken(token);
             if (effectiveRole == AccountRole.brand) {
-              return await api.getMe();
+              return await api.getBrandProfile();
             }
             return await api.getHostCommunityProfile();
           })(),
       builder: (context, snapshot) {
         final profile = snapshot.data ?? const <String, dynamic>{};
-        final profileName = (profile['name'] as String?) ??
+        final profileName =
+            (profile['name'] as String?) ??
             (profile['communityName'] as String?) ??
             (profile['brandName'] as String?) ??
             (profile['displayName'] as String?) ??
             (effectiveRole == AccountRole.brand ? 'My Brand' : 'My Community');
-        final displayName = (profile['displayName'] as String?) ??
+        final displayName =
+            (profile['displayName'] as String?) ??
             (profile['firstName'] as String?) ??
             (profile['name'] as String?) ??
             (effectiveRole == AccountRole.brand ? 'Brand' : 'Host');
-        final approvalStatus = (profile['approvalStatus'] as String?) ??
+        final approvalStatus =
+            (profile['approvalStatus'] as String?) ??
             (profile['status'] as String?) ??
             'APPROVED';
-        final hostData = ref.watch(hostProfileProvider).asData?.value;
-        final commData = ref.watch(communityProfileProvider).asData?.value;
-        final unreadCount = ref.watch(unreadNotificationsCountProvider).asData?.value ?? 0;
-        final avatarUrl = (hostData?['avatarUrl'] ?? commData?['logoUrl'] ?? profile['avatarUrl']) as String?;
+        final brandData = effectiveRole == AccountRole.brand
+            ? ref.watch(brandProfileProvider).asData?.value
+            : null;
+        final hostData = effectiveRole == AccountRole.brand
+            ? null
+            : ref.watch(hostProfileProvider).asData?.value;
+        final commData = effectiveRole == AccountRole.brand
+            ? null
+            : ref.watch(communityProfileProvider).asData?.value;
+        final unreadCount =
+            ref.watch(unreadNotificationsCountProvider).asData?.value ?? 0;
+        final avatarUrl =
+            (brandData?['logoUrl'] ??
+                    hostData?['avatarUrl'] ??
+                    commData?['logoUrl'] ??
+                    profile['avatarUrl'])
+                as String?;
 
         return Scaffold(
           backgroundColor: const Color(0xFFFFFDFC),
@@ -201,9 +239,7 @@ class _CommunityDashboardScreenState
             automaticallyImplyLeading: false,
             leadingWidth: 64,
             shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(
-                bottom: Radius.circular(24),
-              ),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
             ),
             // Profile button on the top left corner
             leading: Padding(
@@ -311,7 +347,10 @@ class _CommunityDashboardScreenState
                                 decoration: BoxDecoration(
                                   color: MeetdayColors.primaryRed,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1.5),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
                                 ),
                               ),
                             ),
@@ -332,7 +371,7 @@ class _CommunityDashboardScreenState
               : TabBarView(
                   controller: _tabController,
                   physics: const NeverScrollableScrollPhysics(),
-              children: [
+                  children: [
                     _DashboardTabBody(
                       displayName: displayName,
                       profileName: profileName,
@@ -347,22 +386,42 @@ class _CommunityDashboardScreenState
                     ),
                     _HubTabBody(
                       onBack: () => _onTabSelected(0),
-                      onNavigateToChats: () => _onTabSelected(5),
+                      onNavigateToChats: () => _onTabSelected(
+                        effectiveRole == AccountRole.brand ? 9 : 5,
+                      ),
                     ),
-                    _CommunityTabBody(
-                      onNavigateToTab: _onTabSelected,
-                    ),
-                    const CommunityChatHubScreen(),
+                    _CommunityTabBody(onNavigateToTab: _onTabSelected),
+                    effectiveRole == AccountRole.brand
+                        ? const BrandDealsScreen()
+                        : CommunityChatHubScreen(
+                            key: ValueKey(
+                              'community-chat-$_chatHubRouteVersion',
+                            ),
+                            initialTarget: _chatHubInitialTarget,
+                          ),
                     const _SupportTabBody(),
-                    const _NotificationsTabBody(),
+                    _NotificationsTabBody(
+                      role: effectiveRole,
+                      onOpenChat: (target) =>
+                          _openNotificationTarget(target, effectiveRole),
+                      onOpenDestination: _openNotificationDestination,
+                    ),
                     effectiveRole == AccountRole.brand
                         ? const BrandCampaignsScreen()
                         : const CampaignsScreen(),
+                    CommunityChatHubScreen(
+                      key: ValueKey('brand-chat-$_chatHubRouteVersion'),
+                      initialCategory: effectiveRole == AccountRole.brand
+                          ? 'campaigns'
+                          : null,
+                      initialTarget: _chatHubInitialTarget,
+                    ),
                   ],
                 ),
           bottomNavigationBar: MeetdayMobileBottomBar(
             currentIndex: _currentTabIndex,
             onTap: _onTabSelected,
+            role: effectiveRole,
           ),
         );
       },
@@ -405,60 +464,66 @@ class _DashboardTabBody extends ConsumerWidget {
     final publishedList = publishedAsync.asData?.value ?? [];
 
     Widget buildProposalCard(Map<String, dynamic> p) => _ProposalCardPreview(
-          title: (p['name'] ?? p['title'] ?? 'Untitled Proposal').toString(),
-          dateLabel: (p['dateLabel'] ?? 'TBD').toString(),
-          imageUrl: p['imageUrl'] as String?,
-          status: p['status'] as String?,
-          hasCash: p['hasCash'] == true ||
-              p['sponsorshipType'] == 'CASH' ||
-              p['sponsorshipType'] == 'BOTH' ||
-              p['sponsorshipType'] == null,
-          hasBarter: p['hasBarter'] == true ||
-              p['sponsorshipType'] == 'BARTER' ||
-              p['sponsorshipType'] == 'BOTH',
-          onTap: () {
-            showDialog<void>(
-              context: context,
-              builder: (ctx) => ProposalDetailDialog(
-                proposal: p,
-                isBrand: isBrand,
-                onChatStarted: () {
-                  onNavigateToTab(5);
-                },
-                onSubmitApproval: () async {
-                  Navigator.of(ctx).pop();
-                  final id = p['id'];
-                  if (id != null) {
-                    try {
-                      final api = ref.read(apiClientProvider);
-                      await api.dio.patch<dynamic>('/sponsorships/$id/submit');
-                      ref.invalidate(dashboardProposalsProvider);
-                      ref.invalidate(publishedProposalsProvider);
-                    } catch (_) {}
-                  }
-                },
-              ),
-            );
-          },
+      title: (p['name'] ?? p['title'] ?? 'Untitled Proposal').toString(),
+      dateLabel: (p['dateLabel'] ?? 'TBD').toString(),
+      imageUrl: p['imageUrl'] as String?,
+      status: p['status'] as String?,
+      hasCash:
+          p['hasCash'] == true ||
+          p['sponsorshipType'] == 'CASH' ||
+          p['sponsorshipType'] == 'BOTH' ||
+          p['sponsorshipType'] == null,
+      hasBarter:
+          p['hasBarter'] == true ||
+          p['sponsorshipType'] == 'BARTER' ||
+          p['sponsorshipType'] == 'BOTH',
+      onTap: () {
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => ProposalDetailDialog(
+            proposal: p,
+            isBrand: isBrand,
+            onChatStarted: () {
+              onNavigateToTab(5);
+            },
+            onSubmitApproval: () async {
+              Navigator.of(ctx).pop();
+              final id = p['id'];
+              if (id != null) {
+                try {
+                  final api = ref.read(apiClientProvider);
+                  await api.dio.patch<dynamic>('/sponsorships/$id/submit');
+                  ref.invalidate(dashboardProposalsProvider);
+                  ref.invalidate(publishedProposalsProvider);
+                } catch (_) {}
+              }
+            },
+          ),
         );
+      },
+    );
 
-    final myExperienceCards = (proposalsAsync.isLoading && myProposalsList.isEmpty)
+    final myExperienceCards =
+        (proposalsAsync.isLoading && myProposalsList.isEmpty)
         ? [_LoadingCard()]
         : myProposalsList.map(buildProposalCard).toList();
 
-    final curatedExperienceCards = (publishedAsync.isLoading && publishedList.isEmpty)
+    final curatedExperienceCards =
+        (publishedAsync.isLoading && publishedList.isEmpty)
         ? [_LoadingCard()]
         : publishedList.map(buildProposalCard).toList();
 
     // Build campaign cards from data
     final campaignCards = campaignsAsync.when(
       data: (campaigns) => campaigns
-          .map((c) => _CampaignCardPreview(
-                campaign: c,
-                onTap: () {
-                  showCampaignDetailModal(context, c);
-                },
-              ))
+          .map(
+            (c) => _CampaignCardPreview(
+              campaign: c,
+              onTap: () {
+                showCampaignDetailModal(context, c);
+              },
+            ),
+          )
           .toList(),
       loading: () => [_LoadingCard()],
       error: (err, stack) => [
@@ -473,35 +538,41 @@ class _DashboardTabBody extends ConsumerWidget {
     // Build hub cards from data
     final hubCards = hubsAsync.when(
       data: (hubs) => hubs
-          .map((h) => _CommunityHubCardPreview(
-                title: h['title'] ?? 'Hub',
-                memberCount: h['memberCount'] ?? '0',
-                imageUrl: h['logoUrl'] as String?,
-                onTap: () => onNavigateToTab(3),
-              ))
+          .map(
+            (h) => _CommunityHubCardPreview(
+              title: h['title'] ?? 'Hub',
+              memberCount: h['memberCount'] ?? '0',
+              imageUrl: h['logoUrl'] as String?,
+              onTap: () => onNavigateToTab(3),
+            ),
+          )
           .toList(),
       loading: () => [_LoadingCard()],
       error: (err, stack) => [
-        _ErrorCard(
-          onRetry: () => ref.refresh(dashboardHubsProvider),
-        ),
+        _ErrorCard(onRetry: () => ref.refresh(dashboardHubsProvider)),
       ],
     );
 
-    final publishedProposals = (publishedAsync.asData?.value ?? const <dynamic>[])
-        .whereType<Map<String, dynamic>>()
-        .toList();
+    final publishedProposals =
+        (publishedAsync.asData?.value ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .toList();
 
     // Build community cards from data
     final communityCards = communitiesAsync.when(
       data: (communities) => communities.isNotEmpty
           ? communities
-              .map((c) => _CommunityCardPreview(
+                .map(
+                  (c) => _CommunityCardPreview(
                     title: (c['title'] ?? c['name'] ?? 'Community').toString(),
-                    memberCount: (c['memberCount'] ?? c['size'] ?? '0').toString(),
+                    memberCount: (c['memberCount'] ?? c['size'] ?? '0')
+                        .toString(),
                     imageUrl: c['logoUrl'] as String?,
                     onTap: () {
-                      final matching = getCommunityMatchingProposals(c, publishedProposals);
+                      final matching = getCommunityMatchingProposals(
+                        c,
+                        publishedProposals,
+                      );
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => CommunityDetailScreen(
@@ -511,8 +582,9 @@ class _DashboardTabBody extends ConsumerWidget {
                         ),
                       );
                     },
-                  ))
-              .toList()
+                  ),
+                )
+                .toList()
           : [
               _CommunityCardPreview(
                 title: 'Meetday Social Circle',
@@ -524,7 +596,8 @@ class _DashboardTabBody extends ConsumerWidget {
                         community: {
                           'name': 'Meetday Social Circle',
                           'size': '1,240',
-                          'about': 'A curated social circle bringing together founders, creators, and artists for weekly offline meetups.',
+                          'about':
+                              'A curated social circle bringing together founders, creators, and artists for weekly offline meetups.',
                           'operatingCities': ['Delhi NCR', 'Bengaluru'],
                           'avgGuestCount': '60-80',
                           'experiencesPerYear': '24',
@@ -544,7 +617,8 @@ class _DashboardTabBody extends ConsumerWidget {
                         community: {
                           'name': 'Creative Hosts Network',
                           'size': '760',
-                          'about': 'Independent community organizers and event hosts curating intimate music, design, and culture popups.',
+                          'about':
+                              'Independent community organizers and event hosts curating intimate music, design, and culture popups.',
                           'operatingCities': ['Mumbai'],
                           'avgGuestCount': '45',
                           'experiencesPerYear': '12',
@@ -557,30 +631,28 @@ class _DashboardTabBody extends ConsumerWidget {
             ],
       loading: () => [_LoadingCard()],
       error: (err, stack) => [
-        _ErrorCard(
-          onRetry: () => ref.refresh(dashboardCommunitiesProvider),
-        ),
+        _ErrorCard(onRetry: () => ref.refresh(dashboardCommunitiesProvider)),
       ],
     );
 
     // Build deal cards from data
     final dealCards = dealsAsync.when(
       data: (deals) => deals
-          .map((d) => _DealCardPreview(
-                brandName: (d['brandName'] ?? 'Brand').toString(),
-                brandLogo: d['brandLogo'] as String?,
-                projectName: (d['projectName'] ?? 'Project').toString(),
-                amount: (d['amount'] ?? '₹0').toString(),
-                paid: d['paid'] == true,
-                hasReport: d['hasReport'] == true,
-                onTap: () => onNavigateToTab(4),
-              ))
+          .map(
+            (d) => _DealCardPreview(
+              brandName: (d['brandName'] ?? 'Brand').toString(),
+              brandLogo: d['brandLogo'] as String?,
+              projectName: (d['projectName'] ?? 'Project').toString(),
+              amount: (d['amount'] ?? '₹0').toString(),
+              paid: d['paid'] == true,
+              hasReport: d['hasReport'] == true,
+              onTap: () => onNavigateToTab(5),
+            ),
+          )
           .toList(),
       loading: () => [_LoadingCard()],
       error: (err, stack) => [
-        _ErrorCard(
-          onRetry: () => ref.refresh(dashboardDealsProvider),
-        ),
+        _ErrorCard(onRetry: () => ref.refresh(dashboardDealsProvider)),
       ],
     );
 
@@ -632,14 +704,21 @@ class _DashboardTabBody extends ConsumerWidget {
 
         // Two Hero Action Cards (Stacked vertically for mobile phone screens, exactly like frontend)
         _ActionCard(
-          title: isBrand ? 'Create Proposal' : 'Raise Sponsorship',
+          title: isBrand ? 'Curated Experiences' : 'Raise Sponsorship',
           badge: 'LIVE',
           body: isBrand
-              ? 'Build custom experience proposals to pitch to communities and host partners.'
+              ? 'Browse hand-picked experiences from top communities and explore sponsorship opportunities.'
               : 'Build custom proposals, pitch relevant brand sponsors, and secure brand backing to scale your upcoming experiences.',
-          buttonLabel: 'CREATE PROPOSAL ➔',
+          buttonLabel: isBrand ? 'START EXPLORING ➔' : 'CREATE PROPOSAL ➔',
           accent: MeetdayColors.accentYellow,
-          onTap: () => onNavigateToTab(1),
+          onTap: () {
+            if (isBrand) {
+              ref.read(exploreSubViewProvider.notifier).state = 'experiences';
+              onNavigateToTab(2);
+            } else {
+              onNavigateToTab(1);
+            }
+          },
         ),
 
         const SizedBox(height: 12),
@@ -673,7 +752,10 @@ class _DashboardTabBody extends ConsumerWidget {
         campaignCards.isEmpty
             ? Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 16,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -690,13 +772,17 @@ class _DashboardTabBody extends ConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isBrand ? Icons.campaign_rounded : Icons.rocket_launch_outlined,
+                      isBrand
+                          ? Icons.campaign_rounded
+                          : Icons.rocket_launch_outlined,
                       size: 32,
                       color: Colors.black54,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      isBrand ? 'No campaigns created yet' : 'No active brand campaigns yet',
+                      isBrand
+                          ? 'No campaigns created yet'
+                          : 'No active brand campaigns yet',
                       style: GoogleFonts.bricolageGrotesque(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -719,7 +805,10 @@ class _DashboardTabBody extends ConsumerWidget {
                       GestureDetector(
                         onTap: () => onNavigateToTab(8),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: MeetdayColors.primaryRed,
                             borderRadius: BorderRadius.circular(10),
@@ -759,20 +848,23 @@ class _DashboardTabBody extends ConsumerWidget {
 
         const SizedBox(height: 22),
 
-        // Section 2: My Experiences (Redirects to Experiences tab)
+        // Section 2: Brand proposals or community experiences
         _SectionHeaderRow(
-          title: 'My Experiences',
+          title: isBrand ? 'My Proposals' : 'My Experiences',
           subtitle: isBrand
-              ? 'Your custom proposals and experience pitches.'
+              ? 'Your sponsorship proposals for brand partnerships.'
               : 'Your created experiences and proposals.',
-          actionLabel: 'View All Experiences >',
+          actionLabel: isBrand ? 'View All Proposals >' : 'View All Experiences >',
           onActionTap: () => onNavigateToTab(1),
         ),
         const SizedBox(height: 10),
         myExperienceCards.isEmpty
             ? Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 16,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -815,7 +907,10 @@ class _DashboardTabBody extends ConsumerWidget {
                     GestureDetector(
                       onTap: () => onNavigateToTab(1),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: MeetdayColors.primaryRed,
                           borderRadius: BorderRadius.circular(10),
@@ -857,7 +952,8 @@ class _DashboardTabBody extends ConsumerWidget {
         // Section 3: Curated Experiences (Redirects to Explore Curated Experiences section)
         _SectionHeaderRow(
           title: 'Curated Experiences',
-          subtitle: 'Discover and back vetted experiences hosted by communities.',
+          subtitle:
+              'Discover and back vetted experiences hosted by communities.',
           actionLabel: 'View All Experiences >',
           onActionTap: () {
             ref.read(exploreSubViewProvider.notifier).state = 'experiences';
@@ -868,7 +964,10 @@ class _DashboardTabBody extends ConsumerWidget {
         curatedExperienceCards.isEmpty
             ? Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 16,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -910,11 +1009,15 @@ class _DashboardTabBody extends ConsumerWidget {
                     const SizedBox(height: 12),
                     GestureDetector(
                       onTap: () {
-                        ref.read(exploreSubViewProvider.notifier).state = 'experiences';
+                        ref.read(exploreSubViewProvider.notifier).state =
+                            'experiences';
                         onNavigateToTab(2);
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: MeetdayColors.primaryRed,
                           borderRadius: BorderRadius.circular(10),
@@ -947,7 +1050,8 @@ class _DashboardTabBody extends ConsumerWidget {
                   physics: const BouncingScrollPhysics(),
                   itemCount: curatedExperienceCards.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) => curatedExperienceCards[index],
+                  itemBuilder: (context, index) =>
+                      curatedExperienceCards[index],
                 ),
               ),
 
@@ -965,7 +1069,10 @@ class _DashboardTabBody extends ConsumerWidget {
         hubCards.isEmpty
             ? Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 16,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -981,7 +1088,11 @@ class _DashboardTabBody extends ConsumerWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.apartment_outlined, size: 32, color: Colors.black54),
+                    const Icon(
+                      Icons.apartment_outlined,
+                      size: 32,
+                      color: Colors.black54,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       'No active hubs',
@@ -1052,7 +1163,10 @@ class _DashboardTabBody extends ConsumerWidget {
             if (deals.isEmpty) {
               return Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 22,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
@@ -1067,7 +1181,11 @@ class _DashboardTabBody extends ConsumerWidget {
                 ),
                 child: Column(
                   children: [
-                    const Icon(Icons.lock_outline_rounded, size: 32, color: Colors.black54),
+                    const Icon(
+                      Icons.lock_outline_rounded,
+                      size: 32,
+                      color: Colors.black54,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       'No locked deals yet',
@@ -1108,9 +1226,8 @@ class _DashboardTabBody extends ConsumerWidget {
               children: [_LoadingCard()],
             ),
           ),
-          error: (err, stack) => _ErrorCard(
-            onRetry: () => ref.refresh(dashboardDealsProvider),
-          ),
+          error: (err, stack) =>
+              _ErrorCard(onRetry: () => ref.refresh(dashboardDealsProvider)),
         ),
       ],
     );
@@ -1206,11 +1323,7 @@ class _ActionCard extends StatelessWidget {
         border: Border.all(color: Colors.black, width: 2.5),
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(4, 4),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 0),
         ],
       ),
       child: Column(
@@ -1330,11 +1443,7 @@ class _ProposalCardPreview extends StatelessWidget {
           border: Border.all(color: Colors.black, width: 2.5),
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
           ],
         ),
         child: ClipRRect(
@@ -1383,14 +1492,19 @@ class _ProposalCardPreview extends StatelessWidget {
                             children: [
                               if (hasCash)
                                 Container(
-                                  margin: EdgeInsets.only(bottom: hasBarter ? 3 : 0),
+                                  margin: EdgeInsets.only(
+                                    bottom: hasBarter ? 3 : 0,
+                                  ),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 5,
                                     vertical: 1.5,
                                   ),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFDCFCE7),
-                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    border: Border.all(
+                                      color: Colors.black,
+                                      width: 1.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(999),
                                     boxShadow: const [
                                       BoxShadow(
@@ -1417,7 +1531,10 @@ class _ProposalCardPreview extends StatelessWidget {
                                   ),
                                   decoration: BoxDecoration(
                                     color: MeetdayColors.accentYellow,
-                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    border: Border.all(
+                                      color: Colors.black,
+                                      width: 1.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(999),
                                     boxShadow: const [
                                       BoxShadow(
@@ -1551,11 +1668,7 @@ class _ProposalCardPreview extends StatelessWidget {
         border: Border.all(color: Colors.black, width: 1.1),
         borderRadius: BorderRadius.circular(999),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(1, 1),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
         ],
       ),
       child: Text(
@@ -1571,10 +1684,7 @@ class _ProposalCardPreview extends StatelessWidget {
 }
 
 class _CampaignCardPreview extends StatelessWidget {
-  const _CampaignCardPreview({
-    required this.campaign,
-    this.onTap,
-  });
+  const _CampaignCardPreview({required this.campaign, this.onTap});
 
   final Map<String, dynamic> campaign;
   final VoidCallback? onTap;
@@ -1584,7 +1694,9 @@ class _CampaignCardPreview extends StatelessWidget {
     final title = (campaign['name'] ?? 'Brand Campaign').toString();
     final brandName = (campaign['brandName'] ?? 'Brand').toString();
     final brandLogo = campaign['brandLogo'] as String?;
-    final offerType = (campaign['offerType'] ?? 'CASH').toString().toUpperCase();
+    final offerType = (campaign['offerType'] ?? 'CASH')
+        .toString()
+        .toUpperCase();
     final hasCash = offerType == 'CASH' || offerType == 'BOTH';
     final hasBarter = offerType == 'BARTER' || offerType == 'BOTH';
     final budgetAmount = campaign['budgetAmount'];
@@ -1609,11 +1721,7 @@ class _CampaignCardPreview extends StatelessWidget {
           border: Border.all(color: Colors.black, width: 2.5),
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
           ],
         ),
         child: ClipRRect(
@@ -1638,7 +1746,8 @@ class _CampaignCardPreview extends StatelessWidget {
                         Image.network(
                           brandLogo,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => _fallbackMonogram(brandName),
+                          errorBuilder: (_, _, _) =>
+                              _fallbackMonogram(brandName),
                         )
                       else
                         _fallbackMonogram(brandName),
@@ -1648,7 +1757,10 @@ class _CampaignCardPreview extends StatelessWidget {
                         top: 6,
                         left: 6,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1.5,
+                          ),
                           decoration: BoxDecoration(
                             color: MeetdayColors.primaryRed,
                             border: Border.all(color: Colors.black, width: 1.1),
@@ -1683,14 +1795,26 @@ class _CampaignCardPreview extends StatelessWidget {
                             children: [
                               if (hasCash)
                                 Container(
-                                  margin: EdgeInsets.only(bottom: hasBarter ? 3 : 0),
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  margin: EdgeInsets.only(
+                                    bottom: hasBarter ? 3 : 0,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFDCFCE7),
-                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    border: Border.all(
+                                      color: Colors.black,
+                                      width: 1.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(999),
                                     boxShadow: const [
-                                      BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
+                                      BoxShadow(
+                                        color: Colors.black,
+                                        offset: Offset(1, 1),
+                                        blurRadius: 0,
+                                      ),
                                     ],
                                   ),
                                   child: Text(
@@ -1704,13 +1828,23 @@ class _CampaignCardPreview extends StatelessWidget {
                                 ),
                               if (hasBarter)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: MeetdayColors.accentYellow,
-                                    border: Border.all(color: Colors.black, width: 1.2),
+                                    border: Border.all(
+                                      color: Colors.black,
+                                      width: 1.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(999),
                                     boxShadow: const [
-                                      BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0),
+                                      BoxShadow(
+                                        color: Colors.black,
+                                        offset: Offset(1, 1),
+                                        blurRadius: 0,
+                                      ),
                                     ],
                                   ),
                                   child: Text(
@@ -1781,7 +1915,9 @@ class _CampaignCardPreview extends StatelessWidget {
   }
 
   Widget _fallbackMonogram(String name) {
-    final initials = name.trim().isNotEmpty ? name.trim().substring(0, 1).toUpperCase() : 'B';
+    final initials = name.trim().isNotEmpty
+        ? name.trim().substring(0, 1).toUpperCase()
+        : 'B';
     return Center(
       child: Container(
         width: 50,
@@ -1834,11 +1970,7 @@ class _CommunityHubCardPreview extends StatelessWidget {
           border: Border.all(color: Colors.black, width: 2.5),
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
           ],
         ),
         child: ClipRRect(
@@ -1937,11 +2069,7 @@ class _CommunityHubCardPreview extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Color(0xFFEFF6FF),
-            Color(0xFFDBEAFE),
-            Color(0xFFC7D2FE),
-          ],
+          colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE), Color(0xFFC7D2FE)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -2000,11 +2128,7 @@ class _CommunityCardPreview extends StatelessWidget {
           border: Border.all(color: Colors.black, width: 2.5),
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
           ],
         ),
         child: ClipRRect(
@@ -2026,7 +2150,8 @@ class _CommunityCardPreview extends StatelessWidget {
                       ? Image.network(
                           imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => _fallbackThumbnail(),
+                          errorBuilder: (context, error, stackTrace) =>
+                              _fallbackThumbnail(),
                         )
                       : _fallbackThumbnail(),
                 ),
@@ -2101,9 +2226,7 @@ class _CommunityCardPreview extends StatelessWidget {
 
   Widget _fallbackThumbnail() {
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFFFCE29),
-      ),
+      decoration: const BoxDecoration(color: Color(0xFFFFCE29)),
       child: Center(
         child: Text(
           title.substring(0, title.length > 2 ? 2 : title.length).toUpperCase(),
@@ -2117,7 +2240,6 @@ class _CommunityCardPreview extends StatelessWidget {
     );
   }
 }
-
 
 class _DealCardPreview extends StatelessWidget {
   const _DealCardPreview({
@@ -2182,7 +2304,9 @@ class _DealCardPreview extends StatelessWidget {
                                 errorBuilder: (_, _, _) => Center(
                                   child: Text(
                                     brandName.isNotEmpty
-                                        ? brandName.substring(0, 1).toUpperCase()
+                                        ? brandName
+                                              .substring(0, 1)
+                                              .toUpperCase()
                                         : 'B',
                                     style: GoogleFonts.poppins(
                                       fontSize: 11,
@@ -2220,9 +2344,14 @@ class _DealCardPreview extends StatelessWidget {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
-                        color: paid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                        color: paid
+                            ? const Color(0xFFDCFCE7)
+                            : const Color(0xFFFEF3C7),
                         border: Border.all(color: Colors.black, width: 1.2),
                         borderRadius: BorderRadius.circular(999),
                       ),
@@ -2238,7 +2367,10 @@ class _DealCardPreview extends StatelessWidget {
                     if (hasReport) ...[
                       const SizedBox(width: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF3E8FF),
                           border: Border.all(color: Colors.black, width: 1.2),
@@ -2269,7 +2401,10 @@ class _DealCardPreview extends StatelessWidget {
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: MeetdayColors.accentYellow,
                     borderRadius: BorderRadius.circular(8),
@@ -2377,7 +2512,9 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
               context: context,
               builder: (dCtx) => AlertDialog(
                 title: const Text('Delete Proposal?'),
-                content: const Text('Are you sure you want to delete this proposal? This cannot be undone.'),
+                content: const Text(
+                  'Are you sure you want to delete this proposal? This cannot be undone.',
+                ),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(dCtx).pop(false),
@@ -2385,7 +2522,10 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(dCtx).pop(true),
-                    child: const Text('DELETE', style: TextStyle(color: Colors.red)),
+                    child: const Text(
+                      'DELETE',
+                      style: TextStyle(color: Colors.red),
+                    ),
                   ),
                 ],
               ),
@@ -2411,11 +2551,21 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
     return proposalsAsync.when(
       data: (proposals) {
         final allCount = proposals.length;
-        final publishedCount = proposals.where((p) => p['status'] == 'PUBLISHED').length;
-        final underReviewCount = proposals.where((p) => p['status'] == 'UNDER_REVIEW').length;
-        final draftCount = proposals.where((p) => p['status'] == 'DRAFT').length;
-        final completedCount = proposals.where((p) => p['status'] == 'COMPLETED').length;
-        final rejectedCount = proposals.where((p) => p['status'] == 'REJECTED').length;
+        final publishedCount = proposals
+            .where((p) => p['status'] == 'PUBLISHED')
+            .length;
+        final underReviewCount = proposals
+            .where((p) => p['status'] == 'UNDER_REVIEW')
+            .length;
+        final draftCount = proposals
+            .where((p) => p['status'] == 'DRAFT')
+            .length;
+        final completedCount = proposals
+            .where((p) => p['status'] == 'COMPLETED')
+            .length;
+        final rejectedCount = proposals
+            .where((p) => p['status'] == 'REJECTED')
+            .length;
 
         final filtered = proposals.where((p) {
           if (_selectedSegment == 'ALL') return true;
@@ -2444,7 +2594,7 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Experiences',
+                        isBrand ? 'My Proposals' : 'Experiences',
                         style: GoogleFonts.bricolageGrotesque(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -2454,7 +2604,7 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                       const SizedBox(height: 3),
                       Text(
                         isBrand
-                            ? 'Submit and manage your experience proposals.'
+                          ? 'Create and manage sponsorship proposals for brands.'
                             : 'For all your experiences and proposals',
                         style: GoogleFonts.poppins(
                           fontSize: 11,
@@ -2469,7 +2619,10 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                 GestureDetector(
                   onTap: _openCreateProposalModal,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: MeetdayColors.primaryRed,
                       borderRadius: BorderRadius.circular(10),
@@ -2485,7 +2638,11 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                        const Icon(
+                          Icons.add_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           'CREATE NEW',
@@ -2520,7 +2677,10 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                     },
                     child: Container(
                       margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: isSelected ? Colors.black : Colors.white,
                         borderRadius: BorderRadius.circular(999),
@@ -2540,7 +2700,9 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                         style: GoogleFonts.poppins(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
-                          color: isSelected ? Colors.white : const Color(0xFF525252),
+                          color: isSelected
+                              ? Colors.white
+                              : const Color(0xFF525252),
                           letterSpacing: 0.3,
                         ),
                       ),
@@ -2560,10 +2722,7 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.black38,
-                    width: 2,
-                  ),
+                  border: Border.all(color: Colors.black38, width: 2),
                 ),
                 child: Column(
                   children: [
@@ -2594,7 +2753,10 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                     GestureDetector(
                       onTap: _openCreateProposalModal,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: MeetdayColors.primaryRed,
                           borderRadius: BorderRadius.circular(10),
@@ -2621,10 +2783,12 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                 ),
               )
             else
-              ...filtered.map((p) => ProposalListItemCard(
-                    proposal: p,
-                    onTap: () => _openProposalDetail(p),
-                  )),
+              ...filtered.map(
+                (p) => ProposalListItemCard(
+                  proposal: p,
+                  onTap: () => _openProposalDetail(p),
+                ),
+              ),
           ],
         );
       },
@@ -2635,7 +2799,9 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
         children: [
           Text(
-            widget.role == AccountRole.brand ? 'My Proposals' : 'My Sponsorships',
+            widget.role == AccountRole.brand
+                ? 'My Proposals'
+                : 'My Sponsorships',
             style: GoogleFonts.bricolageGrotesque(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -2643,9 +2809,7 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
             ),
           ),
           const SizedBox(height: 14),
-          _ErrorCard(
-            onRetry: () => ref.refresh(dashboardProposalsProvider),
-          ),
+          _ErrorCard(onRetry: () => ref.refresh(dashboardProposalsProvider)),
         ],
       ),
     );
@@ -2656,10 +2820,12 @@ class _CuratedExperiencesExploreView extends ConsumerStatefulWidget {
   const _CuratedExperiencesExploreView({
     required this.isBrand,
     required this.onBack,
+    required this.onNavigateToTab,
   });
 
   final bool isBrand;
   final VoidCallback onBack;
+  final ValueChanged<int> onNavigateToTab;
 
   @override
   ConsumerState<_CuratedExperiencesExploreView> createState() =>
@@ -2676,6 +2842,10 @@ class _CuratedExperiencesExploreViewState
       builder: (ctx) => ProposalDetailDialog(
         proposal: proposal,
         isBrand: widget.isBrand,
+        onChatStarted: () {
+          Navigator.of(context).pop();
+          widget.onNavigateToTab(9);
+        },
       ),
     );
   }
@@ -2773,7 +2943,10 @@ class _CuratedExperiencesExploreViewState
                     },
                     child: Container(
                       margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: isSelected ? Colors.black : Colors.white,
                         borderRadius: BorderRadius.circular(999),
@@ -2793,7 +2966,9 @@ class _CuratedExperiencesExploreViewState
                         style: GoogleFonts.poppins(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
-                          color: isSelected ? Colors.white : const Color(0xFF525252),
+                          color: isSelected
+                              ? Colors.white
+                              : const Color(0xFF525252),
                           letterSpacing: 0.3,
                         ),
                       ),
@@ -2841,10 +3016,12 @@ class _CuratedExperiencesExploreViewState
                 ),
               )
             else
-              ...filtered.map((p) => ProposalListItemCard(
-                    proposal: p,
-                    onTap: () => _openProposalDetail(p),
-                  )),
+              ...filtered.map(
+                (p) => ProposalListItemCard(
+                  proposal: p,
+                  onTap: () => _openProposalDetail(p),
+                ),
+              ),
           ],
         );
       },
@@ -2873,10 +3050,7 @@ class _CuratedExperiencesExploreViewState
 // ─── Explore Tab Body (3 Option Cards: Communities, Hubs, Campaigns) ─────────
 
 class _ExploreTabBody extends ConsumerStatefulWidget {
-  const _ExploreTabBody({
-    required this.role,
-    required this.onNavigateToTab,
-  });
+  const _ExploreTabBody({required this.role, required this.onNavigateToTab});
 
   final AccountRole role;
   final ValueChanged<int> onNavigateToTab;
@@ -2894,6 +3068,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
       return _CuratedExperiencesExploreView(
         isBrand: widget.role == AccountRole.brand,
         onBack: () => ref.read(exploreSubViewProvider.notifier).state = 'menu',
+        onNavigateToTab: widget.onNavigateToTab,
       );
     }
     if (subView == 'communities') {
@@ -2905,7 +3080,8 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
     if (subView == 'hubs') {
       return _HubTabBody(
         onBack: () => ref.read(exploreSubViewProvider.notifier).state = 'menu',
-        onNavigateToChats: () => widget.onNavigateToTab(5),
+        onNavigateToChats: () =>
+            widget.onNavigateToTab(widget.role == AccountRole.brand ? 9 : 5),
       );
     }
     if (subView == 'campaigns') {
@@ -2951,8 +3127,10 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             iconBg: MeetdayColors.accentYellow,
             iconColor: Colors.black,
             title: 'Curated Experiences',
-            description: 'Browse hand-picked, curated experiences from top communities and secure offline marketing opportunities.',
-            onTap: () => ref.read(exploreSubViewProvider.notifier).state = 'experiences',
+            description:
+                'Browse hand-picked, curated experiences from top communities and secure offline marketing opportunities.',
+            onTap: () =>
+                ref.read(exploreSubViewProvider.notifier).state = 'experiences',
           ),
           const SizedBox(height: 14),
 
@@ -2962,8 +3140,10 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             iconBg: Colors.black,
             iconColor: Colors.white,
             title: 'Communities',
-            description: 'Browse, partner, and sponsor verified creator & host communities.',
-            onTap: () => ref.read(exploreSubViewProvider.notifier).state = 'communities',
+            description:
+                'Browse, partner, and sponsor verified creator & host communities.',
+            onTap: () =>
+                ref.read(exploreSubViewProvider.notifier).state = 'communities',
           ),
           const SizedBox(height: 14),
 
@@ -2973,8 +3153,10 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             iconBg: MeetdayColors.primaryRed,
             iconColor: Colors.white,
             title: 'Community Hubs',
-            description: 'Discover partner venues, studios, and physical spaces for events and activations.',
-            onTap: () => ref.read(exploreSubViewProvider.notifier).state = 'hubs',
+            description:
+                'Discover partner venues, studios, and physical spaces for events and activations.',
+            onTap: () =>
+                ref.read(exploreSubViewProvider.notifier).state = 'hubs',
           ),
         ] else ...[
           // Community Card 1: Communities
@@ -2983,8 +3165,10 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             iconBg: MeetdayColors.accentYellow,
             iconColor: Colors.black,
             title: 'Communities',
-            description: 'Browse, partner, and co-host with verified creator & host communities.',
-            onTap: () => ref.read(exploreSubViewProvider.notifier).state = 'communities',
+            description:
+                'Browse, partner, and co-host with verified creator & host communities.',
+            onTap: () =>
+                ref.read(exploreSubViewProvider.notifier).state = 'communities',
           ),
           const SizedBox(height: 14),
 
@@ -2994,8 +3178,10 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             iconBg: Colors.black,
             iconColor: Colors.white,
             title: 'Hubs',
-            description: 'Discover partner venues, studios, and physical spaces for events.',
-            onTap: () => ref.read(exploreSubViewProvider.notifier).state = 'hubs',
+            description:
+                'Discover partner venues, studios, and physical spaces for events.',
+            onTap: () =>
+                ref.read(exploreSubViewProvider.notifier).state = 'hubs',
           ),
           const SizedBox(height: 14),
 
@@ -3005,8 +3191,10 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             iconBg: MeetdayColors.primaryRed,
             iconColor: Colors.white,
             title: 'Campaigns',
-            description: 'Browse active brand campaigns, apply with your community, and secure deals.',
-            onTap: () => ref.read(exploreSubViewProvider.notifier).state = 'campaigns',
+            description:
+                'Browse active brand campaigns, apply with your community, and secure deals.',
+            onTap: () =>
+                ref.read(exploreSubViewProvider.notifier).state = 'campaigns',
           ),
         ],
       ],
@@ -3031,11 +3219,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.black, width: 2.5),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
           ],
         ),
         child: Row(
@@ -3055,9 +3239,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
                   ),
                 ],
               ),
-              child: Center(
-                child: Icon(icon, color: iconColor, size: 24),
-              ),
+              child: Center(child: Icon(icon, color: iconColor, size: 24)),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -3132,7 +3314,9 @@ class _HubTabBody extends ConsumerWidget {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('Community Space discovery is available to Brand and Community accounts.'),
+          child: Text(
+            'Community Space discovery is available to Brand and Community accounts.',
+          ),
         ),
       );
     }
@@ -3194,7 +3378,10 @@ class _HubTabBody extends ConsumerWidget {
               if (hubs.isEmpty) {
                 return Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 36,
+                    horizontal: 20,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -3210,7 +3397,11 @@ class _HubTabBody extends ConsumerWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.apartment_outlined, size: 40, color: Colors.black54),
+                      const Icon(
+                        Icons.apartment_outlined,
+                        size: 40,
+                        color: Colors.black54,
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         'No active hubs',
@@ -3263,12 +3454,13 @@ class _HubTabBody extends ConsumerWidget {
             loading: () => const Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
-                child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
+                child: CircularProgressIndicator(
+                  color: MeetdayColors.primaryRed,
+                ),
               ),
             ),
-            error: (err, stack) => _ErrorCard(
-              onRetry: () => ref.refresh(dashboardHubsProvider),
-            ),
+            error: (err, stack) =>
+                _ErrorCard(onRetry: () => ref.refresh(dashboardHubsProvider)),
           ),
         ],
       ),
@@ -3314,15 +3506,18 @@ class _HubListingCardState extends ConsumerState<_HubListingCard> {
       final result = responseData is Map
           ? (responseData['data'] is Map ? responseData['data'] : responseData)
           : null;
-      final alreadyInterested = result is Map && result['alreadyInterested'] == true;
+      final alreadyInterested =
+          result is Map && result['alreadyInterested'] == true;
 
       ref.invalidate(chatHubProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(alreadyInterested
-              ? 'You already sent interest. Check your chat requests.'
-              : 'Interest sent. The space partner must accept before chat opens.'),
+          content: Text(
+            alreadyInterested
+                ? 'You already sent interest. Check your chat requests.'
+                : 'Interest sent. The space partner must accept before chat opens.',
+          ),
           backgroundColor: const Color(0xFF10B981),
         ),
       );
@@ -3350,11 +3545,7 @@ class _HubListingCardState extends ConsumerState<_HubListingCard> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.black, width: 2),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(3, 3),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
         ],
       ),
       child: Column(
@@ -3374,7 +3565,10 @@ class _HubListingCardState extends ConsumerState<_HubListingCard> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3.5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFDCFCE7),
                   border: Border.all(color: Colors.black, width: 1.2),
@@ -3407,7 +3601,11 @@ class _HubListingCardState extends ConsumerState<_HubListingCard> {
               widget.hub['about'].toString(),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(fontSize: 11, height: 1.4, color: Colors.black87),
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                height: 1.4,
+                color: Colors.black87,
+              ),
             ),
           ],
           const SizedBox(height: 12),
@@ -3419,14 +3617,19 @@ class _HubListingCardState extends ConsumerState<_HubListingCard> {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.send_rounded, size: 16),
               label: Text(_isSubmitting ? 'Sending...' : 'I\'M INTERESTED'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: MeetdayColors.primaryRed,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: MeetdayColors.primaryRed.withValues(alpha: 0.6),
+                disabledBackgroundColor: MeetdayColors.primaryRed.withValues(
+                  alpha: 0.6,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                   side: const BorderSide(color: Colors.black, width: 2),
@@ -3452,9 +3655,10 @@ class _CommunityTabBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final communitiesAsync = ref.watch(dashboardCommunitiesProvider);
     final publishedAsync = ref.watch(publishedProposalsProvider);
-    final publishedProposals = (publishedAsync.asData?.value ?? const <dynamic>[])
-        .whereType<Map<String, dynamic>>()
-        .toList();
+    final publishedProposals =
+        (publishedAsync.asData?.value ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .toList();
 
     return communitiesAsync.when(
       data: (communities) {
@@ -3533,8 +3737,10 @@ class _CommunityTabBody extends ConsumerWidget {
                 ),
                 itemBuilder: (context, index) {
                   final c = list[index];
-                  final name = (c['name'] ?? c['title'] ?? 'Community').toString();
-                  final members = (c['memberCount'] ?? c['size'] ?? '0').toString();
+                  final name = (c['name'] ?? c['title'] ?? 'Community')
+                      .toString();
+                  final members = (c['memberCount'] ?? c['size'] ?? '0')
+                      .toString();
                   final imageUrl = c['logoUrl'] as String?;
 
                   return _CommunityCardPreview(
@@ -3543,7 +3749,10 @@ class _CommunityTabBody extends ConsumerWidget {
                     imageUrl: imageUrl,
                     width: null,
                     onTap: () {
-                      final matchingProposals = getCommunityMatchingProposals(c, publishedProposals);
+                      final matchingProposals = getCommunityMatchingProposals(
+                        c,
+                        publishedProposals,
+                      );
 
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -3563,9 +3772,7 @@ class _CommunityTabBody extends ConsumerWidget {
         );
       },
       loading: () => const Center(
-        child: CircularProgressIndicator(
-          color: MeetdayColors.primaryRed,
-        ),
+        child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
       ),
       error: (err, stack) => ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
@@ -3580,14 +3787,14 @@ class _CommunityTabBody extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           _ErrorCard(
-            onRetry: () => ref.refresh(communityCollaborationCommunitiesProvider),
+            onRetry: () =>
+                ref.refresh(communityCollaborationCommunitiesProvider),
           ),
         ],
       ),
     );
   }
 }
-
 
 class _SupportTabBody extends StatelessWidget {
   const _SupportTabBody();
@@ -3599,7 +3806,59 @@ class _SupportTabBody extends StatelessWidget {
 }
 
 class _NotificationsTabBody extends ConsumerWidget {
-  const _NotificationsTabBody();
+  const _NotificationsTabBody({
+    required this.role,
+    required this.onOpenChat,
+    required this.onOpenDestination,
+  });
+
+  final AccountRole role;
+  final ValueChanged<ChatHubInitialTarget> onOpenChat;
+  final ValueChanged<int> onOpenDestination;
+
+  ChatHubInitialTarget? _chatTarget(Map<String, dynamic> notification) {
+    final metadata = notification['metadata'] is Map
+        ? Map<String, dynamic>.from(notification['metadata'] as Map)
+        : <String, dynamic>{};
+    final type = (notification['type'] ?? '').toString().toLowerCase();
+    final threadId =
+        (metadata['sponsorshipInterestId'] ??
+                metadata['spaceInterestId'] ??
+                metadata['brandCommunityInterestId'] ??
+                metadata['communityCollaborationInterestId'] ??
+                metadata['threadId'] ??
+                metadata['interestId'] ??
+                metadata['chatId'] ??
+                metadata['thread_id'] ??
+                metadata['interest_id'] ??
+                metadata['chat_id'])
+            ?.toString();
+
+    if (threadId == null || threadId.isEmpty) return null;
+
+    final String category;
+    if (metadata['spaceInterestId'] != null || type.startsWith('space_')) {
+      category = 'spaces';
+    } else if (metadata['campaignId'] != null || type.contains('campaign')) {
+      category = 'campaigns';
+    } else if (type.contains('community_collaboration') ||
+        type.contains('brand_community')) {
+      category = role == AccountRole.brand ? 'communities' : 'brands';
+    } else {
+      category = 'sponsorships';
+    }
+
+    final queue = role == AccountRole.brand
+        ? 'INCOMING'
+        : (type.contains('confirmed') || type.contains('interest_sent')
+              ? 'OUTGOING'
+              : 'INCOMING');
+    return ChatHubInitialTarget(
+      category: category,
+      threadId: threadId,
+      queue: queue,
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -3653,7 +3912,11 @@ class _NotificationsTabBody extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.black, width: 1.5),
                   boxShadow: const [
-                    BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0),
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(1.5, 1.5),
+                      blurRadius: 0,
+                    ),
                   ],
                 ),
                 child: Text(
@@ -3675,7 +3938,10 @@ class _NotificationsTabBody extends ConsumerWidget {
             if (notifications.isEmpty) {
               return Container(
                 margin: const EdgeInsets.only(top: 24),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 36,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
@@ -3731,10 +3997,17 @@ class _NotificationsTabBody extends ConsumerWidget {
               children: notifications.map((notif) {
                 final id = notif['id']?.toString() ?? '';
                 final title = (notif['title'] ?? 'Notification').toString();
-                final body = (notif['body'] ?? notif['message'] ?? notif['description'] ?? '').toString();
+                final body =
+                    (notif['body'] ??
+                            notif['message'] ??
+                            notif['description'] ??
+                            '')
+                        .toString();
                 final type = notif['type']?.toString();
                 final isRead = notif['isRead'] == true || notif['read'] == true;
-                final createdAt = notif['createdAt']?.toString() ?? notif['timestamp']?.toString();
+                final createdAt =
+                    notif['createdAt']?.toString() ??
+                    notif['timestamp']?.toString();
                 String timeLabel = '';
                 if (createdAt != null && createdAt.isNotEmpty) {
                   try {
@@ -3765,6 +4038,23 @@ class _NotificationsTabBody extends ConsumerWidget {
                         ref.invalidate(unreadNotificationsCountProvider);
                       } catch (_) {}
                     }
+                    final raw = Map<String, dynamic>.from(notif);
+                    final chatTarget = _chatTarget(raw);
+                    if (chatTarget != null) {
+                      onOpenChat(chatTarget);
+                      return;
+                    }
+
+                    final metadata = raw['metadata'] is Map
+                        ? raw['metadata'] as Map
+                        : const {};
+                    if (metadata['campaignId'] != null) {
+                      onOpenDestination(role == AccountRole.brand ? 8 : 2);
+                    } else if (metadata['proposalId'] != null) {
+                      onOpenDestination(role == AccountRole.brand ? 2 : 1);
+                    } else if (title.toLowerCase().contains('support')) {
+                      onOpenDestination(6);
+                    }
                   },
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -3789,7 +4079,9 @@ class _NotificationsTabBody extends ConsumerWidget {
                           height: 36,
                           margin: const EdgeInsets.only(right: 12),
                           decoration: BoxDecoration(
-                            color: isRead ? const Color(0xFFF1F5F9) : MeetdayColors.primaryRed,
+                            color: isRead
+                                ? const Color(0xFFF1F5F9)
+                                : MeetdayColors.primaryRed,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: Colors.black, width: 1.5),
                           ),
@@ -3818,11 +4110,19 @@ class _NotificationsTabBody extends ConsumerWidget {
                                   if (!isRead) ...[
                                     const SizedBox(width: 6),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: MeetdayColors.primaryRed,
-                                        borderRadius: BorderRadius.circular(999),
-                                        border: Border.all(color: Colors.black, width: 1),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                        border: Border.all(
+                                          color: Colors.black,
+                                          width: 1,
+                                        ),
                                       ),
                                       child: Text(
                                         'NEW',
@@ -3874,9 +4174,8 @@ class _NotificationsTabBody extends ConsumerWidget {
               child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
             ),
           ),
-          error: (err, stack) => _ErrorCard(
-            onRetry: () => ref.refresh(notificationsProvider),
-          ),
+          error: (err, stack) =>
+              _ErrorCard(onRetry: () => ref.refresh(notificationsProvider)),
         ),
       ],
     );
@@ -3901,34 +4200,53 @@ class _NotificationsTabBody extends ConsumerWidget {
   }
 }
 
-
 class MeetdayMobileBottomBar extends StatelessWidget {
   const MeetdayMobileBottomBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.role = AccountRole.community,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final AccountRole role;
 
   @override
   Widget build(BuildContext context) {
-    // 5 primary dock destinations: Explore (2), Experiences (1), Campaigns (8), Chats (5), Support (6)
-    final items = [
-      (2, Icons.explore_rounded, null, null, 'Explore'),
-      (1, Icons.description_rounded, null, null, 'Experiences'),
-      (8, Icons.campaign_rounded, null, null, 'Campaigns'),
-      (5, null, 'assets/icons/chat.svg', 'assets/icons/chat-filled.svg', 'Chats'),
-      (6, Icons.headset_mic_rounded, null, null, 'Support'),
-    ];
+    final isBrand = role == AccountRole.brand;
+    final items = isBrand
+        ? [
+            (8, Icons.campaign_rounded, null, null, 'My Campaigns'),
+            (1, Icons.description_rounded, null, null, 'My Proposals'),
+            (2, Icons.explore_rounded, null, null, 'Explore'),
+            (5, Icons.lock_rounded, null, null, 'Deals'),
+            (
+              9,
+              null,
+              'assets/icons/chat.svg',
+              'assets/icons/chat-filled.svg',
+              'Chats',
+            ),
+            (6, Icons.headset_mic_rounded, null, null, 'Support'),
+          ]
+        : [
+            (2, Icons.explore_rounded, null, null, 'Explore'),
+            (1, Icons.description_rounded, null, null, 'Proposals'),
+            (
+              5,
+              null,
+              'assets/icons/chat.svg',
+              'assets/icons/chat-filled.svg',
+              'Chats',
+            ),
+            (6, Icons.headset_mic_rounded, null, null, 'Support'),
+          ];
 
     return Container(
       decoration: const BoxDecoration(
         color: MeetdayColors.primaryRed,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: SafeArea(
@@ -3941,7 +4259,9 @@ class MeetdayMobileBottomBar extends StatelessWidget {
             final svgOutlined = item.$3;
             final svgFilled = item.$4;
             final label = item.$5;
-            final isSelected = currentIndex == index || (index == 2 && (currentIndex == 3 || currentIndex == 4));
+            final isSelected =
+                currentIndex == index ||
+                (index == 2 && (currentIndex == 3 || currentIndex == 4));
             final itemColor = isSelected ? Colors.black : Colors.white;
 
             return GestureDetector(
@@ -3955,7 +4275,9 @@ class MeetdayMobileBottomBar extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected ? MeetdayColors.accentYellow : Colors.transparent,
+                  color: isSelected
+                      ? MeetdayColors.accentYellow
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(14),
                   border: isSelected
                       ? Border.all(color: Colors.black, width: 2)
@@ -3975,7 +4297,9 @@ class MeetdayMobileBottomBar extends StatelessWidget {
                   children: [
                     if (svgOutlined != null)
                       SvgPicture.asset(
-                        (isSelected && svgFilled != null) ? svgFilled : svgOutlined,
+                        (isSelected && svgFilled != null)
+                            ? svgFilled
+                            : svgOutlined,
                         width: 20,
                         height: 20,
                         colorFilter: ColorFilter.mode(
@@ -3984,11 +4308,7 @@ class MeetdayMobileBottomBar extends StatelessWidget {
                         ),
                       )
                     else if (icon != null)
-                      Icon(
-                        icon,
-                        size: 20,
-                        color: itemColor,
-                      ),
+                      Icon(icon, size: 20, color: itemColor),
                     if (isSelected) ...[
                       const SizedBox(width: 6),
                       Text(
@@ -4072,4 +4392,3 @@ class _ErrorCard extends StatelessWidget {
     );
   }
 }
-

@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../domain/account_role.dart';
 import '../state/auth_provider.dart';
 import 'auth_shell.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key, required this.role});
+  const LoginScreen({super.key, required this.role, this.redirectTo});
 
   final AccountRole role;
+  final String? redirectTo;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -20,10 +23,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isSignUp = false;
   bool _agreedToTerms = false;
   bool _isSubmitting = false;
+  late final TapGestureRecognizer _termsTap;
+  late final TapGestureRecognizer _privacyTap;
+
+  @override
+  void initState() {
+    super.initState();
+    _termsTap = TapGestureRecognizer()
+      ..onTap = () => _openLegalPage('https://www.meetday.ai/terms');
+    _privacyTap = TapGestureRecognizer()
+      ..onTap = () => _openLegalPage('https://www.meetday.ai/privacy');
+    if (widget.role == AccountRole.brand && widget.redirectTo != null) {
+      ref.read(pendingBrandRedirectProvider.notifier).set(widget.redirectTo);
+    }
+  }
+
+  @override
+  void dispose() {
+    _termsTap.dispose();
+    _privacyTap.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openLegalPage(String url) async {
+    final opened = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) _showError('Could not open the legal page.');
+  }
 
   Future<void> _signInWithGoogle() async {
     if (_isSignUp && !_agreedToTerms) {
-      _showError('Agree to the Terms of Service and Privacy Policy to continue.');
+      _showError(
+        'Agree to the Terms of Service and Privacy Policy to continue.',
+      );
       return;
     }
     setState(() => _isSubmitting = true);
@@ -36,7 +70,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await controller.signInWithGoogle(role: widget.role);
       }
     } on AuthException catch (error) {
-      if (mounted) _showError(error.message);
+      if (mounted &&
+          widget.role == AccountRole.brand &&
+          error.message.toLowerCase().contains('no brand account found')) {
+        setState(() => _isSignUp = true);
+        _showError('Create your brand account to continue.');
+      } else if (mounted) {
+        _showError(error.message);
+      }
     } catch (error) {
       if (mounted) {
         _showError(
@@ -79,7 +120,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               style: TextButton.styleFrom(
                 foregroundColor: Colors.black54,
                 padding: EdgeInsets.zero,
-                textStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13),
+                textStyle: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
               ),
             ),
           ),
@@ -127,9 +171,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Text(
-                  !_agreedToTerms && _isSignUp
-                    ? 'Agree to terms to continue'
-                    : 'Continue with Google',
+                    !_agreedToTerms && _isSignUp
+                        ? 'Agree to terms to continue'
+                        : 'Continue with Google',
                     style: GoogleFonts.poppins(
                       fontSize: 15.5,
                       fontWeight: FontWeight.w700,
@@ -153,8 +197,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     fontSize: 12,
                     color: const Color(0xFF667085),
                   ),
-                  children: const [
-                    TextSpan(text: 'I agree to the Terms of Service and Privacy Policy.'),
+                  children: [
+                    const TextSpan(text: 'I agree to the '),
+                    TextSpan(
+                      text: 'Terms of Service',
+                      style: const TextStyle(
+                        decoration: TextDecoration.underline,
+                      ),
+                      recognizer: _termsTap,
+                    ),
+                    const TextSpan(text: ' and '),
+                    TextSpan(
+                      text: 'Privacy Policy',
+                      style: const TextStyle(
+                        decoration: TextDecoration.underline,
+                      ),
+                      recognizer: _privacyTap,
+                    ),
+                    const TextSpan(text: '.'),
                   ],
                 ),
               ),
@@ -166,9 +226,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               onPressed: _isSubmitting
                   ? null
                   : () => setState(() {
-                        _isSignUp = !_isSignUp;
-                        _agreedToTerms = false;
-                      }),
+                      _isSignUp = !_isSignUp;
+                      _agreedToTerms = false;
+                    }),
               child: Text(
                 _isSignUp
                     ? 'Already have an account? Log in'

@@ -49,7 +49,8 @@ void main() {
       ),
     );
 
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     // Verify AppBar exists
     expect(find.byType(AppBar), findsOneWidget);

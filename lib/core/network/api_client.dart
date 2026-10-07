@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -13,6 +14,7 @@ class ApiClient {
   final AppConfig _config;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   String? _idToken;
+  Future<String?>? _firebaseTokenRefresh;
 
   static ApiClient? _instance;
 
@@ -25,6 +27,31 @@ class ApiClient {
 
   void setIdToken(String? token) {
     _idToken = token;
+  }
+
+  Future<String?> _refreshFirebaseIdToken() {
+    final pendingRefresh = _firebaseTokenRefresh;
+    if (pendingRefresh != null) return pendingRefresh;
+
+    final refresh = () async {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return null;
+        final token = await user.getIdToken(true);
+        if (token == null || token.isEmpty) return null;
+        _idToken = token;
+        await _secureStorage.write(key: 'firebase_id_token', value: token);
+        return token;
+      } catch (_) {
+        return null;
+      }
+    }();
+    _firebaseTokenRefresh = refresh;
+    return refresh.whenComplete(() {
+      if (identical(_firebaseTokenRefresh, refresh)) {
+        _firebaseTokenRefresh = null;
+      }
+    });
   }
 
   Future<Map<String, dynamic>> getHostCommunityProfile() async {
@@ -43,7 +70,9 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
-  Future<Map<String, dynamic>> updateHostProfile(Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> updateHostProfile(
+    Map<String, dynamic> payload,
+  ) async {
     final response = await dio.patch<Map<String, dynamic>>(
       '/hosts/profile',
       data: payload,
@@ -60,7 +89,9 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
-  Future<Map<String, dynamic>> updateBrandProfile(Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> updateBrandProfile(
+    Map<String, dynamic> payload,
+  ) async {
     final response = await dio.patch<Map<String, dynamic>>(
       '/brands/me',
       data: payload,
@@ -93,7 +124,10 @@ class ApiClient {
     );
   }
 
-  Future<void> setBrandMemberPermission(String memberId, bool canManageMembers) async {
+  Future<void> setBrandMemberPermission(
+    String memberId,
+    bool canManageMembers,
+  ) async {
     await dio.patch<void>(
       '/brands/members/$memberId/permission',
       data: {'canManageMembers': canManageMembers},
@@ -133,7 +167,9 @@ class ApiClient {
     return [];
   }
 
-  Future<Map<String, dynamic>> createCampaign(Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> createCampaign(
+    Map<String, dynamic> payload,
+  ) async {
     final response = await dio.post<Map<String, dynamic>>(
       '/campaigns',
       data: payload,
@@ -142,7 +178,10 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
-  Future<Map<String, dynamic>> updateCampaign(String id, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> updateCampaign(
+    String id,
+    Map<String, dynamic> payload,
+  ) async {
     final response = await dio.patch<Map<String, dynamic>>(
       '/campaigns/$id',
       data: payload,
@@ -167,6 +206,25 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
+  Future<String> extractCampaignCopilotDocument(String path) async {
+    final fileName = path.split('/').last;
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(path, filename: fileName),
+    });
+    final response = await dio.post<dynamic>(
+      '/campaigns/copilot/extract-document',
+      data: formData,
+      options: Options(
+        headers: _authHeaders(),
+        contentType: Headers.multipartFormDataContentType,
+      ),
+    );
+    final payload = response.data is Map && response.data['data'] is Map
+        ? response.data['data'] as Map
+        : response.data;
+    return payload is Map ? (payload['text'] ?? '').toString() : '';
+  }
+
   Future<Map<String, dynamic>> getHostTeamMembers() async {
     final response = await dio.get<Map<String, dynamic>>(
       '/hosts/community/members',
@@ -175,7 +233,8 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
-  Future<Map<String, dynamic>> getCommunityTeamMembers() => getHostTeamMembers();
+  Future<Map<String, dynamic>> getCommunityTeamMembers() =>
+      getHostTeamMembers();
 
   Future<Map<String, dynamic>> inviteHostTeamMember(String email) async {
     final response = await dio.post<Map<String, dynamic>>(
@@ -193,7 +252,10 @@ class ApiClient {
     );
   }
 
-  Future<void> setHostMemberPermission(String memberId, bool canManageMembers) async {
+  Future<void> setHostMemberPermission(
+    String memberId,
+    bool canManageMembers,
+  ) async {
     await dio.patch<void>(
       '/hosts/community/members/$memberId/permission',
       data: {'canManageMembers': canManageMembers},
@@ -222,10 +284,7 @@ class ApiClient {
     int limit = 20,
     bool? isRead,
   }) async {
-    final query = <String, dynamic>{
-      'page': page,
-      'limit': limit,
-    };
+    final query = <String, dynamic>{'page': page, 'limit': limit};
     if (isRead != null) query['isRead'] = isRead;
     final response = await dio.get<Map<String, dynamic>>(
       '/notifications',
@@ -379,7 +438,20 @@ class ApiClient {
           }
 
           if (error.response?.statusCode == 401) {
-            // TODO: trigger re-auth flow when backend auth is implemented.
+            final request = error.requestOptions;
+            if (request.extra['firebaseTokenRetried'] != true) {
+              final token = await _refreshFirebaseIdToken();
+              if (token != null) {
+                request.extra['firebaseTokenRetried'] = true;
+                request.headers['Authorization'] = 'Bearer $token';
+                try {
+                  final response = await dio.fetch<dynamic>(request);
+                  return handler.resolve(response);
+                } on DioException catch (retryError) {
+                  return handler.next(retryError);
+                }
+              }
+            }
           }
 
           return handler.next(error);
@@ -417,13 +489,12 @@ class ApiClient {
         payload['resourceId'] = resourceId;
       }
 
-      final res = await dio.post<dynamic>(
-        '/storage/upload-url',
-        data: payload,
-      );
+      final res = await dio.post<dynamic>('/storage/upload-url', data: payload);
 
       final data = res.data is Map ? (res.data['data'] ?? res.data) : null;
-      final uploadUrl = (data is Map) ? (data['uploadUrl'] ?? data['url'])?.toString() : null;
+      final uploadUrl = (data is Map)
+          ? (data['uploadUrl'] ?? data['url'])?.toString()
+          : null;
       final key = (data is Map) ? data['key']?.toString() : null;
       if (uploadUrl != null && key != null) {
         await Dio().put<void>(

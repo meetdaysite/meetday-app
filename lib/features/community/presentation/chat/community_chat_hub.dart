@@ -152,9 +152,14 @@ String _messageTime(DateTime? dt) {
 // ─── Main Chat Hub Screen ────────────────────────────────────────────────────
 
 class CommunityChatHubScreen extends ConsumerStatefulWidget {
-  const CommunityChatHubScreen({super.key, this.initialCategory});
+  const CommunityChatHubScreen({
+    super.key,
+    this.initialCategory,
+    this.initialTarget,
+  });
 
   final String? initialCategory;
+  final ChatHubInitialTarget? initialTarget;
 
   @override
   ConsumerState<CommunityChatHubScreen> createState() =>
@@ -171,13 +176,57 @@ class _CommunityChatHubScreenState
   String _landingSearchQuery = '';
   String _activeSearchQuery = '';
   String? _respondingId;
+  String? _pendingInitialThreadId;
+  bool _resolvingInitialThread = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.initialCategory != null) {
+    final target = widget.initialTarget;
+    if (target != null) {
+      _activeCategory = target.category;
+      _activeQueue = target.queue ?? 'INCOMING';
+      _categoryFilter = target.category;
+      _pendingInitialThreadId = target.threadId;
+      _viewMode = target.threadId == null ? 'landing' : 'active';
+    } else if (widget.initialCategory != null) {
       _activeCategory = widget.initialCategory!;
       _viewMode = 'active';
+    }
+  }
+
+  void _resolveInitialThread(ChatHubData data) {
+    final threadId = _pendingInitialThreadId;
+    if (threadId == null || _resolvingInitialThread) return;
+
+    final activeThread = data.activeThreadsByCategory.values
+        .expand((threads) => threads)
+        .where((thread) => thread.id == threadId)
+        .firstOrNull;
+    if (activeThread != null) {
+      _pendingInitialThreadId = null;
+      _resolvingInitialThread = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _resolvingInitialThread = false;
+        if (mounted) _openThread(activeThread);
+      });
+      return;
+    }
+
+    final request = data.allRequests
+        .where((item) => item.id == threadId)
+        .firstOrNull;
+    _pendingInitialThreadId = null;
+    if (request != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _activeCategory = request.category;
+          _activeQueue = request.direction;
+          _categoryFilter = request.category;
+          _viewMode = 'landing';
+        });
+      });
     }
   }
 
@@ -198,7 +247,7 @@ class _CommunityChatHubScreenState
 
   void _openThread(UnifiedActiveThread thread) {
     Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => ChatThreadScreen(thread: thread)),
+      MaterialPageRoute<void>(builder: (_) => ChatThreadScreen(thread: thread)),
     );
   }
 
@@ -234,7 +283,8 @@ class _CommunityChatHubScreenState
             await api.dio.post<dynamic>(
               '/brand-community-collaboration/chats/$id/accept',
               queryParameters: {
-                'asRole': ref.read(authControllerProvider).role == AccountRole.brand
+                'asRole':
+                    ref.read(authControllerProvider).role == AccountRole.brand
                     ? 'BRAND'
                     : 'COMMUNITY',
               },
@@ -304,7 +354,8 @@ class _CommunityChatHubScreenState
             await api.dio.post<dynamic>(
               '/brand-community-collaboration/chats/$id/decline',
               queryParameters: {
-                'asRole': ref.read(authControllerProvider).role == AccountRole.brand
+                'asRole':
+                    ref.read(authControllerProvider).role == AccountRole.brand
                     ? 'BRAND'
                     : 'COMMUNITY',
               },
@@ -351,6 +402,7 @@ class _CommunityChatHubScreenState
 
     return chatHubAsync.when(
       data: (data) {
+        _resolveInitialThread(data);
         if (_viewMode == 'active') {
           return _buildActiveView(data);
         }
@@ -432,7 +484,7 @@ class _CommunityChatHubScreenState
   Widget _buildLandingView(ChatHubData data) {
     // Filter requests by queue direction (INCOMING vs OUTGOING), category filter, and search
     final filteredRequests = data.allRequests.where((req) {
-          if (req.direction != _activeQueue) return false;
+      if (req.direction != _activeQueue) return false;
       if (_categoryFilter != 'ALL' && req.category != _categoryFilter) {
         return false;
       }
@@ -2158,7 +2210,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         final sponsorshipRole = isBrandViewer ? 'BRAND' : 'HOST';
 
         final payload = <String, dynamic>{if (text.isNotEmpty) 'content': text};
-        if (mediaKey != null && mediaKey.isNotEmpty) payload['mediaKey'] = mediaKey;
+        if (mediaKey != null && mediaKey.isNotEmpty)
+          payload['mediaKey'] = mediaKey;
         if (_replyingTo != null) payload['replyToId'] = _replyingTo!.id;
 
         switch (widget.thread.kind) {
@@ -2181,15 +2234,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             break;
           case 'SPACE_HOST':
             final sphPayload = Map<String, dynamic>.from(payload);
-            sphPayload['asRole'] =
-                currentRole == AccountRole.space ? 'SPACE' : 'HOST';
+            sphPayload['asRole'] = currentRole == AccountRole.space
+                ? 'SPACE'
+                : 'HOST';
             await api.dio.post<dynamic>(
               '/space-host/chats/$id/messages',
               data: sphPayload,
             );
             break;
           case 'COMMUNITY_COLLAB':
-            if (widget.thread.category == 'brands') {
+            if (widget.thread.isBrandCommunityCollaboration) {
               final asRole = isBrandViewer ? 'BRAND' : 'COMMUNITY';
               await api.dio.post<dynamic>(
                 '/brand-community-collaboration/chats/$id/messages',
@@ -3708,7 +3762,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         ref.watch(authControllerProvider).role == AccountRole.brand;
 
     final senderUpper = msg.senderType.toUpperCase();
-    final isSpaceSender = senderUpper == 'SPACE' ||
+    final isSpaceSender =
+        senderUpper == 'SPACE' ||
         senderUpper == 'SPACE_HOST' ||
         widget.thread.category == 'spaces' ||
         widget.thread.kind == 'SPACE_HOST' ||
@@ -3752,7 +3807,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           textColor = Colors.black;
         }
       } else {
-        if (widget.thread.category == 'brands' ||
+        if (widget.thread.isBrandCommunityCollaboration ||
             widget.thread.kind == 'SPONSORSHIP' ||
             widget.thread.kind == 'CAMPAIGN' ||
             senderUpper == 'BRAND') {

@@ -1317,6 +1317,7 @@ class ProposalDetailDialog extends StatelessWidget {
                                     behavior: SnackBarBehavior.floating,
                                   ),
                                 );
+                                onChatStarted?.call();
                               }
                             } catch (e) {
                               if (btnCtx.mounted) {

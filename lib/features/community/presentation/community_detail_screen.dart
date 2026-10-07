@@ -161,9 +161,13 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     if (_isSendingCollaboration) return;
     setState(() => _isSendingCollaboration = true);
     try {
+      final isBrand =
+          ref.read(authControllerProvider).role == AccountRole.brand;
       final api = ref.read(apiClientProvider);
       final response = await api.dio.post<dynamic>(
-        '/community-collaboration/interest/$targetCommunityId',
+        isBrand
+            ? '/brand-community-collaboration/interest/$targetCommunityId'
+            : '/community-collaboration/interest/$targetCommunityId',
       );
       final responseData = response.data is Map
           ? (response.data['data'] is Map ? response.data['data'] : response.data)
@@ -171,7 +175,11 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
       final alreadyInterested = responseData is Map && responseData['alreadyInterested'] == true;
 
       ref.invalidate(chatHubProvider);
-      ref.invalidate(communityCollaborationCommunitiesProvider);
+      if (isBrand) {
+        ref.invalidate(dashboardCommunitiesProvider);
+      } else {
+        ref.invalidate(communityCollaborationCommunitiesProvider);
+      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -183,7 +191,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
         ),
       );
       Navigator.of(context).pop();
-      widget.onSelectTab?.call(5);
+      widget.onSelectTab?.call(isBrand ? 9 : 5);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -207,8 +215,9 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     final size = (c['size'] ?? c['memberCount'] ?? '—').toString();
     final avgGuestCount = (c['avgGuestCount'] ?? '').toString();
     final experiencesPerYear = (c['experiencesPerYear'] ?? '').toString();
+    final currentRole = ref.watch(authControllerProvider).role;
     final canCollaborate = !widget.isBrandPreview &&
-      ref.watch(authControllerProvider).role == AccountRole.community;
+      (currentRole == AccountRole.community || currentRole == AccountRole.brand);
 
     final categories = (c['categories'] as List?)?.whereType<Map>().toList() ?? [];
     final operatingCities = (c['operatingCities'] as List?)?.map((e) => e.toString()).toList() ?? [];
@@ -338,6 +347,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
       ),
       bottomNavigationBar: MeetdayMobileBottomBar(
         currentIndex: widget.isBrandPreview ? -1 : widget.currentTabIndex,
+        role: currentRole ?? AccountRole.community,
         onTap: (tabIndex) {
           if (Navigator.of(context).canPop()) {
             Navigator.of(context).pop();
