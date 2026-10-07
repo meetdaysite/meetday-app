@@ -133,12 +133,16 @@ Future<SupportChatMessage?> sendSupportChatMessageApi(
   ApiClient api, {
   required String content,
   String? mediaUrl,
+  String? mediaKey,
   String? replyToId,
   String context = 'HOST',
 }) async {
   final payload = <String, dynamic>{
     'content': content.trim(),
   };
+  if (mediaKey != null && mediaKey.isNotEmpty) {
+    payload['mediaKey'] = mediaKey;
+  }
   if (mediaUrl != null && mediaUrl.isNotEmpty) {
     payload['mediaUrl'] = mediaUrl;
   }

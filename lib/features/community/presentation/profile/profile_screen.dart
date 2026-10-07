@@ -3758,7 +3758,7 @@ class _EditBrandProfileSheetState
           'workEmail': _workEmailController.text.trim(),
         if (_contactPhoneController.text.trim().isNotEmpty)
           'contactPhone': _contactPhoneController.text.trim(),
-        if (uploadedLogoKey != null) 'logoKey': uploadedLogoKey,
+        if (uploadedLogoKey != null) ...{'logoKey': uploadedLogoKey},
       };
 
       await api.updateBrandProfile(payload);
@@ -3859,36 +3859,50 @@ class _EditBrandProfileSheetState
             // Brand Name
             Text(
               'Brand Name',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _brandNameController,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
               decoration: _inputDecoration('e.g. Acme Corp'),
             ),
             const SizedBox(height: 14),
 
             Text(
               'Company Logo',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             Row(
               children: [
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 58,
+                  height: 58,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
-                    border: Border.all(color: Colors.black, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.black, width: 2.5),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black,
+                        offset: Offset(2, 2),
+                        blurRadius: 0,
+                      ),
+                    ],
                   ),
                   child: _selectedLogoBytes != null
                       ? Image.memory(_selectedLogoBytes!, fit: BoxFit.cover)
@@ -3900,15 +3914,43 @@ class _EditBrandProfileSheetState
                                 widget.brandProfile['logoUrl'].toString(),
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) =>
-                                    const Icon(Icons.business_rounded),
+                                    const Icon(Icons.business_rounded, color: Colors.black54),
                               )
-                            : const Icon(Icons.business_rounded)),
+                            : const Icon(Icons.business_rounded, color: Colors.black54)),
                 ),
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  onPressed: _isSaving ? null : _pickBrandLogo,
-                  icon: const Icon(Icons.upload_rounded, size: 16),
-                  label: Text(_isUploadingLogo ? 'Uploading…' : 'Upload logo'),
+                const SizedBox(width: 14),
+                GestureDetector(
+                  onTap: _isSaving ? null : _pickBrandLogo,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF8F3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(2, 2),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.upload_rounded, size: 18, color: Colors.black),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isUploadingLogo ? 'Uploading…' : 'Upload Logo',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -3917,14 +3959,21 @@ class _EditBrandProfileSheetState
             // Company Type (Brand vs Agency)
             Text(
               'Company Type',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
               initialValue: _companyType,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
+              dropdownColor: Colors.white,
               decoration: _inputDecoration(''),
               items: const [
                 DropdownMenuItem(value: 'BRAND', child: Text('Brand')),
@@ -3938,33 +3987,89 @@ class _EditBrandProfileSheetState
 
             Text(
               'Categories',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             if (_isLoadingCategories)
-              const LinearProgressIndicator(minHeight: 2)
+              const LinearProgressIndicator(
+                minHeight: 3,
+                color: MeetdayColors.primaryRed,
+              )
             else
               Wrap(
-                spacing: 6,
-                runSpacing: 2,
+                spacing: 8,
+                runSpacing: 8,
                 children: _categories.map((category) {
                   final id = category['id']?.toString() ?? '';
                   final name = category['name']?.toString() ?? '';
-                  if (id.isEmpty || name.isEmpty)
+                  if (id.isEmpty || name.isEmpty) {
                     return const SizedBox.shrink();
-                  return FilterChip(
-                    label: Text(name),
-                    selected: _selectedCategoryIds.contains(id),
-                    onSelected: (selected) => setState(() {
-                      if (selected) {
-                        _selectedCategoryIds.add(id);
-                      } else {
+                  }
+                  final isSelected = _selectedCategoryIds.contains(id);
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      if (isSelected) {
                         _selectedCategoryIds.remove(id);
+                      } else {
+                        _selectedCategoryIds.add(id);
                       }
                     }),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? MeetdayColors.accentYellow
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: isSelected
+                            ? const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(2, 2),
+                                  blurRadius: 0,
+                                ),
+                              ]
+                            : const [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  offset: Offset(1, 1),
+                                  blurRadius: 0,
+                                ),
+                              ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isSelected) ...[
+                            const Icon(
+                              Icons.check_rounded,
+                              size: 14,
+                              color: Colors.black,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            name,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 }).toList(),
               ),
@@ -3973,14 +4078,21 @@ class _EditBrandProfileSheetState
             // Industry
             Text(
               'Industry',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
               initialValue: _industry,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
+              dropdownColor: Colors.white,
               decoration: _inputDecoration(''),
               items: _industryOptions
                   .map((ind) => DropdownMenuItem(value: ind, child: Text(ind)))
@@ -3994,44 +4106,62 @@ class _EditBrandProfileSheetState
             // Website
             Text(
               'Website',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _websiteController,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
               decoration: _inputDecoration('e.g. https://brand.com'),
             ),
             const SizedBox(height: 14),
 
             Text(
               'Instagram',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _instagramController,
               keyboardType: TextInputType.url,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
               decoration: _inputDecoration('https://instagram.com/brand'),
             ),
             const SizedBox(height: 14),
 
             Text(
               'LinkedIn',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _linkedinController,
               keyboardType: TextInputType.url,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
               decoration: _inputDecoration(
                 'https://linkedin.com/company/brand',
               ),
@@ -4041,15 +4171,21 @@ class _EditBrandProfileSheetState
             // Work Email
             Text(
               'Work Email',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _workEmailController,
               keyboardType: TextInputType.emailAddress,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
               decoration: _inputDecoration('e.g. hello@brand.com'),
             ),
             const SizedBox(height: 14),
@@ -4057,15 +4193,21 @@ class _EditBrandProfileSheetState
             // Contact Phone
             Text(
               'Contact Phone',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _contactPhoneController,
               keyboardType: TextInputType.phone,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
               decoration: _inputDecoration('e.g. +91 9876543210'),
             ),
             const SizedBox(height: 14),
@@ -4073,50 +4215,68 @@ class _EditBrandProfileSheetState
             // About Company
             Text(
               'About The Company',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.bricolageGrotesque(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111111),
               ),
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _aboutCompanyController,
               maxLines: 3,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
               decoration: _inputDecoration(
                 'Tell us about your brand and products...',
               ),
             ),
             const SizedBox(height: 24),
 
-            // Save Button
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: MeetdayColors.primaryRed,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
+            // Save CTA Button
+            GestureDetector(
+              onTap: _isSaving ? null : _save,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _isSaving ? Colors.grey : MeetdayColors.primaryRed,
                   borderRadius: BorderRadius.circular(16),
-                  side: const BorderSide(color: Colors.black, width: 2.5),
+                  border: Border.all(color: Colors.black, width: 2.5),
+                  boxShadow: _isSaving
+                      ? null
+                      : const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(3, 3),
+                            blurRadius: 0,
+                          ),
+                        ],
+                ),
+                child: Center(
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : Text(
+                          'SAVE CHANGES',
+                          style: GoogleFonts.bricolageGrotesque(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                 ),
               ),
-              onPressed: _isSaving ? null : _save,
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : Text(
-                      'SAVE CHANGES',
-                      style: GoogleFonts.bricolageGrotesque(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
             ),
           ],
         ),
@@ -4127,9 +4287,12 @@ class _EditBrandProfileSheetState
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
+      hintStyle: GoogleFonts.poppins(
+        fontSize: 12,
+        color: const Color(0xFFA3A3A3),
+      ),
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: const Color(0xFFFFFDFC),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),

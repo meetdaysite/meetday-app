@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -304,6 +306,141 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
     }
   }
 
+  Future<void> _pickAndSendDeviceFile() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx', 'txt'],
+      );
+      if (result.isEmpty) return;
+      final file = result.first;
+      final bytes = await file.xFile.readAsBytes();
+      if (bytes.isEmpty) return;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Uploading attachment...'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.black87,
+          ),
+        );
+      }
+
+      setState(() => _isSending = true);
+      final api = ref.read(apiClientProvider);
+      final key = await api.uploadMediaFile(
+        bytes: bytes,
+        fileName: file.name,
+        context: 'SUPPORT_CHAT_MEDIA',
+      );
+
+      final role = ref.read(authControllerProvider).role;
+      final contextParam = role == AccountRole.brand
+          ? 'BRAND'
+          : (role == AccountRole.space ? 'SPACE' : 'HOST');
+
+      if (key != null && key.isNotEmpty) {
+        await sendSupportChatMessageApi(
+          api,
+          content: file.name,
+          mediaKey: key,
+          replyToId: _replyingTo?.id,
+          context: contextParam,
+        );
+        setState(() => _replyingTo = null);
+        ref.invalidate(supportChatMessagesProvider);
+        _scrollToBottom();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload failed. Please try again.'),
+              backgroundColor: MeetdayColors.primaryRed,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not pick file: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _pickAndSendImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: source, imageQuality: 85);
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) return;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Uploading image...'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.black87,
+          ),
+        );
+      }
+
+      setState(() => _isSending = true);
+      final api = ref.read(apiClientProvider);
+      final key = await api.uploadMediaFile(
+        bytes: bytes,
+        fileName: picked.name,
+        context: 'SUPPORT_CHAT_MEDIA',
+      );
+
+      final role = ref.read(authControllerProvider).role;
+      final contextParam = role == AccountRole.brand
+          ? 'BRAND'
+          : (role == AccountRole.space ? 'SPACE' : 'HOST');
+
+      if (key != null && key.isNotEmpty) {
+        await sendSupportChatMessageApi(
+          api,
+          content: '',
+          mediaKey: key,
+          replyToId: _replyingTo?.id,
+          context: contextParam,
+        );
+        setState(() => _replyingTo = null);
+        ref.invalidate(supportChatMessagesProvider);
+        _scrollToBottom();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload failed. Please try again.'),
+              backgroundColor: MeetdayColors.primaryRed,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not pick image: $e'),
+            backgroundColor: MeetdayColors.primaryRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
   void _showAttachmentSheet() {
     final urlController = TextEditingController();
     showModalBottomSheet<void>(
@@ -332,19 +469,134 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
             ),
             const SizedBox(height: 16),
             Text(
-              'Attach Media',
+              'Attach File or Media',
               style: GoogleFonts.bricolageGrotesque(
-                fontSize: 18,
+                fontSize: 19,
                 fontWeight: FontWeight.w900,
                 color: Colors.black,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
-              'Enter an image or screenshot URL to share with Meetday Support.',
+              'Select a file from your device or paste a media link.',
               style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54),
             ),
+            const SizedBox(height: 16),
+
+            // Options Row: Device File & Gallery & Camera
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _pickAndSendDeviceFile();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: MeetdayColors.accentYellow,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.folder_open_rounded, size: 24, color: Colors.black),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Choose File',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _pickAndSendImage(ImageSource.gallery);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.photo_library_rounded, size: 24, color: Colors.black),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Gallery',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _pickAndSendImage(ImageSource.camera);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.camera_alt_rounded, size: 24, color: Colors.black),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Camera',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                const Expanded(child: Divider(thickness: 1.5, color: Colors.black26)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('OR PASTE URL', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black45)),
+                ),
+                const Expanded(child: Divider(thickness: 1.5, color: Colors.black26)),
+              ],
+            ),
             const SizedBox(height: 14),
+
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFFF9FAFB),
@@ -361,11 +613,14 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                   hintText: 'https://images.unsplash.com/...',
                   hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -417,7 +672,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                   }
                 },
                 child: Text(
-                  'Send Attachment',
+                  'Send Link Attachment',
                   style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13),
                 ),
               ),
@@ -524,11 +779,12 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                   BoxShadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 0),
                 ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  // Inner Panel Header: "Talk to Meetday"
-                  _buildPanelHeader(),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(17.5),
+                child: Column(
+                  children: [
+                    // Inner Panel Header: "Talk to Meetday"
+                    _buildPanelHeader(),
 
                   // Message List
                   Expanded(
@@ -610,6 +866,27 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                           itemCount: messages.length,
                           itemBuilder: (context, index) {
                             final m = messages[index];
+                            final curDt = (m.createdAt ?? DateTime.now()).toLocal();
+                            bool showDateHeader = false;
+                            if (index == 0) {
+                              showDateHeader = true;
+                            } else {
+                              final prevDt = (messages[index - 1].createdAt ?? DateTime.now()).toLocal();
+                              if (curDt.year != prevDt.year || curDt.month != prevDt.month || curDt.day != prevDt.day) {
+                                showDateHeader = true;
+                              }
+                            }
+
+                            if (showDateHeader) {
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildDateBadge(_getDateBadgeText(curDt)),
+                                  _buildMessageItem(m, messages),
+                                ],
+                              );
+                            }
                             return _buildMessageItem(m, messages);
                           },
                         );
@@ -725,6 +1002,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
               ),
             ),
           ),
+        ),
         ],
       ),
     );
@@ -816,6 +1094,70 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  String _formatOrdinalDay(DateTime dt) {
+    final day = dt.day;
+    String suffix = 'th';
+    if (day >= 11 && day <= 13) {
+      suffix = 'th';
+    } else {
+      switch (day % 10) {
+        case 1:
+          suffix = 'st';
+          break;
+        case 2:
+          suffix = 'nd';
+          break;
+        case 3:
+          suffix = 'rd';
+          break;
+        default:
+          suffix = 'th';
+      }
+    }
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '$day$suffix ${months[dt.month - 1]} ${dt.year}';
+  }
+
+  String _getDateBadgeText(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final dateOnly = DateTime(dt.year, dt.month, dt.day);
+
+    if (dateOnly == today) {
+      return 'Today';
+    } else if (dateOnly == yesterday) {
+      return 'Yesterday';
+    } else {
+      return _formatOrdinalDay(dt);
+    }
+  }
+
+  Widget _buildDateBadge(String label) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.black26, width: 1),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF4B5563),
+          ),
+        ),
       ),
     );
   }
@@ -1058,37 +1400,80 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                       ),
                     ),
 
-                  // Image attachment if any
-                  if (m.mediaUrl != null && m.mediaUrl!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: GestureDetector(
-                        onTap: () => _showImageLightbox(m.mediaUrl!),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
+                  // Media attachment if any
+                  if (m.mediaUrl != null && m.mediaUrl!.isNotEmpty) ...[
+                    Builder(
+                      builder: (ctx) {
+                        final urlLower = m.mediaUrl!.toLowerCase();
+                        final isDoc = urlLower.contains('.pdf') ||
+                            urlLower.contains('.doc') ||
+                            urlLower.contains('.docx') ||
+                            urlLower.contains('.txt');
+                        if (isDoc) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             decoration: BoxDecoration(
-                              border: Border.all(color: Colors.black, width: 1.5),
+                              color: Colors.white,
                               borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.black, width: 1.5),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0),
+                              ],
                             ),
-                            child: Image.network(
-                              m.mediaUrl!,
-                              fit: BoxFit.cover,
-                              width: 180,
-                              height: 140,
-                              errorBuilder: (_, _, _) => Container(
-                                width: 180,
-                                height: 80,
-                                color: Colors.grey.shade200,
-                                child: const Center(
-                                  child: Icon(Icons.broken_image_rounded, size: 28, color: Colors.black38),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.description_rounded, size: 20, color: MeetdayColors.primaryRed),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    m.content.isNotEmpty ? m.content : 'Attached Document',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.black,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: GestureDetector(
+                            onTap: () => _showImageLightbox(m.mediaUrl!),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.black, width: 1.5),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Image.network(
+                                  m.mediaUrl!,
+                                  fit: BoxFit.cover,
+                                  width: 180,
+                                  height: 140,
+                                  errorBuilder: (_, _, _) => Container(
+                                    width: 180,
+                                    height: 80,
+                                    color: Colors.grey.shade200,
+                                    child: const Center(
+                                      child: Icon(Icons.broken_image_rounded, size: 28, color: Colors.black38),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     ),
+                  ],
 
                   // Message content text
                   if (m.content.isNotEmpty)
@@ -1230,6 +1615,11 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                       : 'Write a message… (type @ to tag)',
                   hintStyle: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black38),
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  filled: false,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   isDense: true,
                 ),
