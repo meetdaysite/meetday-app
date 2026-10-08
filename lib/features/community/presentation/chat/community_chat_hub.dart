@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -2166,9 +2167,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   bool _showEmojiPicker = false;
   UnifiedChatMessage? _replyingTo;
   UnifiedChatMessage? _editingMessage;
+  Timer? _messageRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _messageRefreshTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (mounted) ref.invalidate(chatMessagesProvider(widget.thread));
+    });
+  }
 
   @override
   void dispose() {
+    _messageRefreshTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();

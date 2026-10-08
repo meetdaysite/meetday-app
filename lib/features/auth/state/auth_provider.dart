@@ -34,6 +34,9 @@ class FlutterSecureStorageAdapter implements AppSecureStorage {
 
 enum AuthStatus { unknown, authenticated, unauthenticated, onboarding }
 
+String notificationSoundPreferenceKey(AccountRole? role, String? uid) =>
+  'notification_sounds_${role?.name ?? 'account'}_${uid ?? 'default'}';
+
 String? validatedBrandReturnPath(String? value) {
   if (value == null || value.isEmpty) return null;
   final uri = Uri.tryParse(value);

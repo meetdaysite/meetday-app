@@ -59,7 +59,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   String get _notificationSoundKey {
     final auth = ref.read(authControllerProvider);
-    return 'notification_sounds_${auth.role?.name ?? 'account'}_${auth.uid ?? 'default'}';
+    return notificationSoundPreferenceKey(auth.role, auth.uid);
   }
 
   Future<void> _loadNotificationSoundPreference() async {

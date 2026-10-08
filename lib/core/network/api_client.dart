@@ -22,6 +22,7 @@ class ApiClient {
       _instance ??= ApiClient._(AppConfig.fromEnvironment());
 
   Dio get dio => _dio;
+  String get socketUrl => _config.socketUrl;
 
   late final Dio _dio = _buildDio();
 

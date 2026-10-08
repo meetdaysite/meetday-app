@@ -4,8 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/domain/account_role.dart';
+import '../../../auth/state/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/dashboard_provider.dart';
+
+String campaignInterestBackendRole(AccountRole? role) =>
+  role == AccountRole.space ? 'SPACE' : 'HOST';
 
 // ─── Format Helpers ──────────────────────────────────────────────────────────
 
@@ -666,9 +671,10 @@ class _CampaignDetailModalSheetState extends ConsumerState<_CampaignDetailModalS
 
     try {
       final api = ref.read(apiClientProvider);
+      final role = ref.read(authControllerProvider).role;
       final res = await api.dio.post<dynamic>(
         '/campaigns/published/$campaignId/interest',
-        queryParameters: {'role': 'COMMUNITY'},
+        queryParameters: {'role': campaignInterestBackendRole(role)},
       );
 
       if (mounted) {
@@ -681,8 +687,8 @@ class _CampaignDetailModalSheetState extends ConsumerState<_CampaignDetailModalS
           SnackBar(
             content: Text(
               isAlready
-                  ? 'You have already applied! Check your Campaigns chat hub.'
-                  : 'Interest recorded! A chat has been created in your Campaigns chat hub.',
+                  ? 'You have already applied. Your request is in Campaign Chats.'
+                  : 'Interest sent! The brand has been notified. You can message after they accept.',
               style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
             ),
             backgroundColor: const Color(0xFF10B981),

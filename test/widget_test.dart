@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meetday_app/features/auth/domain/account_role.dart';
 import 'package:meetday_app/features/auth/presentation/login_screen.dart';
 import 'package:meetday_app/features/auth/state/auth_provider.dart';
+import 'package:meetday_app/features/community/presentation/campaigns/campaigns_screen.dart';
 
 class FakeSecureStorage implements AppSecureStorage {
   final Map<String, String> _store = {};
@@ -84,5 +85,10 @@ void main() {
       validatedBrandReturnPath('//example.com/brand/proposal/123'),
       isNull,
     );
+  });
+
+  test('campaign interest uses backend roles for Community and Hub', () {
+    expect(campaignInterestBackendRole(AccountRole.community), 'HOST');
+    expect(campaignInterestBackendRole(AccountRole.space), 'SPACE');
   });
 }

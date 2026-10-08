@@ -1,8 +1,13 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/meetday_colors.dart';
@@ -97,6 +102,34 @@ final exploreSubViewProvider = NotifierProvider<ExploreSubViewNotifier, String>(
   ExploreSubViewNotifier.new,
 );
 
+const _chatNotificationSoundTypes = {
+  'sponsorship_chat_message',
+  'meetday_chat_message',
+  'sponsorship_chat_request',
+  'sponsorship_chat_accepted',
+  'sponsorship_interest_created',
+  'sponsorship_interest',
+  'brand_interested_in_sponsorship',
+  'host_interested_in_campaign',
+  'host_interest_confirmed',
+  'sponsorship_deal_submitted',
+  'sponsorship_deal_updated',
+  'sponsorship_deal_locked',
+  'sponsorship_deal_changes_requested',
+  'sponsorship_deal_report_submitted',
+  'sponsorship_deal_report_reviewed',
+  'chat_message',
+  'space_interest_requested',
+  'space_interest_confirmed',
+  'space_interest_accepted',
+  'space_chat_message',
+  'brand_community_chat_message',
+  'space_deal_locked',
+  'space_deal_updated',
+  'space_deal_approved',
+  'space_deal_changes_requested',
+};
+
 class CommunityDashboardScreen extends ConsumerStatefulWidget {
   const CommunityDashboardScreen({
     super.key,
@@ -132,6 +165,9 @@ class _CommunityDashboardScreenState
   int _currentTabIndex = 0;
   int _chatHubRouteVersion = 0;
   ChatHubInitialTarget? _chatHubInitialTarget;
+  IO.Socket? _notificationSocket;
+  String? _notificationSocketUserId;
+  String? _connectingNotificationSocketUserId;
 
   @override
   void initState() {
@@ -152,8 +188,118 @@ class _CommunityDashboardScreenState
 
   @override
   void dispose() {
+    _notificationSocket?.disconnect();
+    _notificationSocket?.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _syncNotificationSocket(AuthState authState) {
+    final userId = authState.uid;
+    if (authState.status != AuthStatus.authenticated || userId == null) {
+      _notificationSocket?.disconnect();
+      _notificationSocket?.dispose();
+      _notificationSocket = null;
+      _notificationSocketUserId = null;
+      return;
+    }
+    if (_notificationSocketUserId == userId ||
+        _connectingNotificationSocketUserId == userId) {
+      return;
+    }
+    unawaited(_connectNotificationSocket(userId, authState.role));
+  }
+
+  Future<void> _connectNotificationSocket(
+    String userId,
+    AccountRole? role,
+  ) async {
+    _connectingNotificationSocketUserId = userId;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final token = await user.getIdToken();
+      if (token == null || token.isEmpty || !mounted) return;
+      final currentAuth = ref.read(authControllerProvider);
+      if (currentAuth.status != AuthStatus.authenticated ||
+          currentAuth.uid != userId) {
+        return;
+      }
+
+      final socketUrl = ref.read(apiClientProvider).socketUrl;
+      final socket = IO.io(
+        '$socketUrl/notifications',
+        IO.OptionBuilder()
+            .setTransports(['websocket', 'polling'])
+            .setAuth({'token': token})
+            .disableAutoConnect()
+            .build(),
+      );
+      _notificationSocket = socket;
+      _notificationSocketUserId = userId;
+
+      socket.on('notification', (dynamic payload) {
+        if (!mounted || payload is! Map) return;
+        ref.invalidate(notificationsProvider);
+        ref.invalidate(unreadNotificationsCountProvider);
+        final type = payload['type']?.toString();
+        if (type == null || !_chatNotificationSoundTypes.contains(type)) return;
+        unawaited(_playNotificationSoundIfEnabled(role, userId));
+      });
+      socket.on('disconnect', (dynamic reason) {
+        if (reason == 'io server disconnect' && mounted) {
+          unawaited(_refreshNotificationSocketToken(socket, userId));
+        }
+      });
+      socket.io.on('reconnect_attempt', (_) async {
+        await _refreshNotificationSocketToken(socket, userId);
+      });
+      socket.connect();
+    } catch (_) {
+      // Realtime is best-effort; the notification list remains available via HTTP.
+    } finally {
+      if (_connectingNotificationSocketUserId == userId) {
+        _connectingNotificationSocketUserId = null;
+      }
+    }
+  }
+
+  Future<void> _refreshNotificationSocketToken(
+    IO.Socket socket,
+    String userId,
+  ) async {
+    if (!mounted || _notificationSocket != socket) return;
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+      final freshToken = await currentUser.getIdToken(true);
+      if (freshToken == null || freshToken.isEmpty || !mounted) return;
+      final currentAuth = ref.read(authControllerProvider);
+      if (currentAuth.status != AuthStatus.authenticated ||
+          currentAuth.uid != userId) {
+        return;
+      }
+      socket.auth = {'token': freshToken};
+      if (socket.disconnected) socket.connect();
+    } catch (_) {
+      // Realtime is best-effort; notifications remain available over HTTP.
+    }
+  }
+
+  Future<void> _playNotificationSoundIfEnabled(
+    AccountRole? role,
+    String userId,
+  ) async {
+    try {
+      final enabled = await const FlutterSecureStorage().read(
+        key: notificationSoundPreferenceKey(role, userId),
+      );
+      if (enabled != 'false' && mounted) {
+        await SystemSound.play(SystemSoundType.alert);
+      }
+    } catch (_) {
+      // Audio or secure storage can be unavailable on some platforms.
+    }
   }
 
   void _onTabSelected(int index) {
@@ -177,6 +323,7 @@ class _CommunityDashboardScreenState
   Widget build(BuildContext context) {
     final api = ref.watch(apiClientProvider);
     final authState = ref.watch(authControllerProvider);
+    _syncNotificationSocket(authState);
     final effectiveRole =
         widget.roleOverride ?? authState.role ?? AccountRole.community;
 
