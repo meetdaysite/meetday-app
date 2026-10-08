@@ -90,6 +90,14 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
+  Future<Map<String, dynamic>> getSpaceProfile() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/spaces/me',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
   Future<Map<String, dynamic>> updateBrandProfile(
     Map<String, dynamic> payload,
   ) async {

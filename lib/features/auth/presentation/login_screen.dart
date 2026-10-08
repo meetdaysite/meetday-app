@@ -66,6 +66,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (widget.role == AccountRole.brand && _isSignUp) {
         final started = await controller.beginBrandSignupWithGoogle();
         if (started && mounted) context.go('/brand-onboarding');
+      } else if (widget.role == AccountRole.space && _isSignUp) {
+        final started = await controller.beginSpaceSignupWithGoogle();
+        if (started && mounted) context.go('/space-onboarding');
       } else {
         await controller.signInWithGoogle(role: widget.role);
       }
@@ -75,6 +78,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           error.message.toLowerCase().contains('no brand account found')) {
         setState(() => _isSignUp = true);
         _showError('Create your brand account to continue.');
+      } else if (mounted &&
+          widget.role == AccountRole.space &&
+          error.message.toLowerCase().contains('no hub partner account found')) {
+        setState(() => _isSignUp = true);
+        _showError('Create your Hub Partner account to continue.');
       } else if (mounted) {
         _showError(error.message);
       }
@@ -129,7 +137,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           const SizedBox(height: 18),
           Text(
-            _isSignUp ? 'Create Account' : 'Log In',
+            _isSignUp
+              ? (widget.role == AccountRole.space
+                ? 'Create Hub Partner Account'
+                : 'Create Account')
+              : (widget.role == AccountRole.space
+                ? 'Hub Partner Login'
+                : 'Log In'),
             style: GoogleFonts.bricolageGrotesque(
               fontSize: 32,
               fontWeight: FontWeight.w800,
@@ -139,8 +153,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           const SizedBox(height: 8),
           Text(
             _isSignUp
-                ? 'First time here? Sign up with Google to start onboarding!'
-                : 'Welcome back! Sign in to your ${widget.role.label.toLowerCase()} workspace.',
+              ? (widget.role == AccountRole.space
+                ? 'Join Meetday Hubs and set up your venue business.'
+                : 'First time here? Sign up with Google to start onboarding!')
+              : 'Welcome back! Sign in to your ${widget.role == AccountRole.space ? 'Hub Partner' : widget.role.label} workspace.',
             style: GoogleFonts.poppins(
               color: const Color(0xFF667085),
               fontSize: 14.5,

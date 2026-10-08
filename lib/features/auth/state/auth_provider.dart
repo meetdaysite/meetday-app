@@ -182,6 +182,7 @@ class AuthController extends Notifier<AuthState> {
     String? userId = await _storage.read(key: 'user_id');
     final roleName = await _storage.read(key: 'account_role');
     final pendingBrandSignup = await _storage.read(key: 'brand_signup_pending');
+    final pendingSpaceSignup = await _storage.read(key: 'space_signup_pending');
     var role = AccountRole.values.cast<AccountRole?>().firstWhere(
       (value) => value?.name == roleName,
       orElse: () => null,
@@ -213,11 +214,14 @@ class AuthController extends Notifier<AuthState> {
       await _storage.write(key: 'firebase_id_token', value: token);
     }
 
-    if (pendingBrandSignup == 'true' && fbUser != null) {
+    if ((pendingBrandSignup == 'true' || pendingSpaceSignup == 'true') &&
+        fbUser != null) {
       state = AuthState(
         status: AuthStatus.onboarding,
         uid: fbUser.uid,
-        role: AccountRole.brand,
+        role: pendingSpaceSignup == 'true'
+            ? AccountRole.space
+            : AccountRole.brand,
       );
       return;
     }
@@ -377,6 +381,60 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  Future<bool> beginSpaceSignupWithGoogle() async {
+    try {
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return false;
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final result = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
+      final user = result.user;
+      if (user == null) {
+        throw const AuthException('Google account was not found.');
+      }
+
+      final token = await user.getIdToken(true);
+      if (token == null || token.isEmpty) {
+        throw const AuthException('Could not verify your Google account.');
+      }
+
+      final api = _api ?? ApiClient.instance;
+      api.setIdToken(token);
+      try {
+        final profile = await api.getMe();
+        if (_hasRoleAccess(profile, AccountRole.space)) {
+          await FirebaseAuth.instance.signOut();
+          await _googleSignIn.signOut();
+          api.setIdToken(null);
+          throw const AuthException(
+            'A Hub Partner account already exists. Log in instead.',
+          );
+        }
+      } on DioException catch (error) {
+        if (error.response?.statusCode != 404) rethrow;
+      }
+
+      await _storage.write(key: 'firebase_id_token', value: token);
+      await _storage.write(key: 'user_id', value: user.uid);
+      await _storage.write(key: 'account_role', value: AccountRole.space.name);
+      await _storage.write(key: 'space_signup_pending', value: 'true');
+      state = AuthState(
+        status: AuthStatus.onboarding,
+        uid: user.uid,
+        role: AccountRole.space,
+      );
+      return true;
+    } on FirebaseAuthException catch (error) {
+      throw AuthException(_firebaseMessage(error.code));
+    }
+  }
+
   Future<void> completeBrandSignup({
     required String brandName,
     List<String> categoryIds = const [],
@@ -452,6 +510,52 @@ class AuthController extends Notifier<AuthState> {
     await _persistAuthenticatedUser(user.uid, token, AccountRole.brand);
   }
 
+  Future<void> completeSpaceSignup({
+    required String firstName,
+    required String lastName,
+    required String businessName,
+    required List<String> operatingCities,
+    required String phone,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw const AuthException('Sign in with Google to continue.');
+    }
+
+    final token = await user.getIdToken(true);
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Could not verify your Google account.');
+    }
+
+    final api = _api ?? ApiClient.instance;
+    api.setIdToken(token);
+    try {
+      await api.dio.post<dynamic>(
+        '/auth/register',
+        data: {
+          'firstName': firstName.trim(),
+          'lastName': lastName.trim(),
+          'phone': phone.trim(),
+          'accountType': 'SPACE',
+          'businessName': businessName.trim(),
+          'operatingCities': operatingCities,
+        },
+      );
+    } on DioException catch (error) {
+      if (error.response?.statusCode != 409) rethrow;
+      final existingProfile = await api.getMe();
+      if (!_hasRoleAccess(existingProfile, AccountRole.space)) rethrow;
+    }
+
+    final profile = await api.getMe();
+    if (!_hasRoleAccess(profile, AccountRole.space)) {
+      throw const AuthException('Hub Partner profile setup is not complete.');
+    }
+
+    await _storage.delete(key: 'space_signup_pending');
+    await _persistAuthenticatedUser(user.uid, token, AccountRole.space);
+  }
+
   Future<void> signInWithGoogle({required AccountRole role}) async {
     try {
       print('=== GOOGLE SIGNIN START ===');
@@ -497,12 +601,15 @@ class AuthController extends Notifier<AuthState> {
         print('❌ Profile fetch error: $e');
         // User doesn't exist yet, register them
         if (e.toString().contains('404')) {
-          if (role == AccountRole.brand) {
+          if (role == AccountRole.brand || role == AccountRole.space) {
             await FirebaseAuth.instance.signOut();
             await _googleSignIn.signOut();
             api.setIdToken(null);
-            throw const AuthException(
-              'No brand account found for this Google account. Please sign up.',
+            final accountLabel = role == AccountRole.space
+                ? 'Hub Partner'
+                : 'Brand';
+            throw AuthException(
+              'No $accountLabel account found for this Google account. Please sign up.',
             );
           }
           final names = (user.displayName ?? '').split(' ');
@@ -603,6 +710,7 @@ class AuthController extends Notifier<AuthState> {
     await _storage.delete(key: 'user_id');
     await _storage.delete(key: 'account_role');
     await _storage.delete(key: 'brand_signup_pending');
+    await _storage.delete(key: 'space_signup_pending');
     await FirebaseAuth.instance.signOut();
     await _googleSignIn.signOut();
     (_api ?? ApiClient.instance).setIdToken(null);

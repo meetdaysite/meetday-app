@@ -353,6 +353,9 @@ class _CommunityDashboardScreenState
             if (effectiveRole == AccountRole.brand) {
               return await api.getBrandProfile();
             }
+            if (effectiveRole == AccountRole.space) {
+              return await api.getSpaceProfile();
+            }
             return await api.getHostCommunityProfile();
           })(),
       builder: (context, snapshot) {
@@ -361,11 +364,15 @@ class _CommunityDashboardScreenState
             (profile['name'] as String?) ??
             (profile['communityName'] as String?) ??
             (profile['brandName'] as String?) ??
+            (profile['businessName'] as String?) ??
             (profile['displayName'] as String?) ??
             (effectiveRole == AccountRole.brand ? 'My Brand' : 'My Community');
         final displayName =
             (profile['displayName'] as String?) ??
             (profile['firstName'] as String?) ??
+          (effectiveRole == AccountRole.space
+            ? profile['businessName'] as String?
+            : null) ??
             (profile['name'] as String?) ??
             (effectiveRole == AccountRole.brand ? 'Brand' : 'Host');
         final approvalStatus =
@@ -375,10 +382,10 @@ class _CommunityDashboardScreenState
         final brandData = effectiveRole == AccountRole.brand
             ? ref.watch(brandProfileProvider).asData?.value
             : null;
-        final hostData = effectiveRole == AccountRole.brand
+        final hostData = effectiveRole != AccountRole.community
             ? null
             : ref.watch(hostProfileProvider).asData?.value;
-        final commData = effectiveRole == AccountRole.brand
+        final commData = effectiveRole != AccountRole.community
             ? null
             : ref.watch(communityProfileProvider).asData?.value;
         final unreadCount =

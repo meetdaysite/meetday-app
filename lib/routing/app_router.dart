@@ -5,6 +5,7 @@ import '../features/auth/domain/account_role.dart';
 import '../features/auth/presentation/brand_onboarding_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/role_selection_screen.dart';
+import '../features/auth/presentation/space_onboarding_screen.dart';
 import '../features/auth/state/auth_provider.dart';
 import '../features/community/presentation/community_dashboard_screen.dart';
 import '../features/community/presentation/brand_data_room_screen.dart';
@@ -46,6 +47,10 @@ class AppRouter {
         builder: (context, state) => const BrandOnboardingScreen(),
       ),
       GoRoute(
+        path: '/space-onboarding',
+        builder: (context, state) => const SpaceOnboardingScreen(),
+      ),
+      GoRoute(
         path: '/brand/data-room',
         builder: (context, state) => const BrandDataRoomScreen(),
       ),
@@ -73,6 +78,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     if (next.status == AuthStatus.onboarding &&
         next.role == AccountRole.brand) {
       router.go('/brand-onboarding');
+    } else if (next.status == AuthStatus.onboarding &&
+        next.role == AccountRole.space) {
+      router.go('/space-onboarding');
     } else if (next.status == AuthStatus.authenticated) {
       final brandRedirect = next.role == AccountRole.brand
           ? ref.read(pendingBrandRedirectProvider)

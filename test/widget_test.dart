@@ -52,6 +52,27 @@ void main() {
     expect(find.text('Continue with Google'), findsOneWidget);
   });
 
+  testWidgets('Hub login exposes Hub Partner signup and consent gate', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: LoginScreen(role: AccountRole.space)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hub Partner Login'), findsOneWidget);
+    final signupButton = find.text('New to Meetday? Create an account');
+    await tester.ensureVisible(signupButton);
+    await tester.tap(signupButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create Hub Partner Account'), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsOneWidget);
+    expect(find.text('Agree to terms to continue'), findsOneWidget);
+  });
+
   test('Auth controller starts in an unauthenticated state', () async {
     final container = ProviderContainer(
       overrides: [
