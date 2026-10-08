@@ -123,19 +123,59 @@ String _timeAgo(String? iso) {
   }
 }
 
-String _shortTimeAgo(String? iso) {
-  if (iso == null || iso.isEmpty) return '';
-  try {
-    final dt = DateTime.parse(iso).toLocal();
-    final now = DateTime.now();
-    final diff = now.difference(dt);
+String _formatDateWithOrdinal(DateTime dt) {
+  final day = dt.day;
+  String suffix = 'th';
+  if (day >= 11 && day <= 13) {
+    suffix = 'th';
+  } else {
+    switch (day % 10) {
+      case 1:
+        suffix = 'st';
+        break;
+      case 2:
+        suffix = 'nd';
+        break;
+      case 3:
+        suffix = 'rd';
+        break;
+      default:
+        suffix = 'th';
+    }
+  }
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  return '$day$suffix ${months[dt.month - 1]} ${dt.year}';
+}
 
-    if (diff.inMinutes < 1) return 'now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}h';
-    return '${diff.inDays}d';
-  } catch (_) {
-    return '';
+String _getChatDateBadge(dynamic dateInput) {
+  if (dateInput == null) return '';
+  DateTime? dt;
+  if (dateInput is DateTime) {
+    dt = dateInput.toLocal();
+  } else if (dateInput is String) {
+    if (dateInput.isEmpty) return '';
+    try {
+      dt = DateTime.parse(dateInput).toLocal();
+    } catch (_) {
+      return '';
+    }
+  }
+  if (dt == null) return '';
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  final dateOnly = DateTime(dt.year, dt.month, dt.day);
+
+  if (dateOnly == today) {
+    return 'Today';
+  } else if (dateOnly == yesterday) {
+    return 'Yesterday';
+  } else {
+    return _formatDateWithOrdinal(dt);
   }
 }
 
@@ -1557,6 +1597,14 @@ class _CommunityChatHubScreenState
           (t.lastMessagePreview ?? '').toLowerCase().contains(q);
     }).toList();
 
+    filteredThreads.sort((a, b) {
+      final aDate = a.lastMessageAt ?? a.createdAt;
+      final bDate = b.lastMessageAt ?? b.createdAt;
+      final aDt = aDate != null ? (DateTime.tryParse(aDate) ?? DateTime(1970)) : DateTime(1970);
+      final bDt = bDate != null ? (DateTime.tryParse(bDate) ?? DateTime(1970)) : DateTime(1970);
+      return bDt.compareTo(aDt);
+    });
+
     String headingTitle = 'Sponsorship Chats';
     String headingSubtitle = 'Talk to brands interested in your proposals.';
 
@@ -1943,7 +1991,6 @@ class _CommunityChatHubScreenState
 
   Widget _buildActiveThreadRow(UnifiedActiveThread thread) {
     final unread = thread.unreadCount;
-    final timeStr = _shortTimeAgo(thread.lastMessageAt ?? thread.createdAt);
 
     return Material(
       color: Colors.transparent,
@@ -2042,19 +2089,28 @@ class _CommunityChatHubScreenState
                             ],
                           ),
                         ),
-                        if (timeStr.isNotEmpty)
-                          Text(
-                            timeStr,
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: unread > 0
-                                  ? FontWeight.w800
-                                  : FontWeight.w600,
-                              color: unread > 0
-                                  ? MeetdayColors.primaryRed
-                                  : Colors.black38,
-                            ),
-                          ),
+                        Builder(
+                          builder: (context) {
+                            final dateBadge = _getChatDateBadge(thread.lastMessageAt ?? thread.createdAt);
+                            if (dateBadge.isEmpty) return const SizedBox.shrink();
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3F4F6),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0x2E000000), width: 1),
+                              ),
+                              child: Text(
+                                dateBadge,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 9.5,
+                                  fontWeight: unread > 0 ? FontWeight.w800 : FontWeight.w600,
+                                  color: unread > 0 ? const Color(0xFF1F2937) : const Color(0xFF4B5563),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                     const SizedBox(height: 1),
@@ -2221,8 +2277,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         final sponsorshipRole = isBrandViewer ? 'BRAND' : 'HOST';
 
         final payload = <String, dynamic>{if (text.isNotEmpty) 'content': text};
-        if (mediaKey != null && mediaKey.isNotEmpty)
+        if (mediaKey != null && mediaKey.isNotEmpty) {
           payload['mediaKey'] = mediaKey;
+        }
         if (_replyingTo != null) payload['replyToId'] = _replyingTo!.id;
 
         switch (widget.thread.kind) {
@@ -2791,7 +2848,49 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final msg = messages[index];
-                      return _buildMessageBubble(msg);
+                      final curDt = (msg.createdAt ?? DateTime.now()).toLocal();
+                      bool showDateHeader = false;
+                      if (index == 0) {
+                        showDateHeader = true;
+                      } else {
+                        final prevDt = (messages[index - 1].createdAt ?? DateTime.now()).toLocal();
+                        if (curDt.year != prevDt.year || curDt.month != prevDt.month || curDt.day != prevDt.day) {
+                          showDateHeader = true;
+                        }
+                      }
+
+                      final bubble = _buildMessageBubble(msg);
+                      if (showDateHeader) {
+                        final badgeLabel = _getChatDateBadge(curDt);
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (badgeLabel.isNotEmpty)
+                              Center(
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F4F6),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(color: Colors.black26, width: 1),
+                                  ),
+                                  child: Text(
+                                    badgeLabel,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF4B5563),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            bubble,
+                          ],
+                        );
+                      }
+                      return bubble;
                     },
                   );
                 },

@@ -1341,3 +1341,12 @@ Future<void> requestDealChangesApi(
     );
   }
 }
+
+/// Computes the total unread chat notifications + pending requests across all chat categories.
+final totalChatUnreadNotificationCountProvider = Provider.autoDispose<int>((ref) {
+  final hubData = ref.watch(chatHubProvider).asData?.value;
+  if (hubData == null) return 0;
+  final totalUnread = hubData.categories.fold<int>(0, (sum, c) => sum + c.badgeCount);
+  return totalUnread + hubData.incomingCount;
+});
+
