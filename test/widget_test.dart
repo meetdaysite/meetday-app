@@ -5,6 +5,10 @@ import 'package:meetday_app/features/auth/domain/account_role.dart';
 import 'package:meetday_app/features/auth/presentation/login_screen.dart';
 import 'package:meetday_app/features/auth/state/auth_provider.dart';
 import 'package:meetday_app/features/community/presentation/campaigns/campaigns_screen.dart';
+import 'package:meetday_app/features/community/presentation/providers/chat_provider.dart';
+import 'package:meetday_app/features/community/presentation/providers/dashboard_provider.dart';
+import 'package:meetday_app/features/community/presentation/spaces/space_dashboard_screen.dart';
+import 'package:meetday_app/features/home/presentation/home_shell.dart';
 
 class FakeSecureStorage implements AppSecureStorage {
   final Map<String, String> _store = {};
@@ -21,6 +25,17 @@ class FakeSecureStorage implements AppSecureStorage {
   Future<void> delete({required String key}) async {
     _store.remove(key);
   }
+}
+
+class FakeSpaceAccountAuthController extends AuthController {
+  FakeSpaceAccountAuthController() : super(storage: FakeSecureStorage());
+
+  @override
+  AuthState build() => const AuthState(
+    status: AuthStatus.authenticated,
+    uid: 'space-user',
+    role: AccountRole.space,
+  );
 }
 
 void main() {
@@ -71,6 +86,53 @@ void main() {
     expect(find.text('Create Hub Partner Account'), findsOneWidget);
     expect(find.byType(CheckboxListTile), findsOneWidget);
     expect(find.text('Agree to terms to continue'), findsOneWidget);
+  });
+
+  testWidgets('Space accounts land on the live Hub dashboard', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authControllerProvider.overrideWith(
+            FakeSpaceAccountAuthController.new,
+          ),
+          spaceDashboardProfileProvider.overrideWith(
+            (ref) async => {
+              'businessName': 'Northside Hall',
+              'operatingCities': ['Pune'],
+            },
+          ),
+          dashboardProposalsProvider.overrideWith(
+            (ref) async => [
+              {'name': 'Launch Night', 'status': 'UNDER_REVIEW'},
+            ],
+          ),
+          dashboardCampaignsProvider.overrideWith(
+            (ref) async => [
+              {'name': 'Summer Pop-up'},
+            ],
+          ),
+          chatHubProvider.overrideWith(
+            (ref) async => const ChatHubData(
+              categories: [],
+              activeThreadsByCategory: {},
+              allRequests: [],
+              incomingCount: 0,
+              sentCount: 0,
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: HomeShell()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hub dashboard'), findsOneWidget);
+    expect(find.text('Hey Northside Hall,'), findsOneWidget);
+    expect(find.text('Pune'), findsOneWidget);
+    expect(find.text('Explore brand campaigns'), findsOneWidget);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(find.text('Launch Night'), findsOneWidget);
   });
 
   test('Auth controller starts in an unauthenticated state', () async {
