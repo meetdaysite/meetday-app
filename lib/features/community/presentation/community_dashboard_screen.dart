@@ -24,6 +24,7 @@ import 'proposal_components.dart';
 import 'providers/dashboard_provider.dart';
 import 'providers/profile_provider.dart';
 import 'support/community_support_chat_view.dart';
+import '../../../core/widgets/top_notification_banner.dart';
 
 enum CommunityDashboardTab {
   dashboard,
@@ -254,6 +255,16 @@ class _CommunityDashboardScreenState
         if (!mounted || payload is! Map) return;
         ref.invalidate(notificationsProvider);
         ref.invalidate(unreadNotificationsCountProvider);
+        final title = payload['title']?.toString() ?? 'Notification';
+        final body = payload['body']?.toString() ?? payload['message']?.toString() ?? '';
+        if (body.isNotEmpty && mounted) {
+          showTopNotification(
+            context,
+            title: title,
+            message: body,
+            onTap: () => _onTabSelected(7),
+          );
+        }
         final type = payload['type']?.toString();
         if (type == null || !_chatNotificationSoundTypes.contains(type)) return;
         unawaited(_playNotificationSoundIfEnabled(role, userId));
@@ -329,7 +340,7 @@ class _CommunityDashboardScreenState
       _chatHubInitialTarget = target;
       _chatHubRouteVersion++;
     });
-    _onTabSelected(role == AccountRole.brand ? 9 : 5);
+    _onTabSelected(9);
   }
 
   void _openNotificationDestination(int index) => _onTabSelected(index);
@@ -410,7 +421,6 @@ class _CommunityDashboardScreenState
             shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
             ),
-            // Profile button on the top left corner
             leading: Padding(
               padding: const EdgeInsets.only(left: 16),
               child: Center(
@@ -558,20 +568,12 @@ class _CommunityDashboardScreenState
                     ),
                     _HubTabBody(
                       onBack: () => _onTabSelected(0),
-                      onNavigateToChats: () => _onTabSelected(
-                        effectiveRole == AccountRole.brand ? 9 : 5,
-                      ),
+                      onNavigateToChats: () => _onTabSelected(effectiveRole == AccountRole.brand ? 9 : 5),
+                      onNavigateToTab: _onTabSelected,
                     ),
                     _CommunityTabBody(onNavigateToTab: _onTabSelected),
-                    effectiveRole == AccountRole.brand
-                        ? const BrandDealsScreen()
-                        : CommunityChatHubScreen(
-                            key: ValueKey(
-                              'community-chat-$_chatHubRouteVersion',
-                            ),
-                            initialTarget: _chatHubInitialTarget,
-                          ),
-                    const _SupportTabBody(),
+                    BrandDealsScreen(role: effectiveRole),
+                    _SupportTabBody(role: effectiveRole),
                     _NotificationsTabBody(
                       role: effectiveRole,
                       onOpenChat: (target) =>
@@ -582,10 +584,8 @@ class _CommunityDashboardScreenState
                         ? const BrandCampaignsScreen()
                         : const CampaignsScreen(),
                     CommunityChatHubScreen(
-                      key: ValueKey('brand-chat-$_chatHubRouteVersion'),
-                      initialCategory: effectiveRole == AccountRole.brand
-                          ? 'campaigns'
-                          : null,
+                      key: ValueKey('chat-$_chatHubRouteVersion'),
+                      initialCategory: null,
                       initialTarget: _chatHubInitialTarget,
                     ),
                   ],
@@ -621,7 +621,6 @@ class _DashboardTabBody extends ConsumerWidget {
     final isBrand = role == AccountRole.brand;
 
     // Fetch data from backend
-    final proposalsAsync = ref.watch(dashboardProposalsProvider);
     final campaignsAsync = isBrand
         ? ref.watch(brandCampaignsProvider)
         : ref.watch(dashboardCampaignsProvider);
@@ -632,7 +631,6 @@ class _DashboardTabBody extends ConsumerWidget {
     final dealsAsync = ref.watch(dashboardDealsProvider);
     final publishedAsync = ref.watch(publishedProposalsProvider);
 
-    final myProposalsList = proposalsAsync.asData?.value ?? [];
     final publishedList = publishedAsync.asData?.value ?? [];
 
     Widget buildProposalCard(Map<String, dynamic> p) => _ProposalCardPreview(
@@ -675,10 +673,6 @@ class _DashboardTabBody extends ConsumerWidget {
       },
     );
 
-    final myExperienceCards =
-        (proposalsAsync.isLoading && myProposalsList.isEmpty)
-        ? [_LoadingCard()]
-        : myProposalsList.map(buildProposalCard).toList();
 
     final curatedExperienceCards =
         (publishedAsync.isLoading && publishedList.isEmpty)
@@ -715,7 +709,18 @@ class _DashboardTabBody extends ConsumerWidget {
               title: h['title'] ?? 'Hub',
               memberCount: h['memberCount'] ?? '0',
               imageUrl: h['logoUrl'] as String?,
-              onTap: () => onNavigateToTab(3),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => CommunityDetailScreen(
+                      community: {...h, 'isHub': true},
+                      isHub: true,
+                      onSelectTab: onNavigateToTab,
+                      currentTabIndex: 3,
+                    ),
+                  ),
+                );
+              },
             ),
           )
           .toList(),
@@ -828,6 +833,102 @@ class _DashboardTabBody extends ConsumerWidget {
       ],
     );
 
+    final hubsSection = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeaderRow(
+          title: 'Active Community Hubs',
+          subtitle:
+              'Discover venues and hubs for offline activations and community events.',
+          actionLabel: 'View All Hubs >',
+          onActionTap: () => onNavigateToTab(3),
+        ),
+        const SizedBox(height: 10),
+        hubCards.isEmpty
+            ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.black, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(2.5, 2.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.apartment_outlined,
+                      size: 32,
+                      color: Colors.black54,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No active hubs',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Partner venues and physical spaces will appear here.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: const Color(0xFF667085),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : SizedBox(
+                height: 210,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: hubCards.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) => hubCards[index],
+                ),
+              ),
+      ],
+    );
+
+    final communitiesSection = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeaderRow(
+          title: 'Active Communities',
+          subtitle:
+              'Discover verified creator and host communities on Meetday.',
+          actionLabel: 'View All Communities >',
+          onActionTap: () => onNavigateToTab(4),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 210,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: communityCards.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) => communityCards[index],
+          ),
+        ),
+      ],
+    );
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
       children: [
@@ -904,78 +1005,308 @@ class _DashboardTabBody extends ConsumerWidget {
           buttonLabel: isBrand ? 'POST A BRIEF ➔' : 'EXPLORE CAMPAIGNS ➔',
           accent: MeetdayColors.accentYellow,
           disabled: false,
-          onTap: () => onNavigateToTab(isBrand ? 8 : 2),
+          onTap: () {
+            if (!isBrand) {
+              ref.read(exploreSubViewProvider.notifier).state = 'campaigns';
+              onNavigateToTab(2);
+            } else {
+              onNavigateToTab(8);
+            }
+          },
         ),
 
         const SizedBox(height: 20),
         const Divider(height: 1, color: Color(0x1F000000), thickness: 1.5),
         const SizedBox(height: 18),
 
-        // Section 1: My Campaigns (Placed before Curated Experiences)
-        _SectionHeaderRow(
-          title: isBrand ? 'My Campaigns' : 'Brand Campaigns',
-          subtitle: isBrand
-              ? 'Your active marketing campaigns and briefs.'
-              : 'Active brand briefs seeking community partnerships & sponsorships.',
-          actionLabel: 'View All Campaigns >',
-          onActionTap: () => onNavigateToTab(isBrand ? 8 : 2),
-        ),
-        const SizedBox(height: 10),
-        campaignCards.isEmpty
-            ? Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 20,
-                  horizontal: 16,
+        if (isBrand) ...[
+          // Two side-by-side buttons: My Campaigns and My Experiences in RED
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    ref.read(createTabSubViewProvider.notifier).state =
+                        'campaign';
+                    onNavigateToTab(1);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MeetdayColors.primaryRed,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.black, width: 2.5),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(3, 3),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.campaign_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'My Campaigns',
+                            style: GoogleFonts.bricolageGrotesque(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black, width: 2),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(2.5, 2.5),
-                      blurRadius: 0,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    ref.read(createTabSubViewProvider.notifier).state =
+                        'experiences';
+                    onNavigateToTab(1);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 10,
                     ),
-                  ],
+                    decoration: BoxDecoration(
+                      color: MeetdayColors.primaryRed,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.black, width: 2.5),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(3, 3),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.auto_awesome_rounded,
+                          size: 19,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'My Experiences',
+                            style: GoogleFonts.bricolageGrotesque(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      isBrand
-                          ? Icons.campaign_rounded
-                          : Icons.rocket_launch_outlined,
-                      size: 32,
-                      color: Colors.black54,
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+        ] else ...[
+          // Community My Proposals button in RED
+          GestureDetector(
+            onTap: () => onNavigateToTab(1),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                vertical: 14,
+                horizontal: 16,
+              ),
+              decoration: BoxDecoration(
+                color: MeetdayColors.primaryRed,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.black, width: 2.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black,
+                    offset: Offset(3, 3),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.description_rounded,
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'My Proposals',
+                    style: GoogleFonts.bricolageGrotesque(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      isBrand
-                          ? 'No campaigns created yet'
-                          : 'No active brand campaigns yet',
-                      style: GoogleFonts.bricolageGrotesque(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF111111),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+          // Section 1: Brand Campaigns for community
+          _SectionHeaderRow(
+            title: 'Brand Campaigns',
+            subtitle:
+                'Active brand briefs seeking community partnerships & sponsorships.',
+            actionLabel: 'View All Campaigns >',
+            onActionTap: () {
+              ref.read(exploreSubViewProvider.notifier).state = 'campaigns';
+              onNavigateToTab(2);
+            },
+          ),
+          const SizedBox(height: 10),
+          campaignCards.isEmpty
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 20,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black,
+                        offset: Offset(2.5, 2.5),
+                        blurRadius: 0,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isBrand
-                          ? 'Launch your first campaign brief to sponsor top communities.'
-                          : 'Brand campaigns and sponsorship briefs will appear here.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: const Color(0xFF667085),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.rocket_launch_outlined,
+                        size: 32,
+                        color: Colors.black54,
                       ),
-                    ),
-                    if (isBrand) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'No active brand campaigns yet',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF111111),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Brand campaigns and sponsorship briefs will appear here.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: const Color(0xFF667085),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : SizedBox(
+                  height: 215,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: campaignCards.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) => campaignCards[index],
+                  ),
+                ),
+
+        ],
+
+        if (isBrand) ...[
+          // Section 3: Curated Experiences (Redirects to Explore Curated Experiences section)
+          _SectionHeaderRow(
+            title: 'Curated Experiences',
+            subtitle:
+                'Discover and back vetted experiences hosted by communities.',
+            actionLabel: 'View All Experiences >',
+            onActionTap: () {
+              ref.read(exploreSubViewProvider.notifier).state = 'experiences';
+              onNavigateToTab(2);
+            },
+          ),
+          const SizedBox(height: 10),
+          curatedExperienceCards.isEmpty
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 20,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black,
+                        offset: Offset(2.5, 2.5),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 32,
+                        color: Colors.black54,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No curated experiences found',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF111111),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Explore published experiences from communities or pitch your own.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: const Color(0xFF667085),
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       GestureDetector(
-                        onTap: () => onNavigateToTab(8),
+                        onTap: () {
+                          ref.read(exploreSubViewProvider.notifier).state =
+                              'experiences';
+                          onNavigateToTab(2);
+                        },
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
@@ -994,7 +1325,7 @@ class _DashboardTabBody extends ConsumerWidget {
                             ],
                           ),
                           child: Text(
-                            '+ LAUNCH CAMPAIGN',
+                            'EXPLORE EXPERIENCES ➔',
                             style: GoogleFonts.poppins(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
@@ -1004,321 +1335,25 @@ class _DashboardTabBody extends ConsumerWidget {
                         ),
                       ),
                     ],
-                  ],
+                  ),
+                )
+              : SizedBox(
+                  height: 215,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: curatedExperienceCards.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) =>
+                        curatedExperienceCards[index],
+                  ),
                 ),
-              )
-            : SizedBox(
-                height: 215,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: campaignCards.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) => campaignCards[index],
-                ),
-              ),
+          const SizedBox(height: 22),
+        ],
 
+        communitiesSection,
         const SizedBox(height: 22),
-
-        // Section 2: Brand proposals or community experiences
-        _SectionHeaderRow(
-          title: isBrand ? 'My Proposals' : 'My Experiences',
-          subtitle: isBrand
-              ? 'Your sponsorship proposals for brand partnerships.'
-              : 'Your created experiences and proposals.',
-          actionLabel: isBrand ? 'View All Proposals >' : 'View All Experiences >',
-          onActionTap: () => onNavigateToTab(1),
-        ),
-        const SizedBox(height: 10),
-        myExperienceCards.isEmpty
-            ? Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 20,
-                  horizontal: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black, width: 2),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(2.5, 2.5),
-                      blurRadius: 0,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.note_add_outlined,
-                      size: 32,
-                      color: Colors.black54,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'No experiences created yet',
-                      style: GoogleFonts.bricolageGrotesque(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF111111),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Create custom proposals to pitch to brand partners and hosts.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: const Color(0xFF667085),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () => onNavigateToTab(1),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: MeetdayColors.primaryRed,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.black, width: 1.8),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black,
-                              offset: Offset(2, 2),
-                              blurRadius: 0,
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          '+ CREATE PROPOSAL',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            : SizedBox(
-                height: 215,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: myExperienceCards.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) => myExperienceCards[index],
-                ),
-              ),
-
-        const SizedBox(height: 22),
-
-        // Section 3: Curated Experiences (Redirects to Explore Curated Experiences section)
-        _SectionHeaderRow(
-          title: 'Curated Experiences',
-          subtitle:
-              'Discover and back vetted experiences hosted by communities.',
-          actionLabel: 'View All Experiences >',
-          onActionTap: () {
-            ref.read(exploreSubViewProvider.notifier).state = 'experiences';
-            onNavigateToTab(2);
-          },
-        ),
-        const SizedBox(height: 10),
-        curatedExperienceCards.isEmpty
-            ? Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 20,
-                  horizontal: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black, width: 2),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(2.5, 2.5),
-                      blurRadius: 0,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.auto_awesome_rounded,
-                      size: 32,
-                      color: Colors.black54,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'No curated experiences found',
-                      style: GoogleFonts.bricolageGrotesque(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF111111),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Explore published experiences from communities or pitch your own.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: const Color(0xFF667085),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () {
-                        ref.read(exploreSubViewProvider.notifier).state =
-                            'experiences';
-                        onNavigateToTab(2);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: MeetdayColors.primaryRed,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.black, width: 1.8),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black,
-                              offset: Offset(2, 2),
-                              blurRadius: 0,
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          'EXPLORE EXPERIENCES ➔',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            : SizedBox(
-                height: 215,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: curatedExperienceCards.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) =>
-                      curatedExperienceCards[index],
-                ),
-              ),
-
-        const SizedBox(height: 22),
-
-        // Section 2: Active Community Hubs
-        _SectionHeaderRow(
-          title: 'Active Community Hubs',
-          subtitle:
-              'Discover venues and hubs for offline activations and community events.',
-          actionLabel: 'View All Hubs >',
-          onActionTap: () => onNavigateToTab(3),
-        ),
-        const SizedBox(height: 10),
-        hubCards.isEmpty
-            ? Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 20,
-                  horizontal: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black, width: 2),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(2.5, 2.5),
-                      blurRadius: 0,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.apartment_outlined,
-                      size: 32,
-                      color: Colors.black54,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'No active hubs',
-                      style: GoogleFonts.bricolageGrotesque(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF111111),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Partner venues and physical spaces will appear here.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: const Color(0xFF667085),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            : SizedBox(
-                height: 210,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: hubCards.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) => hubCards[index],
-                ),
-              ),
-
-        const SizedBox(height: 22),
-
-        // Section 3: Active Communities
-        _SectionHeaderRow(
-          title: 'Active Communities',
-          subtitle:
-              'Discover verified creator and host communities on Meetday.',
-          actionLabel: 'View All Communities >',
-          onActionTap: () => onNavigateToTab(4),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 210,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: communityCards.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => communityCards[index],
-          ),
-        ),
-
+        hubsSection,
         const SizedBox(height: 22),
 
         // Section 4: Locked Deals & Reports
@@ -1326,7 +1361,7 @@ class _DashboardTabBody extends ConsumerWidget {
           title: 'Locked Deals & Reports',
           subtitle:
               'View locked deal terms and submitted deliverables reports.',
-          actionLabel: 'Go to Chats >',
+          actionLabel: 'View All Deals >',
           onActionTap: () => onNavigateToTab(5),
         ),
         const SizedBox(height: 10),
@@ -2122,12 +2157,16 @@ class _CommunityHubCardPreview extends StatelessWidget {
     required this.title,
     required this.memberCount,
     this.imageUrl,
+    this.width = 148,
+    this.secondaryLabel,
     this.onTap,
   });
 
   final String title;
   final String memberCount;
   final String? imageUrl;
+  final double? width;
+  final String? secondaryLabel;
   final VoidCallback? onTap;
 
   @override
@@ -2135,7 +2174,7 @@ class _CommunityHubCardPreview extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 148,
+        width: width,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
@@ -2170,7 +2209,7 @@ class _CommunityHubCardPreview extends StatelessWidget {
                 ),
               ),
 
-              // Below 1:1 image: Name + Members
+              // Below 1:1 image: Name + Members / Venues
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
                 child: Column(
@@ -2217,12 +2256,16 @@ class _CommunityHubCardPreview extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          'Members',
-                          style: GoogleFonts.poppins(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0x80000000),
+                        Expanded(
+                          child: Text(
+                            secondaryLabel ?? 'Capacity',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0x80000000),
+                            ),
                           ),
                         ),
                       ],
@@ -2627,9 +2670,12 @@ class _CreateTabBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isBrand = role == AccountRole.brand;
+    if (!isBrand) {
+      return _ProposalTabBody(role: role);
+    }
     final subView = ref.watch(createTabSubViewProvider);
 
-    if (subView == 'campaign') {
+    if (subView == 'campaign' || subView == 'experiences') {
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -2637,94 +2683,26 @@ class _CreateTabBody extends ConsumerWidget {
             ref.read(createTabSubViewProvider.notifier).state = 'menu';
           }
         },
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFFDFC),
-                border: Border(bottom: BorderSide(color: Colors.black, width: 2)),
+        child: subView == 'campaign'
+            ? (isBrand
+                ? BrandCampaignsScreen(
+                    onBack: () => ref
+                        .read(createTabSubViewProvider.notifier)
+                        .state = 'menu',
+                    backLabel: 'Back to Create',
+                  )
+                : CampaignsScreen(
+                    onBack: () => ref
+                        .read(createTabSubViewProvider.notifier)
+                        .state = 'menu',
+                    backLabel: 'Back to Create',
+                  ))
+            : _ProposalTabBody(
+                role: role,
+                onBack: () => ref
+                    .read(createTabSubViewProvider.notifier)
+                    .state = 'menu',
               ),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      ref.read(createTabSubViewProvider.notifier).state = 'menu';
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: MeetdayColors.accentYellow,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.black, width: 2),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black,
-                            offset: Offset(2, 2),
-                            blurRadius: 0,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.arrow_back_rounded,
-                            size: 16,
-                            color: Colors.black,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Back to Create',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Campaigns',
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF111111),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: isBrand
-                  ? const BrandCampaignsScreen()
-                  : const CampaignsScreen(),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (subView == 'experiences') {
-      return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) {
-            ref.read(createTabSubViewProvider.notifier).state = 'menu';
-          }
-        },
-        child: _ProposalTabBody(
-          role: role,
-          onBack: () {
-            ref.read(createTabSubViewProvider.notifier).state = 'menu';
-          },
-        ),
       );
     }
 
@@ -2810,29 +2788,6 @@ class _CreateTabBody extends ConsumerWidget {
                                   fontSize: 19,
                                   fontWeight: FontWeight.w800,
                                   color: const Color(0xFF111111),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFF8F3),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Colors.black,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Text(
-                                  isBrand ? 'BRAND' : 'CAMPAIGN',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: MeetdayColors.primaryRed,
-                                  ),
                                 ),
                               ),
                             ],
@@ -2926,7 +2881,7 @@ class _CreateTabBody extends ConsumerWidget {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF216BFF),
+                        color: MeetdayColors.primaryRed,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: const [
@@ -2956,29 +2911,6 @@ class _CreateTabBody extends ConsumerWidget {
                                   fontSize: 19,
                                   fontWeight: FontWeight.w800,
                                   color: const Color(0xFF111111),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFF8F3),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Colors.black,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Text(
-                                  'PROPOSALS',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF216BFF),
-                                  ),
                                 ),
                               ),
                             ],
@@ -3187,50 +3119,30 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 32),
           children: [
             if (widget.onBack != null) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                  onTap: widget.onBack,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+              GestureDetector(
+                onTap: widget.onBack,
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 13,
+                      color: Color(0x99000000),
                     ),
-                    decoration: BoxDecoration(
-                      color: MeetdayColors.accentYellow,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.black, width: 2),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black,
-                          offset: Offset(2, 2),
-                          blurRadius: 0,
-                        ),
-                      ],
+                    const SizedBox(width: 5),
+                    Text(
+                      'Back to Create',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0x99000000),
+                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.arrow_back_rounded,
-                          size: 16,
-                          color: Colors.black,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Back to Create',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 10),
             ],
             // Header with Title and + CREATE NEW button
             Row(
@@ -3242,7 +3154,7 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isBrand ? 'My Proposals' : 'Experiences',
+                        isBrand ? 'My Experiences' : 'Experiences',
                         style: GoogleFonts.bricolageGrotesque(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -3252,8 +3164,8 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
                       const SizedBox(height: 3),
                       Text(
                         isBrand
-                          ? 'Create and manage sponsorship proposals for brands.'
-                            : 'For all your experiences and proposals',
+                          ? 'Create and manage sponsorship experiences and proposals.'
+                          : 'For all your experiences and proposals',
                         style: GoogleFonts.poppins(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -3448,7 +3360,7 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
         children: [
           Text(
             widget.role == AccountRole.brand
-                ? 'My Proposals'
+                ? 'My Experiences'
                 : 'My Sponsorships',
             style: GoogleFonts.bricolageGrotesque(
               fontSize: 22,
@@ -3730,6 +3642,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
         onBack: () => ref.read(exploreSubViewProvider.notifier).state = 'menu',
         onNavigateToChats: () =>
             widget.onNavigateToTab(widget.role == AccountRole.brand ? 9 : 5),
+        onNavigateToTab: widget.onNavigateToTab,
       );
     }
     if (subView == 'campaigns') {
@@ -3769,11 +3682,16 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
         const SizedBox(height: 18),
 
         if (isBrand) ...[
-          // Brand Card 1: Curated Experiences
+          // Brand Card 1: Curated Experiences (Proposals - Yellow)
           _buildExploreCard(
             icon: Icons.auto_awesome_rounded,
-            iconBg: MeetdayColors.accentYellow,
-            iconColor: Colors.black,
+            cardBg: MeetdayColors.accentYellow,
+            iconBg: Colors.black,
+            iconColor: MeetdayColors.accentYellow,
+            textColor: Colors.black,
+            descColor: const Color(0xFF222222),
+            arrowBg: Colors.black,
+            arrowColor: Colors.white,
             title: 'Curated Experiences',
             description:
                 'Browse hand-picked, curated experiences from top communities and secure offline marketing opportunities.',
@@ -3782,11 +3700,16 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
           ),
           const SizedBox(height: 14),
 
-          // Brand Card 2: Communities
+          // Brand Card 2: Communities (Yellow)
           _buildExploreCard(
             icon: Icons.groups_rounded,
+            cardBg: MeetdayColors.accentYellow,
             iconBg: Colors.black,
-            iconColor: Colors.white,
+            iconColor: MeetdayColors.accentYellow,
+            textColor: Colors.black,
+            descColor: const Color(0xFF222222),
+            arrowBg: Colors.black,
+            arrowColor: Colors.white,
             title: 'Communities',
             description:
                 'Browse, partner, and sponsor verified creator & host communities.',
@@ -3795,11 +3718,16 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
           ),
           const SizedBox(height: 14),
 
-          // Brand Card 3: Community Hubs
+          // Brand Card 3: Community Hubs (Black)
           _buildExploreCard(
             icon: Icons.apartment_rounded,
-            iconBg: MeetdayColors.primaryRed,
-            iconColor: Colors.white,
+            cardBg: Colors.black,
+            iconBg: MeetdayColors.accentYellow,
+            iconColor: Colors.black,
+            textColor: Colors.white,
+            descColor: const Color(0xFFE2E8F0),
+            arrowBg: Colors.white,
+            arrowColor: Colors.black,
             title: 'Community Hubs',
             description:
                 'Discover partner venues, studios, and physical spaces for events and activations.',
@@ -3807,7 +3735,20 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
                 ref.read(exploreSubViewProvider.notifier).state = 'hubs',
           ),
         ] else ...[
-          // Community Card 1: Communities
+          // Community Card 1: Campaigns first
+          _buildExploreCard(
+            icon: Icons.rocket_launch_rounded,
+            iconBg: MeetdayColors.primaryRed,
+            iconColor: Colors.white,
+            title: 'Campaigns',
+            description:
+                'Browse active brand campaigns, apply with your community, and secure deals.',
+            onTap: () =>
+                ref.read(exploreSubViewProvider.notifier).state = 'campaigns',
+          ),
+          const SizedBox(height: 14),
+
+          // Community Card 2: Communities second
           _buildExploreCard(
             icon: Icons.groups_rounded,
             iconBg: MeetdayColors.accentYellow,
@@ -3820,7 +3761,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
           ),
           const SizedBox(height: 14),
 
-          // Community Card 2: Hubs (black background)
+          // Community Card 3: Hubs third
           _buildExploreCard(
             icon: Icons.apartment_rounded,
             iconBg: Colors.black,
@@ -3830,19 +3771,6 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
                 'Discover partner venues, studios, and physical spaces for events.',
             onTap: () =>
                 ref.read(exploreSubViewProvider.notifier).state = 'hubs',
-          ),
-          const SizedBox(height: 14),
-
-          // Community Card 3: Campaigns (red background)
-          _buildExploreCard(
-            icon: Icons.rocket_launch_rounded,
-            iconBg: MeetdayColors.primaryRed,
-            iconColor: Colors.white,
-            title: 'Campaigns',
-            description:
-                'Browse active brand campaigns, apply with your community, and secure deals.',
-            onTap: () =>
-                ref.read(exploreSubViewProvider.notifier).state = 'campaigns',
           ),
         ],
       ],
@@ -3856,6 +3784,11 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
     required String title,
     required String description,
     required VoidCallback onTap,
+    Color cardBg = Colors.white,
+    Color textColor = const Color(0xFF111111),
+    Color descColor = const Color(0xFF667085),
+    Color arrowBg = const Color(0xFFF3F4F6),
+    Color arrowColor = Colors.black,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -3863,7 +3796,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cardBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.black, width: 2.5),
           boxShadow: const [
@@ -3900,7 +3833,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
                     style: GoogleFonts.bricolageGrotesque(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFF111111),
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -3911,7 +3844,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
-                      color: const Color(0xFF667085),
+                      color: descColor,
                       height: 1.3,
                     ),
                   ),
@@ -3923,7 +3856,7 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
+                color: arrowBg,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.black, width: 1.5),
                 boxShadow: const [
@@ -3934,11 +3867,11 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
                   ),
                 ],
               ),
-              child: const Center(
+              child: Center(
                 child: Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 13,
-                  color: Colors.black,
+                  color: arrowColor,
                 ),
               ),
             ),
@@ -3950,10 +3883,15 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
 }
 
 class _HubTabBody extends ConsumerWidget {
-  const _HubTabBody({this.onBack, this.onNavigateToChats});
+  const _HubTabBody({
+    this.onBack,
+    this.onNavigateToChats,
+    this.onNavigateToTab,
+  });
 
   final VoidCallback? onBack;
   final VoidCallback? onNavigateToChats;
+  final ValueChanged<int>? onNavigateToTab;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -4006,7 +3944,7 @@ class _HubTabBody extends ConsumerWidget {
           Text(
             'Community Hubs',
             style: GoogleFonts.bricolageGrotesque(
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF111111),
             ),
@@ -4074,29 +4012,45 @@ class _HubTabBody extends ConsumerWidget {
                 );
               }
 
-              return Column(
-                children: hubs.map((h) {
-                  final title = (h['title'] ?? 'Hub').toString();
-                  final memberCount = (h['memberCount'] ?? '0').toString();
-                  final locations = (h['locations'] as List?)?.join(', ') ?? '';
-                  final businessName = (h['businessName'] ?? '').toString();
-                  final subtitle = [
-                    if (businessName.isNotEmpty) businessName,
-                    '$memberCount capacity',
-                    if (locations.isNotEmpty) locations,
-                  ].join(' · ');
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: hubs.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 0.72,
+                ),
+                itemBuilder: (context, index) {
+                  final h = hubs[index];
+                  final title = (h['title'] ?? h['name'] ?? 'Hub').toString();
+                  final capacity = (h['venueCapacity'] ?? h['memberCount'] ?? '0').toString();
+                  final venues = (h['numberOfVenues'] ?? '').toString();
+                  final imageUrl = h['logoUrl'] as String?;
 
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _HubListingCard(
-                      hub: h,
-                      title: title,
-                      subtitle: subtitle,
-                      role: role,
-                      onNavigateToChats: onNavigateToChats,
-                    ),
+                  return _CommunityHubCardPreview(
+                    title: title,
+                    memberCount: capacity,
+                    imageUrl: imageUrl,
+                    width: null,
+                    secondaryLabel: (venues.isNotEmpty && venues != '0' && venues != '1')
+                        ? '$venues Venues'
+                        : 'Capacity',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => CommunityDetailScreen(
+                            community: {...h, 'isHub': true},
+                            isHub: true,
+                            onSelectTab: onNavigateToTab,
+                            currentTabIndex: 3,
+                          ),
+                        ),
+                      );
+                    },
                   );
-                }).toList(),
+                },
               );
             },
             loading: () => const Center(
@@ -4116,182 +4070,7 @@ class _HubTabBody extends ConsumerWidget {
   }
 }
 
-class _HubListingCard extends ConsumerStatefulWidget {
-  const _HubListingCard({
-    required this.hub,
-    required this.title,
-    required this.subtitle,
-    required this.role,
-    this.onNavigateToChats,
-  });
 
-  final Map<String, dynamic> hub;
-  final String title;
-  final String subtitle;
-  final AccountRole? role;
-  final VoidCallback? onNavigateToChats;
-
-  @override
-  ConsumerState<_HubListingCard> createState() => _HubListingCardState();
-}
-
-class _HubListingCardState extends ConsumerState<_HubListingCard> {
-  bool _isSubmitting = false;
-
-  Future<void> _expressInterest() async {
-    final hubId = widget.hub['id']?.toString();
-    if (hubId == null || hubId.isEmpty || _isSubmitting) return;
-
-    setState(() => _isSubmitting = true);
-    try {
-      final api = ref.read(apiClientProvider);
-      final isBrand = widget.role == AccountRole.brand;
-      final response = await api.dio.post<dynamic>(
-        '/spaces/community/$hubId/interest',
-        data: {'asRole': isBrand ? 'BRAND' : 'COMMUNITY'},
-      );
-      final responseData = response.data;
-      final result = responseData is Map
-          ? (responseData['data'] is Map ? responseData['data'] : responseData)
-          : null;
-      final alreadyInterested =
-          result is Map && result['alreadyInterested'] == true;
-
-      ref.invalidate(chatHubProvider);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            alreadyInterested
-                ? 'You already sent interest. Check your chat requests.'
-                : 'Interest sent. The space partner must accept before chat opens.',
-          ),
-          backgroundColor: const Color(0xFF10B981),
-        ),
-      );
-      widget.onNavigateToChats?.call();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not send interest: $error'),
-          backgroundColor: MeetdayColors.primaryRed,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: GoogleFonts.bricolageGrotesque(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF111111),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3.5,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  border: Border.all(color: Colors.black, width: 1.2),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  'ACTIVE',
-                  style: GoogleFonts.poppins(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Text(
-            widget.subtitle,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: const Color(0xFF667085),
-              height: 1.35,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          if ((widget.hub['about'] ?? '').toString().trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              widget.hub['about'].toString(),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
-                fontSize: 11,
-                height: 1.4,
-                color: Colors.black87,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _isSubmitting ? null : _expressInterest,
-              icon: _isSubmitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.send_rounded, size: 16),
-              label: Text(_isSubmitting ? 'Sending...' : 'I\'M INTERESTED'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: MeetdayColors.primaryRed,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: MeetdayColors.primaryRed.withValues(
-                  alpha: 0.6,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: const BorderSide(color: Colors.black, width: 2),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 11),
-                elevation: 0,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _CommunityTabBody extends ConsumerWidget {
   const _CommunityTabBody({this.onBack, this.onNavigateToTab});
@@ -4445,11 +4224,13 @@ class _CommunityTabBody extends ConsumerWidget {
 }
 
 class _SupportTabBody extends StatelessWidget {
-  const _SupportTabBody();
+  const _SupportTabBody({this.role});
+
+  final AccountRole? role;
 
   @override
   Widget build(BuildContext context) {
-    return const CommunitySupportChatView();
+    return CommunitySupportChatView(role: role);
   }
 }
 
@@ -4679,16 +4460,29 @@ class _NotificationsTabBody extends ConsumerWidget {
 
                 return GestureDetector(
                   onTap: () async {
-                    if (!isRead && id.isNotEmpty) {
+                    if (id.isNotEmpty) {
                       try {
                         await api.markNotificationRead(id);
-                        ref.invalidate(notificationsProvider);
-                        ref.invalidate(unreadNotificationsCountProvider);
                       } catch (_) {}
                     }
+                    ref.invalidate(notificationsProvider);
+                    ref.invalidate(unreadNotificationsCountProvider);
                     final raw = Map<String, dynamic>.from(notif);
                     final chatTarget = _chatTarget(raw);
                     if (chatTarget != null) {
+                      final meta = raw['metadata'] is Map ? raw['metadata'] as Map : const {};
+                      final threadId = meta['threadId'] ?? meta['chatId'] ?? meta['targetId'];
+                      if (threadId != null) {
+                        try {
+                          await api.dio.patch<dynamic>(
+                            '/notifications/read-by-thread',
+                            data: {'threadId': threadId.toString()},
+                          );
+                        } catch (_) {}
+                      }
+                      ref.invalidate(notificationsProvider);
+                      ref.invalidate(unreadNotificationsCountProvider);
+                      ref.invalidate(chatHubProvider);
                       onOpenChat(chatTarget);
                       return;
                     }
@@ -4862,34 +4656,30 @@ class MeetdayMobileBottomBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (MediaQuery.of(context).viewInsets.bottom > 0) {
+      return const SizedBox.shrink();
+    }
+
     final unreadChatCount = ref.watch(totalChatUnreadNotificationCountProvider);
-    final isBrand = role == AccountRole.brand;
-    final items = isBrand
-        ? [
-            (1, Icons.description_rounded, null, null, 'Create'),
-            (2, Icons.explore_rounded, null, null, 'Explore'),
-            (5, Icons.lock_rounded, null, null, 'Deals'),
-            (
-              9,
-              null,
-              'assets/icons/chat.svg',
-              'assets/icons/chat-filled.svg',
-              'Chats',
-            ),
-            (6, Icons.headset_mic_rounded, null, null, 'Support'),
-          ]
-        : [
-            (2, Icons.explore_rounded, null, null, 'Explore'),
-            (1, Icons.description_rounded, null, null, 'Create'),
-            (
-              5,
-              null,
-              'assets/icons/chat.svg',
-              'assets/icons/chat-filled.svg',
-              'Chats',
-            ),
-            (6, Icons.headset_mic_rounded, null, null, 'Support'),
-          ];
+    final items = [
+      (
+        1,
+        Icons.description_rounded,
+        null,
+        null,
+        role == AccountRole.brand ? 'Create' : 'Proposals',
+      ),
+      (2, Icons.explore_rounded, null, null, 'Explore'),
+      (
+        9,
+        null,
+        'assets/icons/chat.svg',
+        'assets/icons/chat-filled.svg',
+        'Chats',
+      ),
+      (5, Icons.lock_rounded, null, null, 'Deals'),
+      (6, Icons.headset_mic_rounded, null, null, 'Support'),
+    ];
 
     return Container(
       decoration: const BoxDecoration(

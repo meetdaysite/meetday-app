@@ -70,7 +70,10 @@ class _AuthCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(32),
         boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(8, 8))],
       ),
-      child: child,
+      child: Material(
+        type: MaterialType.transparency,
+        child: child,
+      ),
     );
   }
 }

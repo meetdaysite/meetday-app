@@ -74,6 +74,19 @@ class _GoogleVenueAutocompleteFieldState extends State<GoogleVenueAutocompleteFi
     } catch (_) {
       // Keep the prediction text usable when place details are unavailable.
     }
+    if (city.isEmpty) {
+      final secondary = prediction.secondaryText.trim();
+      if (secondary.isNotEmpty) {
+        final parts = secondary.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        if (parts.isNotEmpty) {
+          // If 3+ parts (e.g. "Indiranagar, Bengaluru, India"), city is often parts[1] or parts[0]
+          city = parts.length > 1 ? parts[0] : parts.first;
+        }
+      }
+      if (city.isEmpty && prediction.primaryText.trim().isNotEmpty) {
+        city = prediction.primaryText.trim();
+      }
+    }
 
     if (!mounted) return;
     _setText(venueName);

@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../domain/account_role.dart';
 import '../state/auth_provider.dart';
 import 'auth_shell.dart';
+import '../../../core/widgets/top_notification_banner.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, required this.role, this.redirectTo});
@@ -101,9 +102,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    showTopNotification(context, message: message, isError: true);
   }
 
   @override

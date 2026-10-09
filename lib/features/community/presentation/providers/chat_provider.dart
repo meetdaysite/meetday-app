@@ -598,6 +598,57 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           rawThread: t,
         ),
       );
+
+      if (accountRole == AccountRole.space) {
+        final reqType = (t['requesterType'] ?? '').toString().toUpperCase();
+        if (reqType == 'BRAND') {
+          activeMap['brands']!.add(
+            UnifiedActiveThread(
+              id: (t['id'] ?? '').toString(),
+              category: 'brands',
+              kind: 'SPACE_INTEREST',
+              counterpartName:
+                  (t['counterpartName'] ?? 'Brand Partner').toString(),
+              counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
+              counterpartType: 'BRAND',
+              title: (t['counterpartName'] ?? 'Brand Deal').toString(),
+              subtitle: (t['proposalName'] ?? t['title'] ?? '').toString(),
+              lastMessagePreview: t['lastMessagePreview'] as String?,
+              lastMessageAt: t['lastMessageAt'] as String?,
+              createdAt: t['createdAt'] as String?,
+              unreadCount: (t['unreadCount'] is num)
+                  ? (t['unreadCount'] as num).toInt()
+                  : 0,
+              isDealLocked: isLocked,
+              isDealClosed: isClosed,
+              rawThread: t,
+            ),
+          );
+        } else {
+          activeMap['communities']!.add(
+            UnifiedActiveThread(
+              id: (t['id'] ?? '').toString(),
+              category: 'communities',
+              kind: 'SPACE_INTEREST',
+              counterpartName:
+                  (t['counterpartName'] ?? 'Community').toString(),
+              counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
+              counterpartType: 'COMMUNITY',
+              title: (t['counterpartName'] ?? 'Community Booking').toString(),
+              subtitle: (t['proposalName'] ?? t['title'] ?? '').toString(),
+              lastMessagePreview: t['lastMessagePreview'] as String?,
+              lastMessageAt: t['lastMessageAt'] as String?,
+              createdAt: t['createdAt'] as String?,
+              unreadCount: (t['unreadCount'] is num)
+                  ? (t['unreadCount'] as num).toInt()
+                  : 0,
+              isDealLocked: isLocked,
+              isDealClosed: isClosed,
+              rawThread: t,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -824,6 +875,38 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
           rawItem: t,
         ),
       );
+
+      if (isSpacePartner) {
+        final reqType = (t['requesterType'] ?? '').toString().toUpperCase();
+        requests.add(
+          UnifiedRequestItem(
+            id: (t['id'] ?? '').toString(),
+            category: reqType == 'BRAND' ? 'brands' : 'communities',
+            kind: 'SPACE_INTEREST',
+            direction: 'INCOMING',
+            status: 'REQUESTED',
+            counterpartName:
+                (t['counterpartName'] ??
+                        (reqType == 'BRAND' ? 'Brand Partner' : 'Community'))
+                    .toString(),
+            counterpartAvatarUrl: t['counterpartAvatarUrl'] as String?,
+            counterpartType: reqType == 'BRAND' ? 'BRAND' : 'COMMUNITY',
+            title:
+                (t['counterpartName'] ??
+                        (reqType == 'BRAND'
+                            ? 'Brand Deal'
+                            : 'Community Booking'))
+                    .toString(),
+            description: reqType == 'BRAND'
+                ? 'This brand sent an inquiry to your venue space.'
+                : 'This community sent a booking inquiry to your venue space.',
+            createdAt: t['createdAt'] as String?,
+            lastMessagePreview: t['lastMessagePreview'] as String?,
+            isIncoming: true,
+            rawItem: t,
+          ),
+        );
+      }
     }
   }
 
@@ -951,6 +1034,60 @@ final chatHubProvider = FutureProvider.autoDispose<ChatHubData>((ref) async {
   final brPending = requests
       .where((r) => r.category == 'brands' && r.direction == 'INCOMING')
       .length;
+
+  if (accountRole == AccountRole.space) {
+    final categories = [
+      CategoryDefinition(
+        key: 'sponsorships',
+        label: 'Sponsorships',
+        description:
+            'Proposals and sponsorships for your venue spaces.',
+        badgeCount: spUnread,
+        activeCount: activeMap['sponsorships']!.length,
+        pendingRequestsCount: spPending,
+      ),
+      CategoryDefinition(
+        key: 'campaigns',
+        label: 'Campaigns',
+        description:
+            'Brand campaign briefs and sponsorship inquiries.',
+        badgeCount: campUnread,
+        activeCount: activeMap['campaigns']!.length,
+        pendingRequestsCount: campPending,
+      ),
+      CategoryDefinition(
+        key: 'communities',
+        label: 'Communities',
+        description:
+            'Chats and event bookings with partner communities.',
+        badgeCount: comUnread + spcUnread,
+        activeCount: activeMap['communities']!.length,
+        pendingRequestsCount: comPending,
+      ),
+      CategoryDefinition(
+        key: 'brands',
+        label: 'Brands',
+        description:
+            'Direct conversations and sponsorship deals with partner brands.',
+        badgeCount: brUnread,
+        activeCount: activeMap['brands']!.length,
+        pendingRequestsCount: brPending,
+      ),
+    ];
+
+    final incomingCount =
+        requests.where((r) => r.direction == 'INCOMING').length;
+    final sentCount =
+        requests.where((r) => r.direction == 'OUTGOING').length;
+
+    return ChatHubData(
+      categories: categories,
+      activeThreadsByCategory: activeMap,
+      allRequests: requests,
+      incomingCount: incomingCount,
+      sentCount: sentCount,
+    );
+  }
 
   final categories = [
     CategoryDefinition(

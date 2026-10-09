@@ -15,6 +15,7 @@ import '../providers/profile_provider.dart';
 import '../providers/dashboard_provider.dart';
 import '../community_dashboard_screen.dart';
 import '../community_detail_screen.dart';
+import '../spaces/space_dashboard_screen.dart';
 
 const Map<String, String> _genderLabels = {
   'MALE': 'Male',
@@ -84,8 +85,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _refreshAll() async {
-    final isBrand = ref.read(authControllerProvider).role == AccountRole.brand;
-    if (isBrand) {
+    final authRole = ref.read(authControllerProvider).role;
+    if (authRole == AccountRole.space) {
+      ref.invalidate(spaceDashboardProfileProvider);
+      ref.invalidate(spaceCommunityProfileProvider);
+    } else if (authRole == AccountRole.brand) {
       ref.invalidate(brandProfileProvider);
       ref.invalidate(brandTeamMembersProvider);
     } else {
@@ -96,6 +100,70 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _openBrandPreview() {
+    final role = ref.read(authControllerProvider).role;
+    if (role == AccountRole.space) {
+      final spaceProfile =
+          ref.read(spaceDashboardProfileProvider).asData?.value ??
+              <String, dynamic>{};
+      final spaceCommunity =
+          ref.read(spaceCommunityProfileProvider).asData?.value ??
+              <String, dynamic>{};
+      final userMap =
+          spaceProfile['user'] is Map ? spaceProfile['user'] as Map : const {};
+      final mergedHub = <String, dynamic>{
+        ...spaceCommunity,
+        'id': spaceCommunity['id'] ?? spaceProfile['id'],
+        'isHub': true,
+        'type': 'HUB',
+        'name':
+            spaceCommunity['name'] ??
+            spaceProfile['businessName'] ??
+            'Hub Partner',
+        'businessName': spaceProfile['businessName'] ?? '',
+        'logoUrl':
+            spaceCommunity['logoUrl'] ??
+            spaceProfile['avatarUrl'] ??
+            userMap['avatarUrl'],
+        'secondaryImageUrl': spaceCommunity['secondaryImageUrl'],
+        'about': spaceCommunity['about'] ?? spaceProfile['bio'] ?? '',
+        'operatingCities':
+            spaceCommunity['operatingCities'] ??
+            spaceProfile['operatingCities'] ??
+            [],
+        'venueCount':
+            spaceProfile['venueCount'] ?? spaceCommunity['venueCount'] ?? 1,
+        'capacity':
+            spaceProfile['capacity'] ??
+            spaceCommunity['capacity'] ??
+            '50 - 200',
+        'categories':
+            spaceCommunity['categories'] ?? spaceProfile['categories'] ?? [],
+        'amenities':
+            spaceCommunity['amenities'] ?? spaceProfile['amenities'] ?? [],
+        'showcaseUrls':
+            spaceCommunity['showcaseUrls'] ??
+            spaceProfile['showcaseUrls'] ??
+            [],
+        'pastEvents':
+            spaceCommunity['pastEvents'] ?? spaceProfile['pastEvents'] ?? [],
+        'socialLinks':
+            spaceCommunity['socialLinks'] ?? spaceProfile['socialLinks'] ?? {},
+      };
+
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => CommunityDetailScreen(
+            community: mergedHub,
+            isHub: true,
+            isBrandPreview: true,
+            onSelectTab: widget.onSelectTab,
+            currentTabIndex: -1,
+          ),
+        ),
+      );
+      return;
+    }
+
     final communityAsync = ref.read(communityProfileProvider);
     final hostAsync = ref.read(hostProfileProvider);
     final community = Map<String, dynamic>.from(
@@ -150,6 +218,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _openCommunityDetails() {
+    final role = ref.read(authControllerProvider).role;
+    if (role == AccountRole.space) {
+      final spaceProfile =
+          ref.read(spaceDashboardProfileProvider).asData?.value ??
+              <String, dynamic>{};
+      final spaceCommunity =
+          ref.read(spaceCommunityProfileProvider).asData?.value;
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => HubProfileSheet(
+          profile: spaceProfile,
+          community: spaceCommunity,
+          onSignOut: _confirmSignOut,
+          onProfileUpdated: () {
+            ref.invalidate(spaceDashboardProfileProvider);
+            ref.invalidate(spaceCommunityProfileProvider);
+          },
+        ),
+      );
+      return;
+    }
+
     final communityAsync = ref.read(communityProfileProvider);
     final hostAsync = ref.read(hostProfileProvider);
     final community = communityAsync.asData?.value ?? <String, dynamic>{};
@@ -448,36 +540,94 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final authRole = ref.watch(authControllerProvider).role;
+    final isSpace = authRole == AccountRole.space;
     final isBrand = authRole == AccountRole.brand;
 
     final brandAsync = isBrand ? ref.watch(brandProfileProvider) : null;
-    final hostAsync = isBrand ? null : ref.watch(hostProfileProvider);
-    final communityAsync = isBrand ? null : ref.watch(communityProfileProvider);
+    final spaceProfileAsync =
+        isSpace ? ref.watch(spaceDashboardProfileProvider) : null;
+    final spaceCommunityAsync =
+        isSpace ? ref.watch(spaceCommunityProfileProvider) : null;
+    final hostAsync =
+        (isBrand || isSpace) ? null : ref.watch(hostProfileProvider);
+    final communityAsync =
+        (isBrand || isSpace) ? null : ref.watch(communityProfileProvider);
 
     final host = hostAsync?.asData?.value ?? <String, dynamic>{};
     final community = communityAsync?.asData?.value ?? <String, dynamic>{};
     final brand = brandAsync?.asData?.value ?? <String, dynamic>{};
+    final spaceProfile =
+        spaceProfileAsync?.asData?.value ?? <String, dynamic>{};
+    final spaceCommunity =
+        spaceCommunityAsync?.asData?.value ?? <String, dynamic>{};
+    final spaceUser =
+        spaceProfile['user'] is Map ? spaceProfile['user'] as Map : const {};
 
-    final isLoading = isBrand
-        ? (brandAsync?.isLoading ?? false)
-        : ((hostAsync?.isLoading ?? false) ||
-              (communityAsync?.isLoading ?? false));
+    final isLoading = isSpace
+        ? ((spaceProfileAsync?.isLoading ?? false) ||
+            (spaceCommunityAsync?.isLoading ?? false))
+        : isBrand
+            ? (brandAsync?.isLoading ?? false)
+            : ((hostAsync?.isLoading ?? false) ||
+                (communityAsync?.isLoading ?? false));
     final unreadCount =
         ref.watch(unreadNotificationsCountProvider).asData?.value ?? 0;
 
-    // Rep / Brand details
-    final displayName = isBrand
-        ? (brand['brandName'] ?? brand['displayName'] ?? 'Brand').toString()
-        : (host['displayName'] ?? host['legalName'] ?? 'Host').toString();
-    final avatarUrl = isBrand
-        ? (brand['logoUrl'] as String?)
-        : (host['avatarUrl'] as String?);
-    final email = isBrand
-        ? (brand['workEmail'] ?? brand['email'] ?? '').toString()
-        : (host['email'] ?? '').toString();
-    final phone = isBrand
-        ? (brand['contactPhone'] ?? brand['phone'] ?? '').toString()
-        : (host['phone'] ?? '').toString();
+    // Rep / Brand / Space details
+    final displayName = isSpace
+        ? (spaceProfile['businessName'] ??
+                spaceCommunity['name'] ??
+                'Hub Partner')
+            .toString()
+        : isBrand
+            ? (brand['brandName'] ?? brand['displayName'] ?? 'Brand').toString()
+            : (host['displayName'] ?? host['legalName'] ?? 'Host').toString();
+    final avatarUrl = isSpace
+        ? ((spaceCommunity['logoUrl'] ??
+                spaceProfile['avatarUrl'] ??
+                spaceUser['avatarUrl']) as String?)
+        : isBrand
+            ? (brand['logoUrl'] as String?)
+            : (host['avatarUrl'] as String?);
+    final email = isSpace
+        ? (spaceProfile['email'] ?? spaceUser['email'] ?? '').toString()
+        : isBrand
+            ? (brand['workEmail'] ?? brand['email'] ?? '').toString()
+            : (host['email'] ?? '').toString();
+    final phone = isSpace
+        ? (spaceProfile['phone'] ?? spaceUser['phone'] ?? '').toString()
+        : isBrand
+            ? (brand['contactPhone'] ?? brand['phone'] ?? '').toString()
+            : (host['phone'] ?? '').toString();
+
+    // Space specific fields
+    final spaceRepName = isSpace
+        ? ([spaceUser['firstName'], spaceUser['lastName']]
+            .whereType<String>()
+            .where((s) => s.isNotEmpty)
+            .join(' '))
+        : '';
+    final spaceCities = isSpace
+        ? ((spaceProfile['operatingCities'] as List?)
+                ?.map((c) => c.toString())
+                .where((c) => c.isNotEmpty)
+                .toList() ??
+            <String>[])
+        : <String>[];
+    final spaceCapacity = isSpace
+        ? (spaceProfile['capacity'] ??
+                spaceCommunity['capacity'] ??
+                '50 - 200')
+            .toString()
+        : '';
+    final spaceVenueCount = isSpace
+        ? (spaceProfile['venueCount'] ?? spaceCommunity['venueCount'] ?? 1)
+            .toString()
+        : '';
+    final spaceName = isSpace
+        ? (spaceCommunity['name'] ?? spaceProfile['businessName'] ?? 'Hub')
+            .toString()
+        : '';
 
     // Brand specific fields
     final companyType = (brand['companyType'] ?? 'BRAND')
@@ -654,9 +804,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              isBrand
-                  ? 'Your brand identity and account details'
-                  : 'Your host identity and account details',
+              isSpace
+                  ? 'Your hub partner identity and account details'
+                  : isBrand
+                      ? 'Your brand identity and account details'
+                      : 'Your host identity and account details',
               style: GoogleFonts.poppins(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -766,7 +918,332 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ],
 
-            if (isBrand) ...[
+            if (isSpace) ...[
+              // ─── The Iconic Yellow Neo-Brutalist Card (Hub Partner Profile) ───
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: MeetdayColors.accentYellow,
+                  border: Border.all(color: Colors.black, width: 3),
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(4, 4),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(
+                      color: Colors.black.withAlpha(90),
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Avatar & Hub Details Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.black, width: 3),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(13),
+                              child: avatarUrl != null && avatarUrl.isNotEmpty
+                                  ? Image.network(
+                                      avatarUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const Icon(
+                                        Icons.storefront_rounded,
+                                        size: 32,
+                                        color: Colors.black54,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.storefront_rounded,
+                                      size: 32,
+                                      color: Colors.black54,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.black,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E1B4B),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    'HUB PARTNER',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFE5E7EB), thickness: 1.5),
+                      const SizedBox(height: 12),
+
+                      if (spaceRepName.isNotEmpty) ...[
+                        _buildInfoRow(
+                          'Representative :',
+                          spaceRepName,
+                          labelWidth: 140,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      _buildInfoRow(
+                        'Email ID :',
+                        email.isNotEmpty ? email : 'Not specified',
+                        labelWidth: 140,
+                      ),
+                      const SizedBox(height: 10),
+                      _buildInfoRow(
+                        'Phone No :',
+                        phone.isNotEmpty ? phone : 'Not specified',
+                        labelWidth: 140,
+                      ),
+                      const SizedBox(height: 10),
+                      _buildInfoRow(
+                        'Space / Hub :',
+                        spaceName.isNotEmpty ? spaceName : 'Not specified',
+                        labelWidth: 140,
+                      ),
+                      if (spaceCities.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _buildInfoRow(
+                          'Operating Cities :',
+                          spaceCities.join(', '),
+                          labelWidth: 140,
+                        ),
+                      ],
+                      if (spaceCapacity.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _buildInfoRow(
+                          'Capacity :',
+                          spaceCapacity,
+                          labelWidth: 140,
+                        ),
+                      ],
+                      if (spaceVenueCount.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _buildInfoRow(
+                          'Venues :',
+                          spaceVenueCount,
+                          labelWidth: 140,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ─── Hub Options Menu List (matching community) ───
+              const Divider(
+                color: Color(0x1A000000),
+                thickness: 1.2,
+                height: 1,
+              ),
+
+              // 1. Community Hub Profile
+              _buildOptionLineItem(
+                title: 'Community Hub Profile',
+                actionLabel: isLoading ? 'LOADING…' : 'VIEW DETAILS',
+                actionColor: MeetdayColors.primaryRed,
+                onTap: _openCommunityDetails,
+              ),
+              const Divider(
+                color: Color(0x1A000000),
+                thickness: 1.2,
+                height: 1,
+              ),
+
+              // 2. Brand Preview
+              _buildOptionLineItem(
+                title: 'Brand Preview',
+                actionLabel: 'VIEW PREVIEW',
+                actionColor: MeetdayColors.primaryRed,
+                onTap: _openBrandPreview,
+              ),
+              const Divider(
+                color: Color(0x1A000000),
+                thickness: 1.2,
+                height: 1,
+              ),
+
+              // 3. Notification Sounds Toggle
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Notification Sounds',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: _notificationSounds,
+                      thumbColor: WidgetStateProperty.resolveWith<Color>(
+                        (states) => Colors.white,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith<Color>((
+                        states,
+                      ) {
+                        if (states.contains(WidgetState.selected)) {
+                          return MeetdayColors.primaryRed;
+                        }
+                        return Colors.black26;
+                      }),
+                      onChanged: _setNotificationSoundPreference,
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(
+                color: Color(0x1A000000),
+                thickness: 1.2,
+                height: 1,
+              ),
+
+              // 4. Profile Actions (LOG OUT / DELETE)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Profile Actions',
+                      style: GoogleFonts.bricolageGrotesque(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: _confirmSignOut,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 2.5,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(2, 2),
+                                  blurRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              'LOG OUT',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _confirmDeleteAccount,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: MeetdayColors.primaryRed,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 2.5,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(2, 2),
+                                  blurRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              'DELETE',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(
+                color: Color(0x1A000000),
+                thickness: 1.2,
+                height: 1,
+              ),
+            ] else if (isBrand) ...[
               // ─── The Iconic Yellow Neo-Brutalist Card (Brand Profile) ───
               Container(
                 width: double.infinity,

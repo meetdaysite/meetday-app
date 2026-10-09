@@ -285,18 +285,47 @@ final dashboardHubsProvider = FutureProvider.autoDispose<List<Map<String, dynami
             final locations = (m['activeLocations'] as List?)?.map((e) => e.toString()).toList()
                 ?? (m['operatingCities'] as List?)?.map((e) => e.toString()).toList()
                 ?? <String>[];
-            final capacity = m['venueCapacity'] ?? m['capacity'] ?? m['communitySize'] ?? m['memberCount'] ?? '0';
+            final capacity = (m['venueCapacity'] ?? m['capacity'] ?? m['communitySize'] ?? m['memberCount'] ?? '0').toString();
+            final posterUrl = (m['posterUrl'] ?? m['secondaryImageUrl']) as String?;
+            final logoUrl = (m['logoUrl'] ?? posterUrl) as String?;
+            final rawCategories = m['categories'];
+            final categories = rawCategories is List
+                ? rawCategories
+                    .map((c) => c is Map ? (c['category'] is Map ? c['category'] : c) : {'name': c.toString()})
+                    .toList()
+                : <dynamic>[];
+            final socialLinks = m['socialLinks'] ?? (m['spaceProfile'] is Map ? m['spaceProfile']['socialLinks'] : null);
+            final showcaseUrls = (m['centreShowcaseUrls'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
+            final pastEvents = (m['pastEvents'] as List?)?.whereType<Map>().toList() ?? <Map>[];
+            final brandsWorkedWith = (m['brandsWorkedWith'] as List?)?.whereType<Map>().toList() ?? <Map>[];
+
             return <String, dynamic>{
+              ...m,
               'id': (m['id'] ?? '').toString(),
-              'title': (m['name'] ?? m['businessName'] ?? m['spaceName'] ?? 'Untitled Hub').toString(),
+              'name': (m['name'] ?? m['title'] ?? m['businessName'] ?? m['spaceName'] ?? 'Untitled Hub').toString(),
+              'title': (m['title'] ?? m['name'] ?? m['businessName'] ?? m['spaceName'] ?? 'Untitled Hub').toString(),
               'businessName': (m['businessName'] ?? '').toString(),
-              'memberCount': capacity.toString(),
-              'venueCapacity': capacity.toString(),
+              'memberCount': capacity,
+              'venueCapacity': capacity,
+              'size': capacity,
               'numberOfVenues': (m['numberOfVenues'] ?? '1').toString(),
-              'logoUrl': m['logoUrl'] ?? m['posterUrl'] as String?,
+              'experiencesPerYear': (m['experiencesPerYear'] ?? '').toString(),
+              'avgGuestCount': (m['avgGuestCount'] ?? capacity).toString(),
+              'logoUrl': logoUrl,
+              'secondaryImageUrl': posterUrl,
+              'posterUrl': posterUrl,
+              'centreShowcaseUrls': showcaseUrls,
               'locations': locations,
               'operatingCities': locations,
               'about': (m['about'] ?? '').toString(),
+              'categories': categories,
+              'socialLinks': socialLinks,
+              'pastEvents': pastEvents,
+              'brandsWorkedWith': brandsWorkedWith,
+              'spaceProfileId': (m['spaceProfileId'] ?? (m['spaceProfile'] is Map ? m['spaceProfile']['id'] : null) ?? '').toString(),
+              'communitySize': (m['communitySize'] ?? m['memberCount'] ?? capacity).toString(),
+              'videoLink': (m['videoLink'] ?? (m['spaceProfile'] is Map ? m['spaceProfile']['videoLink'] : null))?.toString(),
+              'isHub': true,
               'raw': m,
             };
           })

@@ -204,11 +204,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Top Section - Shifted upwards in the space above cards
+                // 1. Top Section - Centered in space above cards, shifted downwards from top edge
                 Expanded(
                   flex: 1,
                   child: Align(
-                    alignment: Alignment.topCenter,
+                    alignment: Alignment.center,
                     child: SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
                       child: _buildTopSection(),
@@ -244,113 +244,125 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Widget _buildTopSection() {
     final heading = _heroHeadings[_currentHeadingIndex];
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 2),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Meetday Brand Logo (Shifted upwards near top)
-          SvgPicture.asset(
-            'assets/logo/meetday-white.svg',
-            height: 34,
-            fit: BoxFit.contain,
-            semanticsLabel: 'Meetday Logo',
-          ),
-          const SizedBox(height: 10),
-
-          // Alternating Animated Heading (Pure fade in / fade out without motion)
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 320),
-            transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
-            child: Row(
-              key: ValueKey<int>(_currentHeadingIndex),
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '${heading['prefix']} ',
-                  style: GoogleFonts.bricolageGrotesque(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: -0.4,
-                  ),
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Meetday Brand Logo (Shifted a bit upwards, centered horizontally with optical centering for TM mark)
+            Center(
+              child: Transform.translate(
+                offset: const Offset(4, -10),
+                child: SvgPicture.asset(
+                  'assets/logo/meetday-white.svg',
+                  height: 38,
+                  fit: BoxFit.contain,
+                  semanticsLabel: 'Meetday Logo',
                 ),
-                Stack(
-                  clipBehavior: Clip.none,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Alternating Animated Heading (Pure fade in / fade out without motion)
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: child,
+                );
+              },
+              child: FittedBox(
+                key: ValueKey<int>(_currentHeadingIndex),
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      heading['suffix']!,
+                      '${heading['prefix']} ',
                       style: GoogleFonts.bricolageGrotesque(
-                        fontSize: 24,
+                        fontSize: 26,
                         fontWeight: FontWeight.w800,
-                        color: MeetdayColors.accentYellow,
+                        color: Colors.white,
                         letterSpacing: -0.4,
                       ),
                     ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: -5,
-                      child: SizedBox(
-                        height: 7,
-                        child: CustomPaint(
-                          painter: const HandDrawnUnderlinePainter(
-                            color: Colors.white,
-                            strokeWidth: 3.2,
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Text(
+                          heading['suffix']!,
+                          style: GoogleFonts.bricolageGrotesque(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: MeetdayColors.accentYellow,
+                            letterSpacing: -0.4,
                           ),
                         ),
-                      ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: -5,
+                          child: SizedBox(
+                            height: 7,
+                            child: CustomPaint(
+                              painter: const HandDrawnUnderlinePainter(
+                                color: Colors.white,
+                                strokeWidth: 3.4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Subtitle text (exact replicate of meetday-frontend, tuned for Red background)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: RichText(
-              textAlign: TextAlign.center,
-              text: TextSpan(
-                style: GoogleFonts.poppins(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white.withValues(alpha: 0.95),
-                  height: 1.35,
-                ),
-                children: [
-                  const TextSpan(text: 'Whether you’re looking 👀 to '),
-                  TextSpan(
-                    text: 'market',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w800,
-                      color: MeetdayColors.accentYellow,
-                    ),
-                  ),
-                  const TextSpan(text: ' your products, '),
-                  TextSpan(
-                    text: 'monetize',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w800,
-                      color: MeetdayColors.accentYellow,
-                    ),
-                  ),
-                  const TextSpan(
-                    text:
-                        ' your IRL community, or explore how we’re building 💪 the infrastructure layer for real-world, you’re in the right place.',
-                  ),
-                ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+
+            // Subtitle text (exact replicate of meetday-frontend, tuned for Red background)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.95),
+                    height: 1.4,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Whether you’re looking 👀 to '),
+                    TextSpan(
+                      text: 'market',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w800,
+                        color: MeetdayColors.accentYellow,
+                      ),
+                    ),
+                    const TextSpan(text: ' your products, '),
+                    TextSpan(
+                      text: 'monetize',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w800,
+                        color: MeetdayColors.accentYellow,
+                      ),
+                    ),
+                    const TextSpan(
+                      text:
+                          ' your IRL community, or explore how we’re building 💪 the infrastructure layer for real-world, you’re in the right place.',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -680,7 +692,7 @@ class _SwipableNeoCard extends StatelessWidget {
           children: [
             // Image with matching inner border radius
             Container(
-              height: 165,
+              height: 155,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: const Color(0xFFF4F4F5),
@@ -715,7 +727,7 @@ class _SwipableNeoCard extends StatelessWidget {
                   card.description,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
-                    fontSize: 12,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w500,
                     color: MeetdayColors.textPrimary,
                     height: 1.35,
@@ -792,7 +804,7 @@ class _TactileActionButtonState extends State<_TactileActionButton> {
               widget.label,
               textAlign: TextAlign.center,
               style: GoogleFonts.bricolageGrotesque(
-                fontSize: 16,
+                fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
                 letterSpacing: 0.3,
@@ -856,15 +868,15 @@ class _FloatingBubble extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.only(
-                left: 12,
-                right: 12,
-                top: 6,
-                bottom: 13, // 6 + 7 tailHeight
+                left: 13,
+                right: 13,
+                top: 7,
+                bottom: 14, // 7 + 7 tailHeight
               ),
               child: Text(
                 text,
                 style: GoogleFonts.bricolageGrotesque(
-                  fontSize: 11,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.4,
                   color: textColor,

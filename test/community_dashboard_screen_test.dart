@@ -59,9 +59,16 @@ void main() {
     expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
     expect(find.byIcon(Icons.person_rounded), findsOneWidget);
 
-    // Explore, Proposals, and Support are the visible icon-based dock destinations.
+    // Explore, Create, Deals, and Support are the visible icon-based dock destinations.
     expect(find.byIcon(Icons.explore_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.description_rounded), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(MeetdayMobileBottomBar),
+        matching: find.byIcon(Icons.description_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.lock_rounded), findsOneWidget);
     expect(find.byIcon(Icons.headset_mic_rounded), findsOneWidget);
   });
 
@@ -104,6 +111,7 @@ void main() {
     );
 
     await tester.enterText(find.byType(TextField), 'Indie Community Hub');
+    await tester.pump(const Duration(milliseconds: 300));
     expect(controller.text, 'Indie Community Hub');
   });
 

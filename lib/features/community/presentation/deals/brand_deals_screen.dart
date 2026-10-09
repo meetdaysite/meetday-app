@@ -8,13 +8,17 @@ import 'package:dio/dio.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/domain/account_role.dart';
+import '../../../auth/state/auth_provider.dart';
 import '../chat/community_chat_hub.dart';
 import '../providers/chat_provider.dart';
 
-/// Locked Deals and Billing screen for Brands.
-/// Replicates the live website `/brand/dashboard/deals` and `/brand/dashboard/billing`.
+/// Locked Deals and Billing screen for Brands and Communities.
+/// Replicates the live website `/brand/dashboard/deals` and `/spaces/dashboard/deals`.
 class BrandDealsScreen extends ConsumerStatefulWidget {
-  const BrandDealsScreen({super.key});
+  const BrandDealsScreen({super.key, this.role});
+
+  final AccountRole? role;
 
   @override
   ConsumerState<BrandDealsScreen> createState() => _BrandDealsScreenState();
@@ -72,14 +76,25 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
         if (token != null && token.isNotEmpty) api.setIdToken(token);
       }
 
-      // 1. Fetch live billing rows from /sponsorships/billing
-      final billingResponse = await api.dio.get<dynamic>('/sponsorships/billing');
-      final rawBilling = _extractList(billingResponse.data);
+      final authRole = ref.read(authControllerProvider).role;
+      final effectiveRole = widget.role ?? authRole ?? AccountRole.brand;
+      final isSpace = effectiveRole == AccountRole.space;
+      final isBrand = effectiveRole == AccountRole.brand;
+      final roleQueryParam = isSpace ? 'SPACE' : (isBrand ? 'BRAND' : 'HOST');
 
-      // 2. Fetch accepted sponsorship & campaign chats for brand
+      // 1. Fetch live billing rows from /sponsorships/billing (applicable for brand)
+      List<Map<String, dynamic>> rawBilling = [];
+      if (isBrand) {
+        try {
+          final billingResponse = await api.dio.get<dynamic>('/sponsorships/billing');
+          rawBilling = _extractList(billingResponse.data);
+        } catch (_) {}
+      }
+
+      // 2. Fetch accepted sponsorship & campaign chats for the role
       final sponsorshipChatsResponse = await api.dio.get<dynamic>(
         '/sponsorships/chats',
-        queryParameters: {'role': 'BRAND', 'status': 'ACCEPTED'},
+        queryParameters: {'role': roleQueryParam, 'status': 'ACCEPTED'},
       ).catchError((_) => Response(requestOptions: RequestOptions(path: ''), data: []));
       final sponsorshipThreads = _extractList(sponsorshipChatsResponse.data);
 
@@ -119,8 +134,8 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
           return <String, dynamic>{
             ...deal,
             'proposalName': thread['proposalName'] ?? (isCampaign ? 'Campaign Deal' : 'Untitled Project'),
-            'communityName': thread['counterpartName'] ?? 'Community',
-            'communityLogo': thread['counterpartAvatarUrl'],
+            'counterpartName': thread['counterpartName'] ?? (isBrand ? 'Community' : 'Brand Partner'),
+            'counterpartAvatarUrl': thread['counterpartAvatarUrl'],
             'sponsorshipInterestId': threadId,
             'hasReport': hasReport,
             'isCampaign': isCampaign,
@@ -136,7 +151,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
       // 4. Fetch space chats & deals
       final spacesResponse = await api.dio.get<dynamic>(
         '/spaces/chats',
-        queryParameters: {'role': 'BRAND', 'status': 'ACCEPTED'},
+        queryParameters: {'role': roleQueryParam, 'status': 'ACCEPTED'},
       ).catchError((_) => Response(requestOptions: RequestOptions(path: ''), data: []));
       final spaceThreads = _extractList(spacesResponse.data);
 
@@ -158,7 +173,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
           return <String, dynamic>{
             ...deal,
             'interestId': threadId,
-            'counterpartName': thread['counterpartName'] ?? 'Community Hub',
+            'counterpartName': thread['counterpartName'] ?? (isBrand ? 'Community Hub' : 'Hub Partner'),
             'counterpartAvatarUrl': thread['counterpartAvatarUrl'],
             'dealKind': 'HUB',
             'hasReport': hasReport,
@@ -184,14 +199,36 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
         }
       }
 
+      // For community/host, derive billing/invoicing rows from locked deals if raw billing is empty
+      List<Map<String, dynamic>> finalBilling = enrichedBilling;
+      if (!isBrand && finalBilling.isEmpty) {
+        finalBilling = combinedLockedDeals.map((d) {
+          final isPaid = (d['paymentStatus'] ?? '').toString().toUpperCase() == 'PAID' || d['paid'] == true;
+          return <String, dynamic>{
+            'id': d['id'] ?? d['sponsorshipInterestId'] ?? d['interestId'],
+            'sponsorshipInterestId': d['sponsorshipInterestId'] ?? d['interestId'],
+            'counterpartName': d['counterpartName'],
+            'counterpartAvatarUrl': d['counterpartAvatarUrl'] ?? d['communityLogo'],
+            'proposalName': d['proposalName'] ?? d['projectName'],
+            'totalAmount': d['dealAmount'] ?? d['totalAmount'] ?? d['sponsorshipAmount'],
+            'paymentStatus': isPaid ? 'PAID' : 'PENDING',
+            'paid': isPaid,
+            'isCampaign': d['isCampaign'] == true,
+            'createdAt': d['approvedAt'] ?? d['createdAt'],
+            'invoicePdfKey': d['invoicePdfKey'],
+          };
+        }).toList();
+      }
+
       if (!mounted) return;
       setState(() {
-        _billingRows = enrichedBilling;
+        _billingRows = finalBilling;
         _lockedDeals = combinedLockedDeals;
+        _isLoading = false;
       });
     } catch (error) {
       if (mounted) {
-        _showMessage('Could not load brand deals: $error', isError: true);
+        _showMessage('Could not load deals: $error', isError: true);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -502,6 +539,40 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
     );
   }
 
+  void _showReport(Map<String, dynamic> row) {
+    final interestId = (row['sponsorshipInterestId'] ?? row['interestId'] ?? '').toString();
+    if (interestId.isEmpty) return;
+    final isHub = row['dealKind'] == 'HUB';
+    final isCampaign = !isHub && (row['isCampaign'] == true || row['campaignId'] != null);
+    final name = (row['counterpartName'] ?? row['communityName'] ?? row['brandName'] ?? 'Partner').toString();
+    final project = (row['projectName'] ?? row['proposalName'] ?? 'Locked deal').toString();
+
+    final thread = UnifiedActiveThread(
+      id: interestId,
+      category: isHub ? 'spaces' : (isCampaign ? 'campaigns' : 'sponsorships'),
+      kind: isHub ? 'SPACE_INTEREST' : (isCampaign ? 'CAMPAIGN' : 'SPONSORSHIP'),
+      counterpartName: name,
+      counterpartAvatarUrl: row['counterpartAvatarUrl']?.toString() ?? row['communityLogo']?.toString(),
+      counterpartType: isHub ? 'SPACE' : 'COMMUNITY',
+      title: project,
+      rawThread: row,
+    );
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        side: BorderSide(color: Colors.black, width: 2.5),
+      ),
+      builder: (ctx) => DealReportModalSheet(
+        thread: thread,
+        deal: row,
+      ),
+    );
+  }
+
   void _showMessage(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -519,6 +590,8 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
     final interestId = row['sponsorshipInterestId']?.toString() ?? row['interestId']?.toString() ?? '';
     final hasReport = row['hasReport'] == true;
     final isCampaign = !hub && (row['isCampaign'] == true || row['campaignId'] != null);
+    final effectiveRole = widget.role ?? ref.read(authControllerProvider).role ?? AccountRole.brand;
+    final isBrand = effectiveRole == AccountRole.brand;
 
     return GestureDetector(
       onTap: interestId.isEmpty
@@ -670,25 +743,28 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
 
                 // Button: Report (if available in Locked Deals)
                 if (_selectedView == 0 && hasReport)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
-                    margin: const EdgeInsets.only(right: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.black, width: 1.5),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0),
-                      ],
-                    ),
-                    child: Text(
-                      'Report',
-                      style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.black),
+                  GestureDetector(
+                    onTap: () => _showReport(row),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.black, width: 1.5),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0),
+                        ],
+                      ),
+                      child: Text(
+                        'Report',
+                        style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.black),
+                      ),
                     ),
                   ),
 
-                // Button: Pay (in Billing if unpaid)
-                if (_selectedView == 1 && !hub && !paid && interestId.isNotEmpty)
+                // Button: Pay (in Billing if unpaid - brand only)
+                if (_selectedView == 1 && !hub && !paid && interestId.isNotEmpty && isBrand)
                   GestureDetector(
                     onTap: _isPaying ? null : () => _startPayment(row),
                     child: Container(

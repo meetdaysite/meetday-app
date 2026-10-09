@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meetday_app/features/auth/domain/account_role.dart';
@@ -10,6 +11,7 @@ import 'package:meetday_app/features/community/presentation/providers/chat_provi
 import 'package:meetday_app/features/community/presentation/providers/dashboard_provider.dart';
 import 'package:meetday_app/features/community/presentation/providers/support_chat_provider.dart';
 import 'package:meetday_app/features/community/presentation/spaces/space_dashboard_screen.dart';
+import 'package:meetday_app/features/home/presentation/home_screen.dart';
 import 'package:meetday_app/features/home/presentation/home_shell.dart';
 
 class FakeSecureStorage implements AppSecureStorage {
@@ -91,6 +93,11 @@ void main() {
   });
 
   testWidgets('Space accounts land on the live Hub dashboard', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.75;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -128,12 +135,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Hub dashboard'), findsOneWidget);
-    expect(find.text('Hey Northside Hall,'), findsOneWidget);
-    expect(find.text('Pune'), findsOneWidget);
-    expect(find.text('Explore brand campaigns'), findsOneWidget);
-    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    expect(find.textContaining('Hey Northside Hall,'), findsOneWidget);
+    expect(find.text('Raise Sponsorship'), findsOneWidget);
+    expect(find.text('Explore Campaigns'), findsOneWidget);
+    expect(find.text('My Proposals'), findsOneWidget);
+    expect(find.text('Brand Campaigns'), findsOneWidget);
+    expect(find.text('Summer Pop-up'), findsOneWidget);
+
+    await tester.tap(find.text('My Proposals'));
     await tester.pumpAndSettle();
+    expect(find.text('Experiences'), findsOneWidget);
     expect(find.text('Launch Night'), findsOneWidget);
   });
 
@@ -234,5 +245,23 @@ void main() {
   test('campaign interest uses backend roles for Community and Hub', () {
     expect(campaignInterestBackendRole(AccountRole.community), 'HOST');
     expect(campaignInterestBackendRole(AccountRole.space), 'SPACE');
+  });
+
+  testWidgets('HomeScreen renders with centered logo and cards', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.75;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(SvgPicture), findsWidgets);
+    expect(find.text('Community'), findsWidgets);
+    expect(find.text('RAISE SPONSORSHIP'), findsOneWidget);
   });
 }

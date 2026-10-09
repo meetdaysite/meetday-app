@@ -22,6 +22,7 @@ class CommunityDetailScreen extends ConsumerStatefulWidget {
     this.activeProposals = const [],
     this.onProposalClick,
     this.isBrandPreview = false,
+    this.isHub = false,
     this.onSelectTab,
     this.currentTabIndex = 2,
   });
@@ -30,6 +31,7 @@ class CommunityDetailScreen extends ConsumerStatefulWidget {
   final List<Map<String, dynamic>> activeProposals;
   final ValueChanged<String>? onProposalClick;
   final bool isBrandPreview;
+  final bool isHub;
   final ValueChanged<int>? onSelectTab;
   final int currentTabIndex;
 
@@ -142,6 +144,378 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     );
   }
 
+  void _openExperienceDialog(Map<String, dynamic> event, int eventIndex) {
+    final eventName = (event['name'] ?? 'Experience #${eventIndex + 1}').toString();
+    final eventDesc = (event['description'] ?? '').toString();
+    final images = (event['imageUrls'] as List?)?.map((u) => u.toString()).toList() ?? [];
+
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (ctx) {
+        int currentPhotoIdx = 0;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final hasImages = images.isNotEmpty;
+            final currentImage = hasImages ? images[currentPhotoIdx] : null;
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.88,
+                  maxWidth: 520,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.black, width: 3),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      offset: Offset(5, 5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: const BoxDecoration(
+                        border: Border(bottom: BorderSide(color: Colors.black, width: 2)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'EXPERIENCE #${eventIndex + 1}',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: MeetdayColors.primaryRed,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                Text(
+                                  eventName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF111111),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (images.length > 1)
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${currentPhotoIdx + 1} / ${images.length}',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          GestureDetector(
+                            onTap: () => Navigator.of(ctx).pop(),
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.black, width: 1.5),
+                              ),
+                              child: const Icon(Icons.close_rounded, size: 18, color: Colors.black),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Scrollable content
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Image with prev/next navigation
+                            if (currentImage != null)
+                              AspectRatio(
+                                aspectRatio: 1.2,
+                                child: Stack(
+                                  children: [
+                                    Container(
+                                      color: const Color(0xFF0F172A),
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      child: Image.network(
+                                        currentImage,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, _, _) => const Center(
+                                          child: Icon(Icons.broken_image_rounded, size: 40, color: Colors.white54),
+                                        ),
+                                      ),
+                                    ),
+                                    if (images.length > 1) ...[
+                                      Positioned(
+                                        left: 8,
+                                        top: 0,
+                                        bottom: 0,
+                                        child: Center(
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setDialogState(() {
+                                                currentPhotoIdx = (currentPhotoIdx - 1 + images.length) % images.length;
+                                              });
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(color: Colors.black, width: 2),
+                                                boxShadow: const [
+                                                  BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                                                ],
+                                              ),
+                                              child: const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Colors.black),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: 8,
+                                        top: 0,
+                                        bottom: 0,
+                                        child: Center(
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setDialogState(() {
+                                                currentPhotoIdx = (currentPhotoIdx + 1) % images.length;
+                                              });
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(color: Colors.black, width: 2),
+                                                boxShadow: const [
+                                                  BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                                                ],
+                                              ),
+                                              child: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.black),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+
+                            // Description block
+                            if (eventDesc.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFC940),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.black, width: 2),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'ABOUT THIS EXPERIENCE',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.black.withValues(alpha: 0.7),
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        eventDesc,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _openAllExperiencesDialog(List<Map<String, dynamic>> allEvents) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.88,
+              maxWidth: 600,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.black, width: 3),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black,
+                  offset: Offset(5, 5),
+                  blurRadius: 0,
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Colors.black, width: 2)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'All Past Experiences',
+                        style: GoogleFonts.bricolageGrotesque(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF111111),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.of(ctx).pop(),
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.black, width: 1.5),
+                          ),
+                          child: const Icon(Icons.close_rounded, size: 18, color: Colors.black),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(14),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: 0.85,
+                    ),
+                    itemCount: allEvents.length,
+                    itemBuilder: (context, idx) {
+                      final ev = allEvents[idx];
+                      final name = (ev['name'] ?? 'Experience #${idx + 1}').toString();
+                      final imgs = (ev['imageUrls'] as List?)?.map((u) => u.toString()).toList() ?? [];
+                      final img = imgs.isNotEmpty ? imgs.first : null;
+
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _openExperienceDialog(ev, idx);
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.black, width: 2),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                            ],
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: img != null
+                                    ? Image.network(img, fit: BoxFit.cover, width: double.infinity)
+                                    : Container(
+                                        color: const Color(0xFFF1F5F9),
+                                        child: const Center(child: Icon(Icons.photo_rounded, size: 30, color: Colors.black26)),
+                                      ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -205,25 +579,113 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     }
   }
 
+  Future<void> _sendHubInterest(String hubId) async {
+    if (_isSendingCollaboration) return;
+    setState(() => _isSendingCollaboration = true);
+    try {
+      final isBrand = ref.read(authControllerProvider).role == AccountRole.brand;
+      final api = ref.read(apiClientProvider);
+      final response = await api.dio.post<dynamic>(
+        '/spaces/community/$hubId/interest',
+        data: {'asRole': isBrand ? 'BRAND' : 'COMMUNITY'},
+      );
+      final responseData = response.data;
+      final result = responseData is Map
+          ? (responseData['data'] is Map ? responseData['data'] : responseData)
+          : null;
+      final alreadyInterested =
+          result is Map && result['alreadyInterested'] == true;
+
+      ref.invalidate(chatHubProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            alreadyInterested
+                ? 'You already sent interest. Check your chat requests.'
+                : 'Interest sent. The space partner must accept before chat opens.',
+          ),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+      Navigator.of(context).pop();
+      widget.onSelectTab?.call(isBrand ? 9 : 5);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not send interest: $error'),
+          backgroundColor: MeetdayColors.primaryRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSendingCollaboration = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.community;
     final name = (c['name'] ?? c['title'] ?? 'Community').toString();
     final logoUrl = c['logoUrl'] as String?;
-    final secondaryImageUrl = c['secondaryImageUrl'] as String?;
+    final secondaryImageUrl = (c['secondaryImageUrl'] ?? c['posterUrl']) as String?;
     final about = (c['about'] ?? '').toString();
-    final size = (c['size'] ?? c['memberCount'] ?? '—').toString();
+    final size = (c['size'] ?? c['memberCount'] ?? c['venueCapacity'] ?? '—').toString();
     final avgGuestCount = (c['avgGuestCount'] ?? '').toString();
     final experiencesPerYear = (c['experiencesPerYear'] ?? '').toString();
+    final numberOfVenues = (c['numberOfVenues'] ?? '').toString();
+    final businessName = (c['businessName'] ?? '').toString();
     final currentRole = ref.watch(authControllerProvider).role;
     final canCollaborate = !widget.isBrandPreview &&
       (currentRole == AccountRole.community || currentRole == AccountRole.brand);
 
+    final isHub = widget.isHub || c['isHub'] == true || c['type'] == 'HUB';
     final categories = (c['categories'] as List?)?.whereType<Map>().toList() ?? [];
-    final operatingCities = (c['operatingCities'] as List?)?.map((e) => e.toString()).toList() ?? [];
+    final operatingCities = (c['operatingCities'] as List?)?.map((e) => e.toString()).toList() ??
+        (c['locations'] as List?)?.map((e) => e.toString()).toList() ??
+        (c['activeLocations'] as List?)?.map((e) => e.toString()).toList() ??
+        [];
     final socialLinks = c['socialLinks'] is Map ? c['socialLinks'] as Map : null;
     final pastEvents = (c['pastEvents'] as List?)?.whereType<Map>().toList() ?? [];
     final brandsWorkedWith = (c['brandsWorkedWith'] as List?)?.whereType<Map>().toList() ?? [];
+    final showcaseUrls = (c['centreShowcaseUrls'] as List?)?.map((e) => e.toString()).toList() ?? [];
+    final communitySize = (c['communitySize'] ?? c['memberCount'] ?? '').toString();
+    final videoLink = (c['videoLink'] ?? socialLinks?['videoLink'])?.toString();
+
+    // Check if communication channel already exists with this hub
+    final chatHubData = ref.watch(chatHubProvider).asData?.value;
+    final hubId = (c['id'] ?? '').toString();
+    final spaceProfileId = (c['spaceProfileId'] ?? '').toString();
+    bool hasExistingChannel = false;
+    if (isHub && chatHubData != null) {
+      final activeSpaceThreads = chatHubData.activeThreadsByCategory['spaces'] ?? [];
+      for (final th in activeSpaceThreads) {
+        final raw = th.rawThread;
+        final rHubId = raw['spaceCommunityProfileId']?.toString();
+        final rSpaceId = raw['spaceProfileId']?.toString();
+        if ((hubId.isNotEmpty && rHubId == hubId) ||
+            (spaceProfileId.isNotEmpty && rSpaceId == spaceProfileId)) {
+          hasExistingChannel = true;
+          break;
+        }
+      }
+      if (!hasExistingChannel) {
+        final spaceRequests = chatHubData.allRequests.where((r) => r.category == 'spaces');
+        for (final req in spaceRequests) {
+          final raw = req.rawItem;
+          final rHubId = raw['spaceCommunityProfileId']?.toString();
+          final rSpaceId = raw['spaceProfileId']?.toString();
+          if ((hubId.isNotEmpty && rHubId == hubId) ||
+              (spaceProfileId.isNotEmpty && rSpaceId == spaceProfileId)) {
+            hasExistingChannel = true;
+            break;
+          }
+        }
+      }
+    }
+
+    final hasSocial = socialLinks != null && socialLinks.values.any((v) => v != null && v.toString().trim().isNotEmpty);
+    final hasVideo = videoLink != null && videoLink.trim().isNotEmpty;
 
     final hostData = ref.watch(hostProfileProvider).asData?.value;
     final commData = ref.watch(communityProfileProvider).asData?.value;
@@ -372,7 +834,9 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  widget.isBrandPreview ? 'Back to Profile' : 'Back to Communities',
+                  widget.isBrandPreview
+                      ? 'Back to Profile'
+                      : (isHub ? 'Back to Hubs' : 'Back to Communities'),
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -514,6 +978,17 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                               color: const Color(0xFF111111),
                             ),
                           ),
+                          if (isHub && businessName.isNotEmpty && businessName != name) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              businessName,
+                              style: GoogleFonts.poppins(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF667085),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
 
                           // Badges Row
@@ -521,11 +996,21 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                             spacing: 6,
                             runSpacing: 6,
                             children: [
-                              _statPill(size, 'Members'),
-                              if (avgGuestCount.isNotEmpty && avgGuestCount != '—')
-                                _statPill(avgGuestCount, 'Avg Guests'),
-                              if (experiencesPerYear.isNotEmpty && experiencesPerYear != '—')
-                                _statPill(experiencesPerYear, 'Events / Yr'),
+                              if (isHub) ...[
+                                if (numberOfVenues.isNotEmpty && numberOfVenues != '0')
+                                  _statPill(numberOfVenues, 'Venues'),
+                                _statPill(size, 'Capacity'),
+                                if (communitySize.isNotEmpty && communitySize != '0' && communitySize != '—')
+                                  _statPill(communitySize, 'Members'),
+                                if (experiencesPerYear.isNotEmpty && experiencesPerYear != '—')
+                                  _statPill(experiencesPerYear, 'Exp / Yr'),
+                              ] else ...[
+                                _statPill(size, 'Members'),
+                                if (avgGuestCount.isNotEmpty && avgGuestCount != '—')
+                                  _statPill(avgGuestCount, 'Avg Guests'),
+                                if (experiencesPerYear.isNotEmpty && experiencesPerYear != '—')
+                                  _statPill(experiencesPerYear, 'Events / Yr'),
+                              ],
                             ],
                           ),
                         ],
@@ -534,11 +1019,11 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                   ],
                 ),
 
-                // About The Community
+                // About Section
                 if (about.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   Text(
-                    'About The Community',
+                    isHub ? 'About The Space' : 'About The Community',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -566,10 +1051,122 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                   ),
                 ],
 
-                if (canCollaborate) ...[
+                if (isHub) ...[
                   const SizedBox(height: 16),
-                  SizedBox(
+                  if (hasExistingChannel) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'A communication channel already exists with this hub.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              if (Navigator.of(context).canPop()) {
+                                Navigator.of(context).pop();
+                              }
+                              final isBrand = currentRole == AccountRole.brand;
+                              widget.onSelectTab?.call(isBrand ? 9 : 5);
+                            },
+                            icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                            label: Text(
+                              'GO TO CHANNEL',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: MeetdayColors.accentYellow,
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side: const BorderSide(color: Colors.black, width: 2),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 11),
+                              elevation: 0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    Container(
+                      width: double.infinity,
+                      decoration: const BoxDecoration(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton.icon(
+                        onPressed: _isSendingCollaboration
+                            ? null
+                            : () => _sendHubInterest((c['id'] ?? '').toString()),
+                        icon: _isSendingCollaboration
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.send_rounded, size: 18),
+                        label: Text(
+                          _isSendingCollaboration ? 'Sending...' : 'I\'M INTERESTED',
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.5),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: MeetdayColors.primaryRed,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: Colors.black, width: 2),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ] else if (canCollaborate) ...[
+                  const SizedBox(height: 16),
+                  Container(
                     width: double.infinity,
+                    decoration: const BoxDecoration(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(2, 2),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
                     child: ElevatedButton.icon(
                       onPressed: _isSendingCollaboration
                           ? null
@@ -581,26 +1178,29 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
                           : const Icon(Icons.handshake_rounded, size: 18),
-                      label: Text(_isSendingCollaboration ? 'Sending...' : 'COLLABORATE'),
+                      label: Text(
+                        _isSendingCollaboration ? 'Sending...' : 'COLLABORATE',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.5),
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: MeetdayColors.primaryRed,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                           side: const BorderSide(color: Colors.black, width: 2),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
                         elevation: 0,
                       ),
                     ),
                   ),
                 ],
 
-                // Experience Categories
+                // Experience / Venue Categories
                 if (categories.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   Text(
-                    'Experience Categories',
+                    isHub ? 'Venue / Event Categories' : 'Experience Categories',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -641,11 +1241,11 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                   ),
                 ],
 
-                // Operating Cities
+                // Operating Cities / Locations
                 if (operatingCities.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   Text(
-                    'Operating Cities',
+                    isHub ? 'Venue Locations' : 'Operating Cities',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -678,7 +1278,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                 ],
 
                 // Digital Presence / Social Links
-                if (socialLinks != null && socialLinks.values.any((v) => v != null && v.toString().trim().isNotEmpty)) ...[
+                if (hasSocial || hasVideo) ...[
                   const SizedBox(height: 18),
                   Text(
                     'Digital Presence',
@@ -693,14 +1293,16 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      if (socialLinks['instagram'] != null && socialLinks['instagram'].toString().trim().isNotEmpty)
+                      if (socialLinks?['instagram'] != null && socialLinks!['instagram'].toString().trim().isNotEmpty)
                         _socialChip('Instagram', socialLinks['instagram'].toString()),
-                      if (socialLinks['linkedin'] != null && socialLinks['linkedin'].toString().trim().isNotEmpty)
+                      if (socialLinks?['linkedin'] != null && socialLinks!['linkedin'].toString().trim().isNotEmpty)
                         _socialChip('LinkedIn', socialLinks['linkedin'].toString()),
-                      if (socialLinks['youtube'] != null && socialLinks['youtube'].toString().trim().isNotEmpty)
+                      if (socialLinks?['youtube'] != null && socialLinks!['youtube'].toString().trim().isNotEmpty)
                         _socialChip('YouTube', socialLinks['youtube'].toString()),
-                      if (socialLinks['website'] != null && socialLinks['website'].toString().trim().isNotEmpty)
+                      if (socialLinks?['website'] != null && socialLinks!['website'].toString().trim().isNotEmpty)
                         _socialChip('Website', socialLinks['website'].toString()),
+                      if (hasVideo)
+                        _videoChip('▶ Watch Video', videoLink.trim()),
                     ],
                   ),
                 ],
@@ -772,11 +1374,11 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
             ),
           ),
 
-          // Community Poster (Secondary Image)
+          // Poster (Secondary Image)
           if (secondaryImageUrl != null && secondaryImageUrl.isNotEmpty) ...[
             const SizedBox(height: 22),
             Text(
-              'Community Poster',
+              isHub ? 'Venue Space Poster' : 'Community Poster',
               style: GoogleFonts.bricolageGrotesque(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
@@ -785,7 +1387,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
             ),
             const SizedBox(height: 8),
             GestureDetector(
-              onTap: () => _openImageDialog(secondaryImageUrl, '$name Poster', null),
+              onTap: () => _openImageDialog(secondaryImageUrl, isHub ? '$name Poster' : '$name Poster', null),
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -854,13 +1456,107 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
           ),
           ],
 
+          // Venue Spaces & Showcase Gallery (for Hubs)
+          if (isHub && showcaseUrls.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Text(
+                  'Venue Spaces & Gallery',
+                  style: GoogleFonts.bricolageGrotesque(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111111),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: MeetdayColors.accentYellow,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.black, width: 1.2),
+                  ),
+                  child: Text(
+                    '${showcaseUrls.length}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 190,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: showcaseUrls.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 12),
+                itemBuilder: (ctx, idx) {
+                  final imgUrl = showcaseUrls[idx];
+                  return GestureDetector(
+                    onTap: () => _openImageDialog(imgUrl, '$name Space ${idx + 1}', null),
+                    child: Container(
+                      width: 210,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.black, width: 2.5),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(3, 3),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(15.5),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.network(
+                              imgUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Center(
+                                child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.black26),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.black, width: 1.2),
+                                ),
+                                child: const Icon(Icons.zoom_in_rounded, size: 14, color: Colors.black),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+
           // Past Experiences Gallery
           if (pastEvents.isNotEmpty) ...[
             const SizedBox(height: 24),
             Row(
               children: [
                 Text(
-                  'Past Experiences',
+                  isHub ? 'Past Events Hosted' : 'Past Experiences',
                   style: GoogleFonts.bricolageGrotesque(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -884,6 +1580,20 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                     ),
                   ),
                 ),
+                if (pastEvents.length > 5) ...[
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => _openAllExperiencesDialog(pastEvents.cast<Map<String, dynamic>>()),
+                    child: Text(
+                      'View All >',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF6C32D1),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 10),
@@ -902,11 +1612,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                   final firstImage = eventImages.isNotEmpty ? eventImages.first : null;
 
                   return GestureDetector(
-                    onTap: () {
-                      if (firstImage != null) {
-                        _openImageDialog(firstImage, eventName, eventDesc);
-                      }
-                    },
+                    onTap: () => _openExperienceDialog(event.cast<String, dynamic>(), idx),
                     child: Container(
                       width: 160,
                       decoration: BoxDecoration(
@@ -1132,6 +1838,35 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
               color: MeetdayColors.primaryRed,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _videoChip(String label, String url) {
+    return GestureDetector(
+      onTap: () => _copyToClipboard(url, 'Video'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF6C32D1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.black, width: 1.2),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black,
+              offset: Offset(1, 1),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+          ),
         ),
       ),
     );

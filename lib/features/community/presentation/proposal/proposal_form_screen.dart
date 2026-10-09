@@ -11,6 +11,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
 import '../../../auth/domain/account_role.dart';
 import '../../../auth/state/auth_provider.dart';
+import '../widgets/ai_cooking_loading_card.dart';
 import '../widgets/google_venue_autocomplete_field.dart';
 
 /// Full-featured Experience / Sponsorship Proposal Creation & Editing screen.
@@ -476,93 +477,117 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Describe your event idea or format. AI Copilot will generate a complete, structured sponsorship proposal draft.',
-                style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF9FAFB),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.black, width: 1.8),
-                ),
-                child: TextField(
-                  controller: promptController,
-                  maxLines: 4,
-                  style: GoogleFonts.poppins(fontSize: 12),
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. Creator meetup and panel discussion for 200 video creators in Mumbai...',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    errorBorder: InputBorder.none,
-                    filled: false,
-                    contentPadding: EdgeInsets.all(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _copilotDocUploading
-                          ? 'Reading document...'
-                          : _copilotDocFile?.name ?? 'Optional PDF, DOCX, or PPTX context (max 10 MB)',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(fontSize: 9, color: Colors.black54),
+          content: isGenerating
+              ? const MeetdayAiCookingLoadingCard(isCampaign: false)
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Describe your event idea or format. AI Copilot will generate a complete, structured sponsorship proposal draft.',
+                      style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54),
                     ),
-                  ),
-                  TextButton.icon(
-                    onPressed: isGenerating || _copilotDocUploading
-                        ? null
-                        : () => _pickCopilotDocument(setDialogState),
-                    icon: _copilotDocUploading
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.attach_file, size: 16),
-                    label: const Text('Attach'),
-                  ),
-                  if (_copilotDocFile != null)
-                    IconButton(
-                      tooltip: 'Remove context document',
-                      onPressed: () => setDialogState(() {
-                        _copilotDocFile = null;
-                        _copilotDocText = null;
-                      }),
-                      icon: const Icon(Icons.close, size: 17),
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.black, width: 1.8),
+                      ),
+                      child: TextField(
+                        controller: promptController,
+                        maxLines: 4,
+                        style: GoogleFonts.poppins(fontSize: 12),
+                        decoration: const InputDecoration(
+                          hintText: 'e.g. Creator meetup and panel discussion for 200 video creators in Mumbai...',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          filled: false,
+                          contentPadding: EdgeInsets.all(10),
+                        ),
+                      ),
                     ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: isGenerating ? null : () => Navigator.pop(ctx),
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.black54),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7C3AED),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: const BorderSide(color: Colors.black, width: 1.5),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _copilotDocUploading
+                                ? 'Reading document...'
+                                : _copilotDocFile?.name ?? 'Optional PDF, DOCX, or PPTX context (max 10 MB)',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(fontSize: 9, color: Colors.black54),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: isGenerating || _copilotDocUploading
+                              ? null
+                              : () => _pickCopilotDocument(setDialogState),
+                          icon: _copilotDocUploading
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.attach_file, size: 16),
+                          label: const Text('Attach'),
+                        ),
+                        if (_copilotDocFile != null)
+                          IconButton(
+                            tooltip: 'Remove context document',
+                            onPressed: () => setDialogState(() {
+                              _copilotDocFile = null;
+                              _copilotDocText = null;
+                            }),
+                            icon: const Icon(Icons.close, size: 17),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
-              ),
-              onPressed: isGenerating
-                  ? null
-                  : () async {
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: isGenerating
+              ? null
+              : [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.black87,
+                            side: const BorderSide(color: Colors.black, width: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          onPressed: isGenerating ? null : () => Navigator.pop(ctx),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF7C3AED),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: Colors.black, width: 2),
+                            ),
+                          ),
+                          onPressed: isGenerating
+                              ? null
+                              : () async {
                       final prompt = promptController.text.trim();
                       if (prompt.length < 20 || prompt.length > 8000) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -640,15 +665,18 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                         );
                       }
                     },
-              child: isGenerating
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text('Generate Draft', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
-            ),
-          ],
+                          child: isGenerating
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : Text('Generate Draft', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
         ),
       ),
     );
@@ -1043,9 +1071,28 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+        leadingWidth: 56,
+        leading: Center(
+          child: GestureDetector(
+            onTap: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.black, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black, offset: Offset(2, 2)),
+                ],
+              ),
+              child: const Icon(Icons.arrow_back_rounded, color: Colors.black, size: 20),
+            ),
+          ),
         ),
         title: Text(
           _isEditing ? 'Edit Proposal' : 'Create Proposal',
@@ -1112,6 +1159,38 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Clickable Back Option
+              GestureDetector(
+                onTap: () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.arrow_back_rounded,
+                        size: 16,
+                        color: MeetdayColors.primaryRed,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Back to Proposals',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: MeetdayColors.primaryRed,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
               // Header title card
               Text(
                 _isEditing ? 'Edit Proposal Details' : 'Create New Proposal',
@@ -1453,9 +1532,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                                 placeholder: 'Venue (e.g. Palace Grounds)',
                                 onChanged: (value) => _venues[idx]['venue'] = value,
                                 onCitySelected: (city) {
-                                  if ((_venues[idx]['city'] ?? '').trim().isEmpty) {
-                                    setState(() => _venues[idx]['city'] = city);
-                                  }
+                                  setState(() => _venues[idx]['city'] = city);
                                 },
                               ),
                             ),

@@ -14,6 +14,8 @@ import '../../../../core/theme/meetday_colors.dart';
 import '../../../auth/domain/account_role.dart';
 import '../../../auth/state/auth_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/dashboard_provider.dart';
+import 'chat_formatting_utils.dart';
 
 String _spaceChatRole(AccountRole? role) {
   if (role == AccountRole.brand) return 'BRAND';
@@ -287,6 +289,20 @@ class _CommunityChatHubScreenState
   }
 
   void _openThread(UnifiedActiveThread thread) {
+    try {
+      final api = ref.read(apiClientProvider);
+      unawaited(
+        api.dio.patch<dynamic>(
+          '/notifications/read-by-thread',
+          data: {'threadId': thread.id},
+        ).then((_) {
+          if (mounted) {
+            ref.invalidate(unreadNotificationsCountProvider);
+            ref.invalidate(notificationsProvider);
+          }
+        }).catchError((_) {}),
+      );
+    } catch (_) {}
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => ChatThreadScreen(thread: thread)),
     );
@@ -2221,6 +2237,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   bool _isSending = false;
   bool _hasInitiallyScrolled = false;
   bool _showEmojiPicker = false;
+  bool _showFormattingBar = false;
   UnifiedChatMessage? _replyingTo;
   UnifiedChatMessage? _editingMessage;
   Timer? _messageRefreshTimer;
@@ -2228,9 +2245,27 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    _markThreadAndNotificationsRead();
     _messageRefreshTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       if (mounted) ref.invalidate(chatMessagesProvider(widget.thread));
     });
+  }
+
+  void _markThreadAndNotificationsRead() {
+    try {
+      final api = ref.read(apiClientProvider);
+      unawaited(
+        api.dio.patch<dynamic>(
+          '/notifications/read-by-thread',
+          data: {'threadId': widget.thread.id},
+        ).then((_) {
+          if (mounted) {
+            ref.invalidate(unreadNotificationsCountProvider);
+            ref.invalidate(notificationsProvider);
+          }
+        }).catchError((_) {}),
+      );
+    } catch (_) {}
   }
 
   @override
@@ -3017,6 +3052,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
               ),
             ],
 
+            // Chat formatting toolbar
+            if (_showFormattingBar)
+              ChatFormattingToolbar(
+                onApplyFormat: (prefix, suffix) {
+                  applyChatFormatting(_textController, prefix, suffix);
+                  setState(() {});
+                },
+                onClose: () => setState(() => _showFormattingBar = false),
+              ),
+
             // Composer bar
             Container(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -3081,6 +3126,38 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       child: const Center(
                         child: Icon(
                           Icons.emoji_emotions_outlined,
+                          size: 20,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Format button
+                  GestureDetector(
+                    onTap: () =>
+                        setState(() => _showFormattingBar = !_showFormattingBar),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _showFormattingBar
+                            ? MeetdayColors.accentYellow
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.text_format_rounded,
                           size: 20,
                           color: Colors.black87,
                         ),
@@ -3900,7 +3977,12 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       bubbleBg = const Color(0xFFF3F4F6);
       textColor = Colors.black;
     } else if (isMe) {
-      if (isBrandViewer) {
+      final isSpaceViewer =
+          ref.watch(authControllerProvider).role == AccountRole.space;
+      if (isSpaceViewer) {
+        bubbleBg = Colors.black;
+        textColor = Colors.white;
+      } else if (isBrandViewer) {
         bubbleBg = MeetdayColors.primaryRed;
         textColor = Colors.white;
       } else {
@@ -4111,14 +4193,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                             if (msg.content.isNotEmpty)
                               RichText(
                                 text: TextSpan(
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: textColor,
-                                    height: 1.35,
-                                  ),
                                   children: [
-                                    TextSpan(text: msg.content),
+                                    ...parseChatFormattedText(
+                                      msg.content,
+                                      baseStyle: GoogleFonts.poppins(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: textColor,
+                                        height: 1.35,
+                                      ),
+                                      isDarkBubble: isDarkBubble,
+                                    ),
                                     if (msg.isEdited)
                                       TextSpan(
                                         text: ' (edited)',
@@ -4275,6 +4360,15 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Formatting shortcuts on long press
+              buildChatFormattingActionRow(
+                onFormat: (prefix, suffix) {
+                  Navigator.of(ctx).pop();
+                  applyChatFormatting(_textController, prefix, suffix);
+                  setState(() => _showFormattingBar = true);
+                },
+              ),
+              const Divider(color: Colors.black12, thickness: 1, indent: 16, endIndent: 16),
               if (!msg.isDeleted)
                 ListTile(
                   leading: const Icon(Icons.reply_rounded, color: Colors.black),
@@ -5086,7 +5180,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         side: BorderSide(color: Colors.black, width: 2.5),
       ),
-      builder: (ctx) => _DealReportModalSheet(
+      builder: (ctx) => DealReportModalSheet(
         thread: widget.thread,
         initialReport: initialReport,
         deal: deal,
@@ -5759,23 +5853,24 @@ class _DealDetailsModalSheetState
 // ─── Deal Report Modal Bottom Sheet Widget (Frontend DealReportModal) ────────
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _DealReportModalSheet extends ConsumerStatefulWidget {
+class DealReportModalSheet extends ConsumerStatefulWidget {
   final UnifiedActiveThread thread;
   final Map<String, dynamic>? initialReport;
   final Map<String, dynamic>? deal;
 
-  const _DealReportModalSheet({
+  const DealReportModalSheet({
+    super.key,
     required this.thread,
     this.initialReport,
     this.deal,
   });
 
   @override
-  ConsumerState<_DealReportModalSheet> createState() =>
+  ConsumerState<DealReportModalSheet> createState() =>
       _DealReportModalSheetState();
 }
 
-class _DealReportModalSheetState extends ConsumerState<_DealReportModalSheet> {
+class _DealReportModalSheetState extends ConsumerState<DealReportModalSheet> {
   bool isLoading = true;
   bool isEditing = false;
   bool isSaving = false;

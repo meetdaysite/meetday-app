@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
 import '../providers/dashboard_provider.dart';
+import '../widgets/ai_cooking_loading_card.dart';
+import '../widgets/google_venue_autocomplete_field.dart';
 
 const List<String> _kAudienceOptions = [
   'Tech Developers',
@@ -36,9 +38,14 @@ const List<String> _kGoalOptions = [
 /// Replicates `meetday-frontend` (/brand/dashboard/campaigns) with full creation,
 /// editing, status filtering, and live backend connectivity.
 class BrandCampaignsScreen extends ConsumerStatefulWidget {
-  const BrandCampaignsScreen({super.key, this.onBack});
+  const BrandCampaignsScreen({
+    super.key,
+    this.onBack,
+    this.backLabel = 'Back to Create',
+  });
 
   final VoidCallback? onBack;
+  final String backLabel;
 
   @override
   ConsumerState<BrandCampaignsScreen> createState() =>
@@ -156,7 +163,7 @@ class _BrandCampaignsScreenState extends ConsumerState<BrandCampaignsScreen> {
                         ),
                         const SizedBox(width: 5),
                         Text(
-                          'Back to Explore',
+                          widget.backLabel,
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -1648,121 +1655,117 @@ class _BrandCampaignFormSheetState
                           ],
                         ),
                         if (_isAiOpen) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            'Describe your campaign in a minimum of 20 words to continue',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextField(
-                            controller: _aiPromptController,
-                            maxLines: 3,
-                            decoration: InputDecoration(
-                              hintText:
-                                  'e.g. We want to sample our new energy drink at rooftop networking meetups for young professionals in Bangalore and Mumbai over the next quarter.',
-                              hintStyle: GoogleFonts.poppins(
+                          if (_isAiGenerating) ...[
+                            const SizedBox(height: 12),
+                            const MeetdayAiCookingLoadingCard(isCampaign: true),
+                          ] else ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Describe your campaign in a minimum of 20 words to continue',
+                              style: GoogleFonts.poppins(
                                 fontSize: 11,
-                                color: Colors.black38,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.all(10),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Colors.black,
-                                  width: 1.5,
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Colors.black,
-                                  width: 1.5,
-                                ),
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: _isExtractingDocument
-                                ? null
-                                : _pickCopilotDocument,
-                            icon: _isExtractingDocument
-                                ? const SizedBox(
-                                    width: 15,
-                                    height: 15,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.upload_file_rounded,
-                                    size: 17,
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: _aiPromptController,
+                              maxLines: 3,
+                              decoration: InputDecoration(
+                                hintText:
+                                    'e.g. We want to sample our new energy drink at rooftop networking meetups for young professionals in Bangalore and Mumbai over the next quarter.',
+                                hintStyle: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: Colors.black38,
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.all(10),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Colors.black,
+                                    width: 1.5,
                                   ),
-                            label: Text(
-                              _isExtractingDocument
-                                  ? 'Reading document…'
-                                  : _copilotDocumentName ??
-                                        'Add PDF, DOCX or PPTX (optional)',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (_copilotDocumentName != null)
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton.icon(
-                                onPressed: _isExtractingDocument
-                                    ? null
-                                    : () => setState(() {
-                                        _copilotDocumentName = null;
-                                        _copilotDocumentText = null;
-                                      }),
-                                icon: const Icon(Icons.close_rounded, size: 15),
-                                label: const Text('Remove document'),
-                              ),
-                            ),
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 8,
                                 ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Colors.black,
+                                    width: 1.5,
+                                  ),
                                 ),
                               ),
-                              onPressed: _isAiGenerating
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _isExtractingDocument
                                   ? null
-                                  : _generateAiDraft,
-                              child: _isAiGenerating
+                                  : _pickCopilotDocument,
+                              icon: _isExtractingDocument
                                   ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
+                                      width: 15,
+                                      height: 15,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: Colors.white,
                                       ),
                                     )
-                                  : Text(
-                                      'Start Cooking ✨',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                                  : const Icon(
+                                      Icons.upload_file_rounded,
+                                      size: 17,
                                     ),
+                              label: Text(
+                                _isExtractingDocument
+                                    ? 'Reading document…'
+                                    : _copilotDocumentName ??
+                                          'Add PDF, DOCX or PPTX (optional)',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
+                            if (_copilotDocumentName != null)
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: _isExtractingDocument
+                                      ? null
+                                      : () => setState(() {
+                                          _copilotDocumentName = null;
+                                          _copilotDocumentText = null;
+                                        }),
+                                  icon: const Icon(Icons.close_rounded, size: 15),
+                                  label: const Text('Remove document'),
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.black,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: _isAiGenerating
+                                    ? null
+                                    : _generateAiDraft,
+                                child: Text(
+                                  'Start Cooking ✨',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ],
                     ),
@@ -1861,14 +1864,23 @@ class _BrandCampaignFormSheetState
                 // 5. Where? (City / Region) *
                 _fieldLabel('Where? (City / Region) *'),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _locationInputController,
-                        decoration: _inputDecoration(
-                          'e.g., "Delhi", "Mumbai" (press Add or Enter)',
-                        ),
-                        onSubmitted: (_) => _addLocation(),
+                      child: GoogleVenueAutocompleteField(
+                        value: _locationInputController.text,
+                        placeholder: 'Search city or region (e.g. Bangalore)',
+                        onChanged: (val) {
+                          _locationInputController.text = val;
+                        },
+                        onCitySelected: (city) {
+                          if (city.isNotEmpty && !_locations.contains(city)) {
+                            setState(() {
+                              _locations.add(city);
+                              _locationInputController.clear();
+                            });
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),

@@ -98,6 +98,74 @@ class ApiClient {
     return _unwrapData(response.data);
   }
 
+  Future<Map<String, dynamic>> updateSpaceProfile(
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await dio.patch<Map<String, dynamic>>(
+      '/spaces/me',
+      data: payload,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> getSpaceCommunityProfile() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/spaces/community',
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>> activateSpaceCommunityProfile(
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/spaces/community',
+      data: payload,
+      options: Options(headers: _authHeaders()),
+    );
+    return _unwrapData(response.data);
+  }
+
+  Future<Map<String, dynamic>?> getSpaceDeal(String interestId) async {
+    try {
+      final response = await dio.get<dynamic>(
+        '/spaces/chats/$interestId/deal',
+        options: Options(headers: _authHeaders()),
+      );
+      final dynamic raw = response.data;
+      if (raw is Map && raw['data'] is Map) {
+        return Map<String, dynamic>.from(raw['data'] as Map);
+      }
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getSpaceDealReport(
+    String interestId, [
+    String role = 'SPACE',
+  ]) async {
+    try {
+      final response = await dio.get<dynamic>(
+        '/spaces/chats/$interestId/deal/report',
+        queryParameters: {'role': role},
+        options: Options(headers: _authHeaders()),
+      );
+      final dynamic raw = response.data;
+      if (raw is Map && raw['data'] is Map) {
+        return Map<String, dynamic>.from(raw['data'] as Map);
+      }
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> updateBrandProfile(
     Map<String, dynamic> payload,
   ) async {

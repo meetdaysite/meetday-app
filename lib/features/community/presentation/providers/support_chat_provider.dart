@@ -93,12 +93,14 @@ class SupportChatMessage {
 
 // ─── Support Chat Provider ───────────────────────────────────────────────────
 
-final supportChatMessagesProvider = FutureProvider.autoDispose<List<SupportChatMessage>>((ref) async {
+final supportChatMessagesProvider =
+    FutureProvider.autoDispose.family<List<SupportChatMessage>, AccountRole?>((ref, roleOverride) async {
   final api = ref.watch(apiClientProvider);
-  final role = ref.watch(authControllerProvider).role;
-  final contextParam = role == AccountRole.brand
+  final authRole = ref.watch(authControllerProvider).role;
+  final effectiveRole = roleOverride ?? authRole;
+  final contextParam = effectiveRole == AccountRole.brand
       ? 'BRAND'
-      : (role == AccountRole.space ? 'SPACE' : 'HOST');
+      : (effectiveRole == AccountRole.space ? 'SPACE' : 'HOST');
 
   try {
     final res = await api.dio.get<dynamic>('/meetday-chat/messages', queryParameters: {'context': contextParam});

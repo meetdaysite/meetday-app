@@ -50,10 +50,12 @@ class CampaignsScreen extends ConsumerStatefulWidget {
     super.key,
     this.onBack,
     this.onInterestSent,
+    this.backLabel = 'Back to Explore',
   });
 
   final VoidCallback? onBack;
   final VoidCallback? onInterestSent;
+  final String backLabel;
 
   @override
   ConsumerState<CampaignsScreen> createState() => _CampaignsScreenState();
@@ -123,7 +125,7 @@ class _CampaignsScreenState extends ConsumerState<CampaignsScreen> {
                       ),
                       const SizedBox(width: 5),
                       Text(
-                        'Back to Explore',
+                        widget.backLabel,
                         style: GoogleFonts.poppins(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,

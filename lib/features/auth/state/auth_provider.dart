@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -119,7 +120,25 @@ class AuthController extends Notifier<AuthState> {
       }
     }
 
+    if (error is PlatformException) {
+      if (error.code == 'network_error' || (error.message?.contains('7:') ?? false)) {
+        return 'Network connection to Google failed. Please check your internet connection.';
+      }
+      if (error.message?.contains('10:') ?? false) {
+        return 'Google Sign-In configuration error (SHA-1 fingerprint mismatch).';
+      }
+      if (error.message != null && error.message!.trim().isNotEmpty) {
+        return error.message!.trim();
+      }
+    }
+
     final text = error.toString();
+    if (text.contains('ApiException: 7')) {
+      return 'Network connection to Google failed. Please check your internet connection.';
+    }
+    if (text.contains('ApiException: 10')) {
+      return 'Google Sign-In configuration error (SHA-1 fingerprint mismatch).';
+    }
     if (text.startsWith('Exception: ')) {
       final message = text.substring('Exception: '.length).trim();
       if (message.isNotEmpty) return message;

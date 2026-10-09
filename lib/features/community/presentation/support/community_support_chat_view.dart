@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,18 +11,23 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
 import '../../../auth/domain/account_role.dart';
 import '../../../auth/state/auth_provider.dart';
+import '../chat/chat_formatting_utils.dart';
+import '../providers/dashboard_provider.dart';
 import '../providers/support_chat_provider.dart';
 
 /// Meetday Support Chat screen matching the web dashboard MeetdayChatPanel.
 /// Provides direct concierge communication with the Meetday admin and bot team.
 class CommunitySupportChatView extends ConsumerStatefulWidget {
-  const CommunitySupportChatView({super.key});
+  const CommunitySupportChatView({super.key, this.role});
+
+  final AccountRole? role;
 
   @override
   ConsumerState<CommunitySupportChatView> createState() => _CommunitySupportChatViewState();
 }
 
-class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatView> {
+class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatView>
+    with AutomaticKeepAliveClientMixin {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
@@ -31,24 +37,67 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
 
   bool _isSending = false;
   bool _showEmojiPicker = false;
+  bool _showFormattingBar = false;
   String? _editingMessageId;
   SupportChatMessage? _replyingTo;
   String? _highlightedMessageId;
   int _prevMessageCount = 0;
 
   @override
+  bool get wantKeepAlive => true;
+
+  AccountRole get _effectiveRole =>
+      widget.role ?? ref.read(authControllerProvider).role ?? AccountRole.community;
+
+  String get _contextParam {
+    final role = _effectiveRole;
+    return role == AccountRole.brand
+        ? 'BRAND'
+        : (role == AccountRole.space ? 'SPACE' : 'HOST');
+  }
+
+  void _invalidateMessages() {
+    ref.invalidate(supportChatMessagesProvider(widget.role));
+  }
+
+  @override
   void initState() {
     super.initState();
+    _markSupportRead();
+    _focusNode.addListener(_onFocusChange);
     // Poll support messages every 4 seconds, matching POLL_MS on the website
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (mounted) {
-        ref.invalidate(supportChatMessagesProvider);
+        _invalidateMessages();
       }
     });
   }
 
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) _scrollToBottom(smooth: true);
+      });
+    }
+  }
+
+  void _markSupportRead() {
+    try {
+      final api = ref.read(apiClientProvider);
+      unawaited(
+        api.dio.patch<dynamic>(
+          '/notifications/read-by-thread',
+          data: {'threadId': 'support'},
+        ).then((_) {
+          ref.invalidate(unreadNotificationsCountProvider);
+        }).catchError((_) {}),
+      );
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChange);
     _pollTimer?.cancel();
     _highlightTimer?.cancel();
     _textController.dispose();
@@ -116,7 +165,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
         setState(() {
           _editingMessageId = null;
         });
-        ref.invalidate(supportChatMessagesProvider);
+        _invalidateMessages();
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -143,17 +192,12 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
 
     final replyId = _replyingTo?.id;
 
-    final role = ref.read(authControllerProvider).role;
-    final contextParam = role == AccountRole.brand
-        ? 'BRAND'
-        : (role == AccountRole.space ? 'SPACE' : 'HOST');
-
     try {
       final res = await sendSupportChatMessageApi(
         api,
         content: text,
         replyToId: replyId,
-        context: contextParam,
+        context: _contextParam,
       );
 
       _textController.clear();
@@ -161,7 +205,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
         _replyingTo = null;
       });
 
-      ref.invalidate(supportChatMessagesProvider);
+      _invalidateMessages();
       _scrollToBottom();
 
       if (res?.wasRedacted == true && mounted) {
@@ -293,7 +337,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
       if (_editingMessageId == m.id) {
         _handleCancelEdit();
       }
-      ref.invalidate(supportChatMessagesProvider);
+      _invalidateMessages();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -335,21 +379,16 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
         context: 'SUPPORT_CHAT_MEDIA',
       );
 
-      final role = ref.read(authControllerProvider).role;
-      final contextParam = role == AccountRole.brand
-          ? 'BRAND'
-          : (role == AccountRole.space ? 'SPACE' : 'HOST');
-
       if (key != null && key.isNotEmpty) {
         await sendSupportChatMessageApi(
           api,
           content: file.name,
           mediaKey: key,
           replyToId: _replyingTo?.id,
-          context: contextParam,
+          context: _contextParam,
         );
         setState(() => _replyingTo = null);
-        ref.invalidate(supportChatMessagesProvider);
+        _invalidateMessages();
         _scrollToBottom();
       } else {
         if (mounted) {
@@ -401,21 +440,16 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
         context: 'SUPPORT_CHAT_MEDIA',
       );
 
-      final role = ref.read(authControllerProvider).role;
-      final contextParam = role == AccountRole.brand
-          ? 'BRAND'
-          : (role == AccountRole.space ? 'SPACE' : 'HOST');
-
       if (key != null && key.isNotEmpty) {
         await sendSupportChatMessageApi(
           api,
           content: '',
           mediaKey: key,
           replyToId: _replyingTo?.id,
-          context: contextParam,
+          context: _contextParam,
         );
         setState(() => _replyingTo = null);
-        ref.invalidate(supportChatMessagesProvider);
+        _invalidateMessages();
         _scrollToBottom();
       } else {
         if (mounted) {
@@ -640,10 +674,6 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                   Navigator.pop(ctx);
 
                   setState(() => _isSending = true);
-                  final role = ref.read(authControllerProvider).role;
-                  final contextParam = role == AccountRole.brand
-                      ? 'BRAND'
-                      : (role == AccountRole.space ? 'SPACE' : 'HOST');
                   try {
                     final api = ref.read(apiClientProvider);
                     await sendSupportChatMessageApi(
@@ -651,10 +681,10 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                       content: '',
                       mediaUrl: url,
                       replyToId: _replyingTo?.id,
-                      context: contextParam,
+                      context: _contextParam,
                     );
                     setState(() => _replyingTo = null);
-                    ref.invalidate(supportChatMessagesProvider);
+                    _invalidateMessages();
                     _scrollToBottom();
                   } catch (e) {
                     if (mounted) {
@@ -740,7 +770,8 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
 
   @override
   Widget build(BuildContext context) {
-    final messagesAsync = ref.watch(supportChatMessagesProvider);
+    super.build(context);
+    final messagesAsync = ref.watch(supportChatMessagesProvider(widget.role));
 
     return Container(
       color: Colors.white,
@@ -788,41 +819,58 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
 
                   // Message List
                   Expanded(
-                    child: messagesAsync.when(
-                      loading: () => const Center(
-                        child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
-                      ),
-                      error: (err, stack) => Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline, color: MeetdayColors.primaryRed, size: 28),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Unable to load support chat',
-                              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
-                            ),
-                            const SizedBox(height: 8),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: MeetdayColors.accentYellow,
-                                foregroundColor: Colors.black,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  side: const BorderSide(color: Colors.black, width: 1.5),
+                    child: Builder(
+                      builder: (context) {
+                        if (messagesAsync.isLoading && !messagesAsync.hasValue) {
+                          return const Center(
+                            child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
+                          );
+                        }
+
+                        if (messagesAsync.hasError && !messagesAsync.hasValue) {
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline, color: MeetdayColors.primaryRed, size: 28),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Unable to load support chat',
+                                  style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
                                 ),
-                              ),
-                              onPressed: () => ref.invalidate(supportChatMessagesProvider),
-                              child: Text('Retry', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+                                const SizedBox(height: 8),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: MeetdayColors.accentYellow,
+                                    foregroundColor: Colors.black,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: const BorderSide(color: Colors.black, width: 1.5),
+                                    ),
+                                  ),
+                                  onPressed: _invalidateMessages,
+                                  child: Text('Retry', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                      data: (messages) {
-                        if (messages.length != _prevMessageCount) {
+                          );
+                        }
+
+                        final messages = messagesAsync.value ?? const <SupportChatMessage>[];
+
+                        if (messages.length > _prevMessageCount) {
+                          final isInitial = _prevMessageCount == 0;
                           _prevMessageCount = messages.length;
-                          _scrollToBottom();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted || !_scrollController.hasClients) return;
+                            final isNearBottom = _scrollController.position.extentAfter < 120;
+                            if (isInitial || isNearBottom) {
+                              _scrollToBottom(smooth: !isInitial);
+                            }
+                          });
+                        } else if (messages.length != _prevMessageCount) {
+                          _prevMessageCount = messages.length;
                         }
 
                         if (messages.isEmpty) {
@@ -993,6 +1041,16 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                       ),
                     ),
 
+                  // Formatting Toolbar
+                  if (_showFormattingBar)
+                    ChatFormattingToolbar(
+                      onApplyFormat: (prefix, suffix) {
+                        applyChatFormatting(_textController, prefix, suffix);
+                        setState(() {});
+                      },
+                      onClose: () => setState(() => _showFormattingBar = false),
+                    ),
+
                   // Bottom Composer
                   _buildComposer(),
 
@@ -1079,7 +1137,7 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
 
           // Refresh button
           GestureDetector(
-            onTap: () => ref.invalidate(supportChatMessagesProvider),
+            onTap: _invalidateMessages,
             child: Container(
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
@@ -1196,15 +1254,45 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
     final isHighlighted = _highlightedMessageId == m.id;
     final senderLabel = isMine ? 'YOU' : (isBot ? 'MEETDAY' : 'ADMIN');
 
+    if (m.isDeleted) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Align(
+          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              'This message was deleted',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w500,
+                color: Colors.black45,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final timeString = m.createdAt != null
         ? DateFormat('hh:mm a').format(m.createdAt!)
         : '';
 
+    final isSpace = ref.watch(authControllerProvider).role == AccountRole.space;
     final isRedBubble = isMine && isBrand;
+    final isBlackBubble = isMine && isSpace;
     final bubbleColor = isMine
-        ? (isBrand ? MeetdayColors.primaryRed : MeetdayColors.accentYellow)
+        ? (isSpace
+            ? Colors.black
+            : (isBrand ? MeetdayColors.primaryRed : MeetdayColors.accentYellow))
         : const Color(0xFFF3F4F6);
-    final contentTextColor = isRedBubble ? Colors.white : const Color(0xFF111111);
+    final contentTextColor =
+        (isRedBubble || isBlackBubble) ? Colors.white : const Color(0xFF111111);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -1220,78 +1308,27 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
       child: Column(
         crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          // Header Label & Action buttons
+          // Header Label
           Padding(
             padding: const EdgeInsets.only(left: 4, right: 4, bottom: 2),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  senderLabel,
-                  style: GoogleFonts.poppins(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    color: Colors.black45,
-                  ),
-                ),
-                if (!m.isDeleted) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _editingMessageId = null;
-                        _replyingTo = m;
-                      });
-                      _focusNode.requestFocus();
-                    },
-                    child: Text(
-                      'Reply',
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black45,
-                      ),
-                    ),
-                  ),
-                ],
-                if (isMine && !m.isDeleted && m.content.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => _handleStartEdit(m),
-                    child: Text(
-                      'Edit',
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black45,
-                      ),
-                    ),
-                  ),
-                ],
-                if (isMine && !m.isDeleted) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => _handleDelete(m),
-                    child: Text(
-                      'Delete',
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: MeetdayColors.primaryRed,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+            child: Text(
+              senderLabel,
+              style: GoogleFonts.poppins(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+                color: Colors.black45,
+              ),
             ),
           ),
 
           // Message Bubble
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.76,
-            ),
+          GestureDetector(
+            onLongPress: () => _showMessageContextMenu(m, allMessages),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.76,
+              ),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -1373,33 +1410,6 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
                       ),
                     ),
 
-                  // Deleted message indicator
-                  if (m.isDeleted)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      margin: const EdgeInsets.only(bottom: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF2F2),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFFFECACA), width: 1),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('🗑️', style: TextStyle(fontSize: 10)),
-                          const SizedBox(width: 4),
-                          Text(
-                            'This message was deleted',
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFFDC2626),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
                   // Media attachment if any
                   if (m.mediaUrl != null && m.mediaUrl!.isNotEmpty) ...[
                     Builder(
@@ -1477,19 +1487,25 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
 
                   // Message content text
                   if (m.content.isNotEmpty)
-                    SelectableText(
-                      m.content,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                        color: contentTextColor,
-                        height: 1.35,
+                    RichText(
+                      text: TextSpan(
+                        children: parseChatFormattedText(
+                          m.content,
+                          baseStyle: GoogleFonts.poppins(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: contentTextColor,
+                            height: 1.35,
+                          ),
+                          isDarkBubble: isRedBubble,
+                        ),
                       ),
                     ),
                 ],
               ),
             ),
           ),
+        ),
 
           // Message Footer: Timestamp, Edited status, Checkmarks
           Padding(
@@ -1586,6 +1602,28 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
               ),
               child: const Center(
                 child: Icon(Icons.emoji_emotions_outlined, size: 18, color: Colors.black87),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 6),
+
+          // Formatting toggle button
+          GestureDetector(
+            onTap: () => setState(() => _showFormattingBar = !_showFormattingBar),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _showFormattingBar ? MeetdayColors.accentYellow : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.black, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0),
+                ],
+              ),
+              child: const Center(
+                child: Icon(Icons.format_size_rounded, size: 18, color: Colors.black87),
               ),
             ),
           ),
@@ -1718,6 +1756,104 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
             ),
           );
         },
+      ),
+    );
+  }
+
+  // ─── Context Menu Bottom Sheet ─────────────────────────────────────────────
+
+  void _showMessageContextMenu(
+    SupportChatMessage msg,
+    List<SupportChatMessage> allMessages,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Colors.black, width: 2.5),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Formatting shortcuts on long press
+              buildChatFormattingActionRow(
+                onFormat: (prefix, suffix) {
+                  Navigator.of(ctx).pop();
+                  applyChatFormatting(_textController, prefix, suffix);
+                  setState(() => _showFormattingBar = true);
+                  _focusNode.requestFocus();
+                },
+              ),
+              const Divider(color: Colors.black12, thickness: 1, indent: 16, endIndent: 16),
+              if (!msg.isDeleted)
+                ListTile(
+                  leading: const Icon(Icons.reply_rounded, color: Colors.black),
+                  title: Text(
+                    'Reply',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    setState(() {
+                      _editingMessageId = null;
+                      _replyingTo = msg;
+                    });
+                    _focusNode.requestFocus();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.copy_rounded, color: Colors.black),
+                title: Text(
+                  'Copy Text',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                ),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  Clipboard.setData(ClipboardData(text: msg.content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Message copied to clipboard'),
+                    ),
+                  );
+                },
+              ),
+              if (msg.isMine && !msg.isDeleted) ...[
+                ListTile(
+                  leading: const Icon(Icons.edit_rounded, color: Colors.black),
+                  title: Text(
+                    'Edit Message',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _handleStartEdit(msg);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: MeetdayColors.primaryRed,
+                  ),
+                  title: Text(
+                    'Delete Message',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700,
+                      color: MeetdayColors.primaryRed,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _handleDelete(msg);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
