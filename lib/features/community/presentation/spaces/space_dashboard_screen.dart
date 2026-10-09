@@ -15,7 +15,6 @@ import '../chat/community_chat_hub.dart';
 import '../community_detail_screen.dart';
 import '../deals/brand_deals_screen.dart';
 import '../profile/profile_screen.dart';
-import '../proposal/proposal_form_screen.dart';
 import '../proposal_components.dart';
 import '../providers/chat_provider.dart';
 import '../providers/dashboard_provider.dart';
@@ -135,80 +134,6 @@ class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
     ref.invalidate(notificationsProvider);
     ref.invalidate(unreadNotificationsCountProvider);
     await ref.read(spaceDashboardProfileProvider.future);
-  }
-
-  Future<void> _confirmSignOut() async {
-    final shouldSignOut = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Colors.black, width: 2.5),
-        ),
-        title: Text(
-          'Sign out?',
-          style: GoogleFonts.bricolageGrotesque(
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
-        ),
-        content: Text(
-          'You can sign back in anytime to manage your Hub Partner account.',
-          style: GoogleFonts.poppins(fontSize: 12),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w700,
-                color: Colors.black,
-              ),
-            ),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: MeetdayColors.primaryRed,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.black, width: 1.5),
-              ),
-            ),
-            child: Text(
-              'Sign out',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (shouldSignOut == true && mounted) {
-      await ref.read(authControllerProvider.notifier).signOut();
-    }
-  }
-
-  void _openHubProfileModal(
-    BuildContext context,
-    Map<String, dynamic> profile,
-    Map<String, dynamic>? community,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => HubProfileSheet(
-        profile: profile,
-        community: community,
-        onSignOut: _confirmSignOut,
-        onProfileUpdated: () {
-          ref.invalidate(spaceDashboardProfileProvider);
-          ref.invalidate(spaceCommunityProfileProvider);
-        },
-      ),
-    );
   }
 
   @override
@@ -2041,6 +1966,7 @@ class _SpaceNotificationsTabBody extends ConsumerWidget {
 
 class HubProfileSheet extends StatefulWidget {
   const HubProfileSheet({
+    super.key,
     required this.profile,
     required this.community,
     required this.onSignOut,
@@ -2062,7 +1988,7 @@ class _HubProfileSheetState extends State<HubProfileSheet> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _EditHubProfileDialog(
+      builder: (ctx) => EditHubProfileDialog(
         profile: widget.profile,
         community: widget.community,
         onSaved: () {
@@ -2638,8 +2564,9 @@ class _SpecCard extends StatelessWidget {
   }
 }
 
-class _EditHubProfileDialog extends ConsumerStatefulWidget {
-  const _EditHubProfileDialog({
+class EditHubProfileDialog extends ConsumerStatefulWidget {
+  const EditHubProfileDialog({
+    super.key,
     required this.profile,
     required this.community,
     required this.onSaved,
@@ -2650,11 +2577,11 @@ class _EditHubProfileDialog extends ConsumerStatefulWidget {
   final VoidCallback onSaved;
 
   @override
-  ConsumerState<_EditHubProfileDialog> createState() =>
+  ConsumerState<EditHubProfileDialog> createState() =>
       _EditHubProfileDialogState();
 }
 
-class _EditHubProfileDialogState extends ConsumerState<_EditHubProfileDialog> {
+class _EditHubProfileDialogState extends ConsumerState<EditHubProfileDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _citiesController;

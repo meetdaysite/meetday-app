@@ -224,19 +224,83 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ref.read(spaceDashboardProfileProvider).asData?.value ??
               <String, dynamic>{};
       final spaceCommunity =
-          ref.read(spaceCommunityProfileProvider).asData?.value;
+          ref.read(spaceCommunityProfileProvider).asData?.value ??
+              <String, dynamic>{};
+      final userMap =
+          spaceProfile['user'] is Map ? spaceProfile['user'] as Map : const {};
+
+      final mergedHubCommunity = <String, dynamic>{
+        ...spaceCommunity,
+        'id': spaceCommunity['id'] ?? spaceProfile['id'],
+        'name':
+            spaceCommunity['name'] ??
+            spaceProfile['businessName'] ??
+            'Hub Partner',
+        'businessName': spaceProfile['businessName'] ?? '',
+        'logoUrl':
+            spaceCommunity['logoUrl'] ??
+            spaceProfile['avatarUrl'] ??
+            userMap['avatarUrl'],
+        'secondaryImageUrl':
+            spaceCommunity['secondaryImageUrl'] ?? spaceCommunity['posterUrl'],
+        'about': spaceCommunity['about'] ?? spaceProfile['bio'] ?? '',
+        'capacity':
+            spaceCommunity['venueCapacity'] ??
+            spaceCommunity['capacity'] ??
+            spaceProfile['capacity'] ??
+            '50 - 200',
+        'venueCount':
+            spaceCommunity['numberOfVenues'] ??
+            spaceCommunity['venueCount'] ??
+            spaceProfile['venueCount'] ??
+            1,
+        'experiencesPerYear':
+            spaceCommunity['experiencesPerYear'] ?? '12',
+        'categories':
+            spaceCommunity['categories'] ?? spaceProfile['categories'] ?? [],
+        'showcaseUrls':
+            spaceCommunity['showcaseUrls'] ??
+            spaceCommunity['centreShowcaseUrls'] ??
+            spaceProfile['showcaseUrls'] ??
+            [],
+        'pastEvents':
+            spaceCommunity['pastEvents'] ?? spaceProfile['pastEvents'] ?? [],
+        'brandsWorkedWith':
+            spaceCommunity['brandsWorkedWith'] ?? [],
+        'approvalStatus':
+            spaceCommunity['approvalStatus'] ??
+            spaceProfile['approvalStatus'] ??
+            'APPROVED',
+        'adminRejectionRemark':
+            spaceCommunity['adminRejectionRemark'] ??
+            spaceProfile['adminRejectionRemark'],
+        'pendingRevision': spaceCommunity['pendingRevision'],
+      };
+
+      final hubHostProfile = <String, dynamic>{
+        'communityName': mergedHubCommunity['name'],
+        'operatingCities':
+            spaceCommunity['operatingCities'] ??
+            spaceProfile['operatingCities'] ??
+            spaceCommunity['activeLocations'] ??
+            [],
+        'socialLinks':
+            spaceCommunity['socialLinks'] ?? spaceProfile['socialLinks'] ?? {},
+      };
+
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => HubProfileSheet(
-          profile: spaceProfile,
-          community: spaceCommunity,
-          onSignOut: _confirmSignOut,
-          onProfileUpdated: () {
-            ref.invalidate(spaceDashboardProfileProvider);
-            ref.invalidate(spaceCommunityProfileProvider);
+        builder: (_) => _CommunityProfileDetailsSheet(
+          community: mergedHubCommunity,
+          hostProfile: hubHostProfile,
+          isHub: true,
+          onEdit: () {
+            Navigator.of(context).pop();
+            _openEditHubProfile();
           },
+          onBrandPreview: _openBrandPreview,
         ),
       );
       return;
@@ -298,6 +362,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _EditProfileSheet(hostProfile: host),
+    );
+  }
+
+  void _openEditHubProfile() {
+    final spaceProfile =
+        ref.read(spaceDashboardProfileProvider).asData?.value ??
+            <String, dynamic>{};
+    final spaceCommunity =
+        ref.read(spaceCommunityProfileProvider).asData?.value;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => EditHubProfileDialog(
+        profile: spaceProfile,
+        community: spaceCommunity,
+        onSaved: () {
+          ref.invalidate(spaceDashboardProfileProvider);
+          ref.invalidate(spaceCommunityProfileProvider);
+        },
+      ),
     );
   }
 
@@ -601,33 +687,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             : (host['phone'] ?? '').toString();
 
     // Space specific fields
-    final spaceRepName = isSpace
-        ? ([spaceUser['firstName'], spaceUser['lastName']]
-            .whereType<String>()
-            .where((s) => s.isNotEmpty)
-            .join(' '))
-        : '';
     final spaceCities = isSpace
-        ? ((spaceProfile['operatingCities'] as List?)
+        ? (((spaceCommunity['operatingCities'] ??
+                    spaceProfile['operatingCities'] ??
+                    spaceCommunity['activeLocations']) as List?)
                 ?.map((c) => c.toString())
                 .where((c) => c.isNotEmpty)
                 .toList() ??
             <String>[])
         : <String>[];
-    final spaceCapacity = isSpace
-        ? (spaceProfile['capacity'] ??
-                spaceCommunity['capacity'] ??
-                '50 - 200')
-            .toString()
-        : '';
-    final spaceVenueCount = isSpace
-        ? (spaceProfile['venueCount'] ?? spaceCommunity['venueCount'] ?? 1)
-            .toString()
-        : '';
-    final spaceName = isSpace
-        ? (spaceCommunity['name'] ?? spaceProfile['businessName'] ?? 'Hub')
-            .toString()
-        : '';
 
     // Brand specific fields
     final companyType = (brand['companyType'] ?? 'BRAND')
@@ -1025,14 +1093,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       const Divider(color: Color(0xFFE5E7EB), thickness: 1.5),
                       const SizedBox(height: 12),
 
-                      if (spaceRepName.isNotEmpty) ...[
-                        _buildInfoRow(
-                          'Representative :',
-                          spaceRepName,
-                          labelWidth: 140,
-                        ),
-                        const SizedBox(height: 10),
-                      ],
                       _buildInfoRow(
                         'Email ID :',
                         email.isNotEmpty ? email : 'Not specified',
@@ -1046,34 +1106,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                       const SizedBox(height: 10),
                       _buildInfoRow(
-                        'Space / Hub :',
-                        spaceName.isNotEmpty ? spaceName : 'Not specified',
+                        'Cities :',
+                        spaceCities.isNotEmpty
+                            ? spaceCities.join(', ')
+                            : 'Not specified',
                         labelWidth: 140,
                       ),
-                      if (spaceCities.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        _buildInfoRow(
-                          'Operating Cities :',
-                          spaceCities.join(', '),
-                          labelWidth: 140,
-                        ),
-                      ],
-                      if (spaceCapacity.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        _buildInfoRow(
-                          'Capacity :',
-                          spaceCapacity,
-                          labelWidth: 140,
-                        ),
-                      ],
-                      if (spaceVenueCount.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        _buildInfoRow(
-                          'Venues :',
-                          spaceVenueCount,
-                          labelWidth: 140,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -1093,19 +1131,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 actionLabel: isLoading ? 'LOADING…' : 'VIEW DETAILS',
                 actionColor: MeetdayColors.primaryRed,
                 onTap: _openCommunityDetails,
-              ),
-              const Divider(
-                color: Color(0x1A000000),
-                thickness: 1.2,
-                height: 1,
-              ),
-
-              // 2. Brand Preview
-              _buildOptionLineItem(
-                title: 'Brand Preview',
-                actionLabel: 'VIEW PREVIEW',
-                actionColor: MeetdayColors.primaryRed,
-                onTap: _openBrandPreview,
               ),
               const Divider(
                 color: Color(0x1A000000),
@@ -2007,22 +2032,26 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
     required this.hostProfile,
     required this.onEdit,
     required this.onBrandPreview,
+    this.isHub = false,
   });
 
   final Map<String, dynamic> community;
   final Map<String, dynamic> hostProfile;
   final VoidCallback onEdit;
   final VoidCallback onBrandPreview;
+  final bool isHub;
 
   @override
   Widget build(BuildContext context) {
     final name =
-        (community['name'] ?? hostProfile['communityName'] ?? 'Community')
+        (community['name'] ?? hostProfile['communityName'] ?? (isHub ? 'Hub Partner' : 'Community'))
             .toString();
     final about = (community['about'] ?? '').toString();
     final logoUrl = community['logoUrl'] as String?;
-    final posterUrl = community['secondaryImageUrl'] as String?;
+    final posterUrl = (community['secondaryImageUrl'] ?? community['posterUrl']) as String?;
     final size = (community['size'] ?? '1,000 - 5,000').toString();
+    final venueCapacity = (community['capacity'] ?? community['venueCapacity'] ?? '50 - 200').toString();
+    final numberOfVenues = (community['venueCount'] ?? community['numberOfVenues'] ?? '1').toString();
     final avgGuestCount = (community['avgGuestCount'] ?? '0').toString();
     final experiencesPerYear = (community['experiencesPerYear'] ?? '0')
         .toString();
@@ -2045,15 +2074,25 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
         (hostProfile['operatingCities'] as List?)
             ?.map((e) => e.toString())
             .toList() ??
+        (community['operatingCities'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ??
         <String>[];
 
     final socialLinks =
-        (hostProfile['socialLinks'] as Map?) ?? <String, dynamic>{};
+        (hostProfile['socialLinks'] as Map?) ??
+        (community['socialLinks'] as Map?) ??
+        <String, dynamic>{};
     final instagram = socialLinks['instagram']?.toString();
     final linkedin = socialLinks['linkedin']?.toString();
     final youtube = socialLinks['youtube']?.toString();
     final website = socialLinks['website']?.toString();
 
+    final showcaseUrls = ((community['showcaseUrls'] ?? community['centreShowcaseUrls']) as List?)
+            ?.map((e) => e.toString())
+            .where((e) => e.isNotEmpty)
+            .toList() ??
+        <String>[];
     final pastEvents = (community['pastEvents'] as List?) ?? [];
     final brandsWorkedWith = (community['brandsWorkedWith'] as List?) ?? [];
 
@@ -2123,7 +2162,9 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            'Community Profile',
+                            isHub
+                                ? 'Community Hub Profile'
+                                : 'Community Profile',
                             style: GoogleFonts.bricolageGrotesque(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
@@ -2272,10 +2313,19 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                               ? Image.network(
                                   logoUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) =>
-                                      const Icon(Icons.groups, size: 32),
+                                  errorBuilder: (_, _, _) => Icon(
+                                    isHub
+                                        ? Icons.storefront_rounded
+                                        : Icons.groups,
+                                    size: 32,
+                                  ),
                                 )
-                              : const Icon(Icons.groups, size: 32),
+                              : Icon(
+                                  isHub
+                                      ? Icons.storefront_rounded
+                                      : Icons.groups,
+                                  size: 32,
+                                ),
                         ),
                       ),
                       const SizedBox(width: 14),
@@ -2313,7 +2363,11 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                                 ],
                               ),
                               child: Text(
-                                '$size MEMBERS',
+                                isHub
+                                    ? (venueCapacity.isNotEmpty
+                                        ? '$venueCapacity CAPACITY'
+                                        : 'HUB PARTNER')
+                                    : '$size MEMBERS',
                                 style: GoogleFonts.poppins(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w900,
@@ -2328,8 +2382,10 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
 
-                  // About The Community
-                  _buildSectionHeader('About The Community'),
+                  // About Section
+                  _buildSectionHeader(
+                    isHub ? 'About The Space' : 'About The Community',
+                  ),
                   const SizedBox(height: 6),
                   Container(
                     width: double.infinity,
@@ -2351,9 +2407,11 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
 
-                  // Community Poster (Secondary Image)
+                  // Poster Section (Secondary Image)
                   if (posterUrl != null && posterUrl.isNotEmpty) ...[
-                    _buildSectionHeader('Community Poster'),
+                    _buildSectionHeader(
+                      isHub ? 'Venue Space Poster' : 'Community Poster',
+                    ),
                     const SizedBox(height: 8),
                     GestureDetector(
                       onTap: () {
@@ -2361,7 +2419,9 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                           context: context,
                           builder: (_) => _PhotoLightboxDialog(
                             imageUrl: posterUrl,
-                            title: 'Community Poster',
+                            title: isHub
+                                ? 'Venue Space Poster'
+                                : 'Community Poster',
                           ),
                         );
                       },
@@ -2429,9 +2489,65 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                     const SizedBox(height: 20),
                   ],
 
+                  // Showcase Gallery (for Hubs)
+                  if (isHub && showcaseUrls.isNotEmpty) ...[
+                    _buildSectionHeader('Showcase Gallery'),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 100,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: showcaseUrls.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
+                        itemBuilder: (ctx, imgIdx) => GestureDetector(
+                          onTap: () {
+                            showDialog<void>(
+                              context: ctx,
+                              builder: (_) => _PhotoLightboxDialog(
+                                imageUrl: showcaseUrls[imgIdx],
+                                title: '$name - Showcase ${imgIdx + 1}',
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 130,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 2,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  offset: Offset(2, 2),
+                                  blurRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.network(
+                                showcaseUrls[imgIdx],
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Icon(
+                                  Icons.image,
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
                   // Past Experiences
                   if (pastEvents.isNotEmpty) ...[
-                    _buildSectionHeader('Past Experiences'),
+                    _buildSectionHeader(
+                      isHub ? 'Past Events Hosted' : 'Past Experiences',
+                    ),
                     const SizedBox(height: 8),
                     ...pastEvents.asMap().entries.map((entry) {
                       final idx = entry.key;
@@ -2609,83 +2725,198 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                     const SizedBox(height: 20),
                   ],
 
-                  // Stats Grid (Avg Guest Count & Experiences / Yr)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.black.withAlpha(20),
+                  // Stats Grid
+                  if (isHub) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.black.withAlpha(20),
+                              ),
                             ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'AVG GUEST COUNT',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.black45,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'VENUE CAPACITY',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black45,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$avgGuestCount guests',
-                                style: GoogleFonts.bricolageGrotesque(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w900,
+                                const SizedBox(height: 4),
+                                Text(
+                                  venueCapacity,
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.black.withAlpha(20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.black.withAlpha(20),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'TOTAL VENUES',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black45,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$numberOfVenues venues',
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'EXPERIENCES / YR',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.black45,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$experiencesPerYear events',
-                                style: GoogleFonts.bricolageGrotesque(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
+                        ),
+                      ],
+                    ),
+                    if (experiencesPerYear.isNotEmpty &&
+                        experiencesPerYear != '0' &&
+                        experiencesPerYear != '—') ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.black.withAlpha(20),
                           ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'EXPERIENCES / YR',
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.black45,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '$experiencesPerYear events',
+                              style: GoogleFonts.bricolageGrotesque(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.black.withAlpha(20),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'AVG GUEST COUNT',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black45,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$avgGuestCount guests',
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.black.withAlpha(20),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'EXPERIENCES / YR',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black45,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$experiencesPerYear events',
+                                  style: GoogleFonts.bricolageGrotesque(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 20),
 
                   // Categories
                   if (categories.isNotEmpty) ...[
-                    _buildSectionHeader('Experience Categories'),
+                    _buildSectionHeader(
+                      isHub
+                          ? 'Venue / Event Categories'
+                          : 'Experience Categories',
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
@@ -2721,7 +2952,9 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
 
                   // Operating Cities
                   if (operatingCities.isNotEmpty) ...[
-                    _buildSectionHeader('Operating Cities'),
+                    _buildSectionHeader(
+                      isHub ? 'Venue Locations' : 'Operating Cities',
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
@@ -2779,7 +3012,7 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
 
-                  // Edit Community Details Button
+                  // Edit Button
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: MeetdayColors.accentYellow,
@@ -2793,7 +3026,7 @@ class _CommunityProfileDetailsSheet extends StatelessWidget {
                     ),
                     onPressed: onEdit,
                     child: Text(
-                      'EDIT COMMUNITY DETAILS',
+                      isHub ? 'EDIT HUB DETAILS' : 'EDIT COMMUNITY DETAILS',
                       style: GoogleFonts.bricolageGrotesque(
                         fontSize: 13,
                         fontWeight: FontWeight.w900,
