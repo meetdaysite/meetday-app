@@ -495,7 +495,7 @@ final dashboardCampaignsProvider = FutureProvider.autoDispose<List<Map<String, d
     return [];
   } catch (e) {
     debugPrint('Error fetching /campaigns/published: $e');
-    return [];
+    rethrow;
   }
 });
 
@@ -528,7 +528,7 @@ final brandCampaignsProvider = FutureProvider.autoDispose<List<Map<String, dynam
     }).toList();
   } catch (e) {
     debugPrint('Error fetching /campaigns: $e');
-    return [];
+    rethrow;
   }
 });
 

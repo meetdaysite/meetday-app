@@ -233,7 +233,11 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
     final interestId = _activeInterestId;
     if (interestId == null || response.orderId == null || response.paymentId == null || response.signature == null) {
-      if (mounted) _showMessage('Payment confirmation was incomplete.', isError: true);
+      _activeInterestId = null;
+      if (mounted) {
+        setState(() => _isPaying = false);
+        _showMessage('Payment confirmation was incomplete.', isError: true);
+      }
       return;
     }
     try {

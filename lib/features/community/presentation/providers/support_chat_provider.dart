@@ -123,7 +123,7 @@ final supportChatMessagesProvider = FutureProvider.autoDispose<List<SupportChatM
         .toList();
   } catch (e) {
     debugPrint('Error loading Meetday support chat messages: $e');
-    return [];
+    rethrow;
   }
 });
 

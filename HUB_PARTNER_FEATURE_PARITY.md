@@ -25,7 +25,7 @@ Hub Partner login, signup, onboarding, and a dedicated mobile dashboard are conn
 | Profile `/spaces/dashboard/profile` | Edit Space profile and Hub community listing | Signup collects initial business name/cities; dashboard reads `/spaces/me`; no dedicated Space profile editor is exposed | Partial; read-only in the Hub shell |
 | Profile preview `/spaces/dashboard/profile/preview` | Preview the public Hub listing | No Space-specific mobile preview destination | Not exposed |
 | Notifications `/spaces/dashboard/notifications` | View and manage Hub notifications | No notifications destination in the dedicated Hub shell | Not exposed |
-| Support `/spaces/dashboard/support` | Contact Meetday support | No support destination in the dedicated Hub shell | Not exposed |
+| Support `/spaces/dashboard/support` | Contact Meetday support | Dedicated Hub shell opens the shared Support Chat screen; failed message loads show a retry action | Core entry and recovery UI implemented |
 
 ## Mobile Navigation and Data
 
@@ -34,7 +34,7 @@ Hub Partner login, signup, onboarding, and a dedicated mobile dashboard are conn
 - Proposal summaries use the existing `/sponsorships/me?actorType=SPACE` provider.
 - Campaign summaries and discovery use published campaigns; campaign interest is submitted as `SPACE`.
 - Active collaboration/unread summaries use the Space-aware chat hub, including Space chat threads and deal state.
-- Bottom navigation exposes Dashboard, Campaigns, and Chats. Profile/sign-out is currently limited to sign-out from this Hub shell.
+- Bottom navigation exposes Dashboard, Campaigns, Chats, and Support. Profile/sign-out is currently limited to sign-out from this Hub shell.
 
 ## Verification
 
@@ -46,4 +46,4 @@ Hub Partner login, signup, onboarding, and a dedicated mobile dashboard are conn
 
 1. Add a Space-specific proposal create/edit form matching Popup and Branding fields.
 2. Add Space profile edit/preview and community discovery destinations.
-3. Add dedicated Hub deal/report, notification, and support destinations to the mobile shell.
+3. Add dedicated Hub deal/report and notification destinations to the mobile shell.

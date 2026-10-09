@@ -10,6 +10,7 @@ import '../campaigns/campaigns_screen.dart';
 import '../chat/community_chat_hub.dart';
 import '../providers/chat_provider.dart';
 import '../providers/dashboard_provider.dart';
+import '../support/community_support_chat_view.dart';
 
 final spaceDashboardProfileProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -32,7 +33,12 @@ class SpaceDashboardScreen extends ConsumerStatefulWidget {
 class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
   int _selectedIndex = 0;
 
-  static const _pageTitles = ['Hub dashboard', 'Brand campaigns', 'Chats'];
+  static const _pageTitles = [
+    'Hub dashboard',
+    'Brand campaigns',
+    'Chats',
+    'Support',
+  ];
 
   Future<void> _confirmSignOut() async {
     final shouldSignOut = await showDialog<bool>(
@@ -81,6 +87,7 @@ class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
       ),
       const CampaignsScreen(),
       const CommunityChatHubScreen(),
+      const CommunitySupportChatView(),
     ];
 
     return Scaffold(
@@ -350,6 +357,7 @@ class _SpaceNavigationBar extends StatelessWidget {
     (Icons.dashboard_rounded, 'Dashboard'),
     (Icons.campaign_rounded, 'Campaigns'),
     (Icons.chat_bubble_rounded, 'Chats'),
+    (Icons.headset_mic_rounded, 'Support'),
   ];
 
   @override

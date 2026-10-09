@@ -5,8 +5,10 @@ import 'package:meetday_app/features/auth/domain/account_role.dart';
 import 'package:meetday_app/features/auth/presentation/login_screen.dart';
 import 'package:meetday_app/features/auth/state/auth_provider.dart';
 import 'package:meetday_app/features/community/presentation/campaigns/campaigns_screen.dart';
+import 'package:meetday_app/features/community/presentation/campaigns/brand_campaigns_screen.dart';
 import 'package:meetday_app/features/community/presentation/providers/chat_provider.dart';
 import 'package:meetday_app/features/community/presentation/providers/dashboard_provider.dart';
+import 'package:meetday_app/features/community/presentation/providers/support_chat_provider.dart';
 import 'package:meetday_app/features/community/presentation/spaces/space_dashboard_screen.dart';
 import 'package:meetday_app/features/home/presentation/home_shell.dart';
 
@@ -133,6 +135,65 @@ void main() {
     await tester.drag(find.byType(ListView).first, const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(find.text('Launch Night'), findsOneWidget);
+  });
+
+  testWidgets('Hub dashboard opens Support and surfaces load failures', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          spaceDashboardProfileProvider.overrideWith(
+            (ref) async => {
+              'businessName': 'Northside Hall',
+              'operatingCities': ['Pune'],
+            },
+          ),
+          dashboardProposalsProvider.overrideWith((ref) async => []),
+          dashboardCampaignsProvider.overrideWith((ref) async => []),
+          chatHubProvider.overrideWith(
+            (ref) async => const ChatHubData(
+              categories: [],
+              activeThreadsByCategory: {},
+              allRequests: [],
+              incomingCount: 0,
+              sentCount: 0,
+            ),
+          ),
+          supportChatMessagesProvider.overrideWith(
+            (ref) async => throw StateError('offline'),
+          ),
+        ],
+        child: const MaterialApp(home: SpaceDashboardScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Support'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Support Chat'), findsOneWidget);
+    expect(find.text('Unable to load support chat'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('Brand campaign fetch failures show a retry action', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          brandCampaignsProvider.overrideWith(
+            (ref) async => throw StateError('offline'),
+          ),
+        ],
+        child: const MaterialApp(home: BrandCampaignsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Failed to load campaigns'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
   });
 
   test('Auth controller starts in an unauthenticated state', () async {
