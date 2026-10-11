@@ -1080,6 +1080,7 @@ class _BrandCampaignFormSheetState
   final TextEditingController _customAudienceInputController =
       TextEditingController();
   final TextEditingController _aiPromptController = TextEditingController();
+  final ScrollController _formScrollController = ScrollController();
 
   List<String> _goals = [];
   List<String> _locations = [];
@@ -1168,6 +1169,7 @@ class _BrandCampaignFormSheetState
     _locationInputController.dispose();
     _customAudienceInputController.dispose();
     _aiPromptController.dispose();
+    _formScrollController.dispose();
     super.dispose();
   }
 
@@ -1557,9 +1559,13 @@ class _BrandCampaignFormSheetState
           ),
           const SizedBox(height: 12),
 
-          Expanded(
-            child: ListView(
-              children: [
+          Flexible(
+            child: SingleChildScrollView(
+              controller: _formScrollController,
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 // 1. AI Draft Companion Card (Matching Website)
                 if (!_isEditing) ...[
                   Container(
@@ -1742,6 +1748,7 @@ class _BrandCampaignFormSheetState
                               alignment: Alignment.centerRight,
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
+                                  minimumSize: const Size(0, 48),
                                   backgroundColor: Colors.black,
                                   foregroundColor: Colors.white,
                                   elevation: 0,
@@ -1886,6 +1893,7 @@ class _BrandCampaignFormSheetState
                     const SizedBox(width: 8),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(0, 48),
                         backgroundColor: Colors.white,
                         foregroundColor: Colors.black,
                         side: const BorderSide(color: Colors.black, width: 1.8),
@@ -2320,6 +2328,7 @@ class _BrandCampaignFormSheetState
                 ),
                 const SizedBox(height: 16),
               ],
+              ),
             ),
           ),
         ],

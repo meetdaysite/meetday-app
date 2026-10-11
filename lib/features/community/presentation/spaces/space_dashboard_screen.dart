@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
@@ -18,7 +21,33 @@ import '../profile/profile_screen.dart';
 import '../proposal_components.dart';
 import '../providers/chat_provider.dart';
 import '../providers/dashboard_provider.dart';
+import '../providers/support_chat_provider.dart';
 import '../support/community_support_chat_view.dart';
+import '../../../../core/widgets/top_notification_banner.dart';
+
+ChatHubInitialTarget? hubNotificationChatTarget(Map<String, dynamic> notification) {
+  final metadata = notification['metadata'] is Map ? notification['metadata'] as Map : const {};
+  final type = (notification['type'] ?? '').toString();
+  final id = (metadata['sponsorshipInterestId'] ?? metadata['spaceInterestId'] ??
+      metadata['spaceHostInterestId'] ?? metadata['interestId'] ?? metadata['threadId'])?.toString();
+  if (id == null || id.isEmpty || id == 'support' || type.contains('meetday_chat')) return null;
+  final category = metadata['campaignId'] != null || type.contains('campaign') ? 'campaigns'
+      : metadata['spaceInterestId'] != null || metadata['spaceHostInterestId'] != null ||
+          type.startsWith('space_') ? 'spaces' : 'sponsorships';
+  return ChatHubInitialTarget(category: category, threadId: id,
+    queue: type.contains('requested') || type.contains('request') || type.contains('interested')
+        ? (type.contains('space_host') ? 'SENT' : 'INCOMING') : null);
+}
+
+int hubNotificationDestination(Map<String, dynamic> notification) {
+  final metadata = notification['metadata'] is Map ? notification['metadata'] as Map : const {};
+  final type = (notification['type'] ?? '').toString();
+  if (type.contains('meetday_chat') || metadata['threadId'] == 'support') return 6;
+  if (type.contains('profile') || type.contains('community_approved') || type.contains('community_rejected')) return -1;
+  if (metadata['proposalId'] != null || metadata['sponsorshipProposalId'] != null || type.contains('proposal')) return 1;
+  if (metadata['campaignId'] != null || type.contains('campaign')) return 2;
+  return 7;
+}
 
 /// Provider for authenticated space partner's account profile
 final spaceDashboardProfileProvider =
@@ -113,6 +142,108 @@ class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
   // 0: Dashboard, 1: Proposals, 2: Explore, 5: Deals, 6: Support, 7: Notifications, 9: Chats
   int _currentTabIndex = 0;
   String _exploreSubView = 'menu'; // 'menu', 'campaigns', or 'communities'
+  ChatHubInitialTarget? _chatTarget;
+  int _chatRouteVersion = 0;
+  String? _notificationProposalId;
+  int _proposalRouteVersion = 0;
+  IO.Socket? _notificationSocket;
+  String? _socketUserId;
+  bool _connectingSocket = false;
+  Timer? _notificationPoll;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationPoll = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted || ref.read(authControllerProvider).status != AuthStatus.authenticated) return;
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
+      ref.invalidate(chatHubProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _notificationPoll?.cancel();
+    _notificationSocket?.dispose();
+    super.dispose();
+  }
+
+  void _openChatTarget(ChatHubInitialTarget target) {
+    setState(() { _chatTarget = target; _chatRouteVersion++; _currentTabIndex = 9; });
+  }
+
+  void _openNotification(Map<String, dynamic> notification) {
+    final target = hubNotificationChatTarget(notification);
+    if (target != null) {
+      _openChatTarget(target);
+      return;
+    }
+    final destination = hubNotificationDestination(notification);
+    if (destination == 1) {
+      final metadata = notification['metadata'] is Map ? notification['metadata'] as Map : const {};
+      _notificationProposalId = (metadata['proposalId'] ?? metadata['sponsorshipProposalId'])?.toString();
+      _proposalRouteVersion++;
+    }
+    if (destination == -1) {
+      Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => const ProfileScreen(initialOpenPanel: 'community')));
+    } else {
+      _onTabSelected(destination, exploreSubView: destination == 2 ? 'campaigns' : null);
+    }
+  }
+
+  Future<void> _connectNotifications(AuthState auth) async {
+    if (_connectingSocket || _socketUserId == auth.uid || auth.status != AuthStatus.authenticated) return;
+    _connectingSocket = true;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final token = await user.getIdToken();
+      if (!mounted || token == null || ref.read(authControllerProvider).uid != auth.uid) return;
+      _notificationSocket?.dispose();
+      final socket = IO.io('${ref.read(apiClientProvider).socketUrl}/notifications',
+        IO.OptionBuilder().setTransports(['websocket', 'polling']).setAuth({'token': token})
+          .disableAutoConnect().build());
+      _notificationSocket = socket;
+      _socketUserId = auth.uid;
+      socket.on('notification', (dynamic payload) {
+        if (!mounted || payload is! Map) return;
+        final notification = Map<String, dynamic>.from(payload);
+        ref.invalidate(notificationsProvider);
+        ref.invalidate(unreadNotificationsCountProvider);
+        ref.invalidate(chatHubProvider);
+        ref.invalidate(supportChatMessagesProvider(AccountRole.space));
+        showTopNotification(context, title: (notification['title'] ?? 'Notification').toString(),
+          message: (notification['body'] ?? notification['message'] ?? '').toString(),
+          onTap: () => _openNotification(notification));
+        unawaited(_playNotificationSound(auth.uid));
+      });
+      Future<void> refreshToken() async {
+        try {
+          final token = await user.getIdToken(true);
+          if (!mounted || socket != _notificationSocket || token == null) return;
+          socket.auth = {'token': token};
+          if (socket.disconnected) socket.connect();
+        } catch (_) {}
+      }
+      socket.io.on('reconnect_attempt', (_) => unawaited(refreshToken()));
+      socket.on('disconnect', (reason) {
+        if (reason == 'io server disconnect') unawaited(refreshToken());
+      });
+      socket.connect();
+    } catch (_) {
+    } finally {
+      _connectingSocket = false;
+    }
+  }
+
+  Future<void> _playNotificationSound(String? uid) async {
+    try {
+      final enabled = await const FlutterSecureStorage().read(
+        key: notificationSoundPreferenceKey(AccountRole.space, uid));
+      if (mounted && enabled != 'false') await SystemSound.play(SystemSoundType.alert);
+    } catch (_) {}
+  }
 
   void _onTabSelected(int index, {String? exploreSubView}) {
     setState(() {
@@ -138,6 +269,14 @@ class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authControllerProvider);
+    if (auth.status == AuthStatus.authenticated) {
+      unawaited(_connectNotifications(auth));
+    } else if (_notificationSocket != null) {
+      _notificationSocket?.dispose();
+      _notificationSocket = null;
+      _socketUserId = null;
+    }
     final profileAsync = ref.watch(spaceDashboardProfileProvider);
     final communityAsync = ref.watch(spaceCommunityProfileProvider);
     final unreadChatCount = ref.watch(totalChatUnreadNotificationCountProvider);
@@ -288,7 +427,7 @@ class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
       ),
 
       // ── Main Body with Tabs ────────────────────────────────────────────────
-      body: profileAsync.when(
+      body: _currentTabIndex == 6 ? const CommunitySupportChatView(role: AccountRole.space) : profileAsync.when(
         loading: () => const Center(
           child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
         ),
@@ -297,6 +436,8 @@ class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
           switch (_currentTabIndex) {
             case 1:
               return _SpaceProposalsTabBody(
+                key: ValueKey('hub-proposals-$_proposalRouteVersion'),
+                initialProposalId: _notificationProposalId,
                 onBack: () => _onTabSelected(0),
                 onNavigateToTab: _onTabSelected,
               );
@@ -312,15 +453,11 @@ class _SpaceDashboardScreenState extends ConsumerState<SpaceDashboardScreen> {
               return const CommunitySupportChatView(role: AccountRole.space);
             case 7:
               return _SpaceNotificationsTabBody(
-                onOpenChat: (target) {
-                  _onTabSelected(9);
-                },
-                onOpenDestination: (idx) {
-                  _onTabSelected(idx);
-                },
+                onOpenNotification: _openNotification,
               );
             case 9:
-              return const CommunityChatHubScreen(initialCategory: null);
+              return CommunityChatHubScreen(key: ValueKey('hub-chat-$_chatRouteVersion'),
+                initialCategory: null, initialTarget: _chatTarget);
             case 0:
             default:
               return _SpaceDashboardTabBody(
@@ -980,11 +1117,14 @@ class _SpaceDashboardTabBody extends ConsumerWidget {
 
 class _SpaceProposalsTabBody extends ConsumerStatefulWidget {
   const _SpaceProposalsTabBody({
+    super.key,
+    this.initialProposalId,
     required this.onBack,
     required this.onNavigateToTab,
   });
 
   final VoidCallback onBack;
+  final String? initialProposalId;
   final ValueChanged<int> onNavigateToTab;
 
   @override
@@ -995,6 +1135,7 @@ class _SpaceProposalsTabBody extends ConsumerStatefulWidget {
 class _SpaceProposalsTabBodyState
     extends ConsumerState<_SpaceProposalsTabBody> {
   String _selectedSegment = 'ALL';
+  bool _openedNotificationProposal = false;
 
   void _openCreateProposalModal([Map<String, dynamic>? initialProposal]) {
     Navigator.of(context).push(
@@ -1090,6 +1231,15 @@ class _SpaceProposalsTabBodyState
 
     return proposalsAsync.when(
       data: (proposals) {
+        if (!_openedNotificationProposal && widget.initialProposalId != null) {
+          final proposal = proposals.where((proposal) => proposal['id']?.toString() == widget.initialProposalId).firstOrNull;
+          if (proposal != null) {
+            _openedNotificationProposal = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _openProposalDetail(proposal);
+            });
+          }
+        }
         final allCount = proposals.length;
         final publishedCount = proposals
             .where((p) => p['status'] == 'PUBLISHED')
@@ -1674,6 +1824,7 @@ class _SpaceCommunityTabBody extends ConsumerWidget {
                             activeProposals: matchingProposals,
                             isBrandPreview: false,
                             isHub: false,
+                            onSelectTab: onNavigateToTab,
                           ),
                         ),
                       );
@@ -1728,12 +1879,10 @@ class _SpaceCommunityTabBody extends ConsumerWidget {
 
 class _SpaceNotificationsTabBody extends ConsumerWidget {
   const _SpaceNotificationsTabBody({
-    required this.onOpenChat,
-    required this.onOpenDestination,
+    required this.onOpenNotification,
   });
 
-  final ValueChanged<ChatHubInitialTarget> onOpenChat;
-  final ValueChanged<int> onOpenDestination;
+  final ValueChanged<Map<String, dynamic>> onOpenNotification;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1864,7 +2013,7 @@ class _SpaceNotificationsTabBody extends ConsumerWidget {
                       }
                       ref.invalidate(notificationsProvider);
                       ref.invalidate(unreadNotificationsCountProvider);
-                      onOpenDestination(9); // Open chats tab
+                      onOpenNotification(notif);
                     },
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 10),
@@ -2643,17 +2792,9 @@ class _EditHubProfileDialogState extends ConsumerState<EditHubProfileDialog> {
         'operatingCities': citiesList,
       });
 
-      if (_capacityController.text.isNotEmpty ||
-          _venuesController.text.isNotEmpty) {
-        await api.activateSpaceCommunityProfile({
-          'name': _nameController.text.trim(),
-          'venueCapacity': _capacityController.text.trim(),
-          'venueCount': int.tryParse(_venuesController.text.trim()) ?? 1,
-          'operatingCities': citiesList,
-        });
-      }
-
+      if (!mounted) return;
       widget.onSaved();
+      Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2703,9 +2844,6 @@ class _EditHubProfileDialogState extends ConsumerState<EditHubProfileDialog> {
               const SizedBox(height: 8),
               _field('Operating Cities (comma separated)', _citiesController),
               const SizedBox(height: 8),
-              _field('Venue Capacity (e.g. 100)', _capacityController),
-              const SizedBox(height: 8),
-              _field('Number of Venues', _venuesController),
               const SizedBox(height: 16),
               GestureDetector(
                 onTap: _saving ? null : _save,

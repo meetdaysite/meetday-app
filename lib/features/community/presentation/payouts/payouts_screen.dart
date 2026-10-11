@@ -1,314 +1,97 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/network/api_client.dart';
 
-class PayoutsScreen extends ConsumerWidget {
+final communityEarningsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final data = await ref.watch(apiClientProvider).getRequest('/host/earnings');
+  if (data is! Map) throw const FormatException('Invalid earnings response.');
+  return Map<String, dynamic>.from(data);
+});
+
+final communityPayoutsProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, (int, String)>((ref, query) async {
+  final response = await ref.watch(apiClientProvider).dio.get<dynamic>('/host/payouts',
+    queryParameters: {'page': query.$1, 'limit': 20, if (query.$2 != 'ALL') 'status': query.$2});
+  final raw = response.data;
+  final data = raw is Map && raw['data'] is Map ? raw['data'] : raw;
+  if (data is! Map) throw const FormatException('Invalid payouts response.');
+  return Map<String, dynamic>.from(data);
+});
+
+final communityEventEarningsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final data = await ref.watch(apiClientProvider).getRequest('/host/earnings/events');
+  if (data is! List) throw const FormatException('Invalid event earnings response.');
+  return data.whereType<Map>().map(Map<String, dynamic>.from).toList();
+});
+
+String communityMoney(dynamic value) => 'INR ${(num.tryParse(value?.toString() ?? '') ?? 0).toStringAsFixed(2)}';
+
+class PayoutsScreen extends ConsumerStatefulWidget {
   const PayoutsScreen({super.key});
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final payouts = [
-      {'date': '15 Oct 2024', 'deal': 'Aster Labs - Launch Week', 'amount': '+₹1,80,000', 'status': 'Completed'},
-      {'date': '8 Oct 2024', 'deal': 'Urban Mint - Weekend Fest', 'amount': '+₹2,35,000', 'status': 'Completed'},
-      {'date': '1 Oct 2024', 'deal': 'TechFlow - Conference', 'amount': '+₹95,000', 'status': 'Completed'},
-    ];
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'Revenue & Payouts',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF111111),
-          ),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Track your earnings and withdrawals',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF667085),
-          ),
-        ),
-        const SizedBox(height: 20),
-        // Summary cards
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEE2C2C),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0)],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Total Earnings',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white70,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '₹8,75,000',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Lifetime revenue from all deals',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white70,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _RevenueBox(
-                label: 'Pending',
-                amount: '₹1,50,000',
-                color: const Color(0xFFF0A12B),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _RevenueBox(
-                label: 'This Month',
-                amount: '₹4,25,000',
-                color: const Color(0xFF12B76A),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        // Bank Account
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Bank Account',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF7F7F6),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'HDFC Bank',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF111111),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Account: ****1234',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF667085),
-                          ),
-                        ),
-                      ],
-                    ),
-                    ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6C32D1),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      child: const Text('Change'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        // Withdrawal
-        ElevatedButton(
-          onPressed: () {},
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFEE2C2C),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-          child: const Text('Request Withdrawal'),
-        ),
-        const SizedBox(height: 20),
-        // History
-        const Text(
-          'Recent Payouts',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF111111),
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...payouts.map((p) => _PayoutCard(payout: p)).toList(),
-      ],
-    );
-  }
+  ConsumerState<PayoutsScreen> createState() => _PayoutsScreenState();
 }
 
-class _RevenueBox extends StatelessWidget {
-  const _RevenueBox({
-    required this.label,
-    required this.amount,
-    required this.color,
-  });
-
-  final String label;
-  final String amount;
-  final Color color;
+class _PayoutsScreenState extends ConsumerState<PayoutsScreen> {
+  int _page = 1;
+  String _status = 'ALL';
+  Future<void> _detail(String id) async {
+    try {
+      final data = await ref.read(apiClientProvider).getRequest('/host/payouts/${Uri.encodeComponent(id)}');
+      if (!mounted || data is! Map) return;
+      await showModalBottomSheet<void>(context: context, isScrollControlled: true,
+        builder: (context) => SizedBox(height: MediaQuery.of(context).size.height * .8,
+          child: ListView(padding: const EdgeInsets.all(20), children: [
+            Text('Payout details', style: GoogleFonts.bricolageGrotesque(fontSize: 22, fontWeight: FontWeight.w800)),
+            for (final entry in const {'status': 'Status', 'grossRevenue': 'Gross revenue', 'platformFee': 'Platform fee',
+              'tdsAmount': 'TDS', 'netPayoutAmount': 'Net payout', 'createdAt': 'Created', 'completedAt': 'Completed'}.entries)
+              ListTile(title: Text(entry.value), subtitle: Text((data[entry.key] ?? '').toString())),
+            for (final item in (data['lineItems'] as List? ?? const []).whereType<Map>())
+              ListTile(title: Text((item['order'] is Map ? item['order']['bookingId'] : item['id'] ?? 'Order').toString()),
+                subtitle: Text(communityMoney(item['netAmount'] ?? item['hostGross']))),
+            for (final item in (data['history'] as List? ?? const []).whereType<Map>())
+              ListTile(title: Text((item['status'] ?? '').toString()), subtitle: Text((item['createdAt'] ?? '').toString())),
+          ])));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not load payout details.')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF667085),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            amount,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PayoutCard extends StatelessWidget {
-  const _PayoutCard({required this.payout});
-
-  final Map<String, dynamic> payout;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  payout['deal'] as String,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  payout['date'] as String,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                payout['amount'] as String,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF12B76A),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'Completed',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF12B76A),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+    final earnings = ref.watch(communityEarningsProvider);
+    final payouts = ref.watch(communityPayoutsProvider((_page, _status)));
+    return Scaffold(appBar: AppBar(title: const Text('Revenue & payouts')), body: RefreshIndicator(
+      onRefresh: () async { ref.invalidate(communityEarningsProvider); ref.invalidate(communityPayoutsProvider);
+        await ref.read(communityPayoutsProvider((_page, _status)).future); },
+      child: ListView(padding: const EdgeInsets.all(16), children: [
+        ...earnings.when<List<Widget>>(loading: () => [const Center(child: CircularProgressIndicator())],
+          error: (error, stack) => [ListTile(title: const Text('Could not load earnings'), trailing: TextButton(
+            onPressed: () => ref.invalidate(communityEarningsProvider), child: const Text('Retry')))],
+          data: (data) => [for (final entry in const {'totalEarned': 'Paid out', 'totalPending': 'Pending', 'totalTdsDeducted': 'TDS deducted'}.entries)
+            ListTile(title: Text(entry.value), trailing: Text(communityMoney(data[entry.key])))]),
+        DropdownMenu<String>(initialSelection: 'ALL', label: const Text('Status'), expandedInsets: EdgeInsets.zero,
+          dropdownMenuEntries: ['ALL', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'].map((value) => DropdownMenuEntry(value: value, label: value)).toList(),
+          onSelected: (value) => setState(() { _status = value ?? 'ALL'; _page = 1; })),
+        ...payouts.when<List<Widget>>(loading: () => [const Center(child: CircularProgressIndicator())],
+          error: (error, stack) => [ListTile(title: const Text('Could not load payouts'), trailing: TextButton(
+            onPressed: () => ref.invalidate(communityPayoutsProvider((_page, _status))), child: const Text('Retry')))],
+          data: (data) {
+            final rows = (data['data'] as List? ?? const []).whereType<Map>().toList();
+            final total = (data['total'] as num?)?.toInt() ?? rows.length;
+            return [if (rows.isEmpty) const ListTile(title: Text('No payouts yet')),
+              for (final row in rows) ListTile(title: Text((row['event'] is Map ? row['event']['title'] : 'Payout').toString()),
+                subtitle: Text((row['status'] ?? '').toString()), trailing: Text(communityMoney(row['netPayoutAmount'])),
+                onTap: () => _detail(row['id'].toString())),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                IconButton(tooltip: 'Previous page', icon: const Icon(Icons.chevron_left_rounded), onPressed: _page == 1 ? null : () => setState(() => _page--)),
+                Text('Page $_page'), IconButton(tooltip: 'Next page', icon: const Icon(Icons.chevron_right_rounded),
+                  onPressed: _page * 20 >= total ? null : () => setState(() => _page++)),
+              ]),
+            ];
+          }),
+      ]),
+    ));
   }
 }

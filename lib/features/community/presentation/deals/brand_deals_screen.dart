@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -29,6 +32,8 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
   bool _isLoading = true;
   bool _isPaying = false;
   int _selectedView = 0; // 0: Locked Deals, 1: Billing
+  String _selectedDealType = 'ALL';
+  String? _loadError;
   String? _activeInterestId;
 
   List<Map<String, dynamic>> _lockedDeals = [];
@@ -67,7 +72,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    setState(() { _isLoading = true; _loadError = null; });
     final api = ref.read(apiClientProvider);
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -95,7 +100,10 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
       final sponsorshipChatsResponse = await api.dio.get<dynamic>(
         '/sponsorships/chats',
         queryParameters: {'role': roleQueryParam, 'status': 'ACCEPTED'},
-      ).catchError((_) => Response(requestOptions: RequestOptions(path: ''), data: []));
+      ).catchError((_) {
+        _loadError = 'Some deals could not be loaded. Please retry.';
+        return Response(requestOptions: RequestOptions(path: ''), data: []);
+      });
       final sponsorshipThreads = _extractList(sponsorshipChatsResponse.data);
 
       // Enrich billing rows with thread metadata (logos, campaign flags)
@@ -152,7 +160,10 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
       final spacesResponse = await api.dio.get<dynamic>(
         '/spaces/chats',
         queryParameters: {'role': roleQueryParam, 'status': 'ACCEPTED'},
-      ).catchError((_) => Response(requestOptions: RequestOptions(path: ''), data: []));
+      ).catchError((_) {
+        _loadError = 'Some deals could not be loaded. Please retry.';
+        return Response(requestOptions: RequestOptions(path: ''), data: []);
+      });
       final spaceThreads = _extractList(spacesResponse.data);
 
       final hubDealResults = await Future.wait(spaceThreads.map((thread) async {
@@ -176,6 +187,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
             'counterpartName': thread['counterpartName'] ?? (isBrand ? 'Community Hub' : 'Hub Partner'),
             'counterpartAvatarUrl': thread['counterpartAvatarUrl'],
             'dealKind': 'HUB',
+            'requesterType': thread['requesterType'],
             'hasReport': hasReport,
           };
         } catch (_) {
@@ -183,9 +195,34 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
         }
       }));
 
+      final spaceHostDeals = <Map<String, dynamic>>[];
+      if (isSpace) {
+        try {
+          final response = await api.dio.get<dynamic>('/space-host/chats',
+            queryParameters: {'role': 'SPACE', 'status': 'ACCEPTED'});
+          for (final thread in _extractList(response.data)) {
+            final threadId = thread['id']?.toString();
+            if (threadId == null) continue;
+            final response = await api.dio.get<dynamic>('/space-host/chats/$threadId/deal');
+            final deal = _extractMap(response.data);
+            if (deal == null || deal['status'] != 'APPROVED') continue;
+            final report = await api.dio.get<dynamic>('/space-host/chats/$threadId/deal/report',
+              queryParameters: {'role': 'SPACE'});
+            spaceHostDeals.add({...deal, 'interestId': threadId,
+              'counterpartName': thread['counterpartName'] ?? 'Community',
+              'counterpartAvatarUrl': thread['counterpartAvatarUrl'],
+              'requesterType': 'COMMUNITY', 'dealKind': 'SPACE_HOST',
+              'hasReport': _extractMap(report.data) != null});
+          }
+        } catch (_) {
+          _loadError = 'Some community deals could not be loaded. Please retry.';
+        }
+      }
+
       final combinedLockedDeals = [
         ...sponsorshipDealResults.whereType<Map<String, dynamic>>(),
         ...hubDealResults.whereType<Map<String, dynamic>>(),
+        ...spaceHostDeals,
       ];
 
       // If deals endpoint returned items, also add any from billing that are not in locked deals
@@ -328,6 +365,9 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                 icon: const Icon(Icons.close, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
+              actions: [
+                _InvoiceDownloadButton(url: url, fileName: 'meetday-invoice-$interestId.pdf'),
+              ],
             ),
             body: SfPdfViewer.network(url),
           ),
@@ -415,7 +455,9 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         side: BorderSide(color: Colors.black, width: 2.5),
       ),
-      builder: (ctx) => Padding(
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .85),
+        child: SingleChildScrollView(child: Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -459,6 +501,18 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
               style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
             ),
             const SizedBox(height: 10),
+            for (final entry in <String, String>{
+              'venue': 'Venue', 'time': 'Time', 'startDate': 'Start date', 'endDate': 'End date',
+              'goals': 'Goals', 'targetAudience': 'Audience', 'sponsorshipAmount': 'Agreed amount',
+              'barterElements': 'Barter', 'otherTerms': 'Other terms', 'additionalNotes': 'Additional notes',
+            }.entries)
+              if (deal[entry.key] != null && deal[entry.key].toString().isNotEmpty)
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(entry.value, style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700)),
+                    Text(deal[entry.key] is List ? (deal[entry.key] as List).join(', ') : deal[entry.key].toString(),
+                      style: GoogleFonts.poppins(fontSize: 12)),
+                  ])),
             Text('Deliverables', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black)),
             const SizedBox(height: 6),
             if (deliverables.isNotEmpty)
@@ -473,7 +527,8 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                     ),
                   ))
             else
-              Text('Deliverables as agreed in the chat thread.', style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54)),
+              Text((deal['deliverables'] ?? 'Deliverables as agreed in the chat thread.').toString(),
+                style: GoogleFonts.poppins(fontSize: 11.5, color: Colors.black54)),
             const SizedBox(height: 12),
             Text('Terms & Notes', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black)),
             const SizedBox(height: 4),
@@ -498,7 +553,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
             ),
           ],
         ),
-      ),
+      ))),
     );
   }
 
@@ -542,7 +597,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
   void _showReport(Map<String, dynamic> row) {
     final interestId = (row['sponsorshipInterestId'] ?? row['interestId'] ?? '').toString();
     if (interestId.isEmpty) return;
-    final isHub = row['dealKind'] == 'HUB';
+    final isHub = row['dealKind'] == 'HUB' || row['dealKind'] == 'SPACE_HOST';
     final isCampaign = !isHub && (row['isCampaign'] == true || row['campaignId'] != null);
     final name = (row['counterpartName'] ?? row['communityName'] ?? row['brandName'] ?? 'Partner').toString();
     final project = (row['projectName'] ?? row['proposalName'] ?? 'Locked deal').toString();
@@ -550,7 +605,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
     final thread = UnifiedActiveThread(
       id: interestId,
       category: isHub ? 'spaces' : (isCampaign ? 'campaigns' : 'sponsorships'),
-      kind: isHub ? 'SPACE_INTEREST' : (isCampaign ? 'CAMPAIGN' : 'SPONSORSHIP'),
+      kind: row['dealKind'] == 'SPACE_HOST' ? 'SPACE_HOST' : isHub ? 'SPACE_INTEREST' : (isCampaign ? 'CAMPAIGN' : 'SPONSORSHIP'),
       counterpartName: name,
       counterpartAvatarUrl: row['counterpartAvatarUrl']?.toString() ?? row['communityLogo']?.toString(),
       counterpartType: isHub ? 'SPACE' : 'COMMUNITY',
@@ -602,7 +657,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                     thread: UnifiedActiveThread(
                       id: interestId,
                       category: hub ? 'spaces' : (isCampaign ? 'campaigns' : 'sponsorships'),
-                      kind: hub ? 'SPACE_INTEREST' : (isCampaign ? 'CAMPAIGN' : 'SPONSORSHIP'),
+                      kind: row['dealKind'] == 'SPACE_HOST' ? 'SPACE_HOST' : hub ? 'SPACE_INTEREST' : (isCampaign ? 'CAMPAIGN' : 'SPONSORSHIP'),
                       counterpartName: name,
                       counterpartAvatarUrl: row['counterpartAvatarUrl']?.toString() ?? row['communityLogo']?.toString(),
                       counterpartType: hub ? 'SPACE' : 'COMMUNITY',
@@ -811,7 +866,19 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeRows = _selectedView == 0 ? _lockedDeals : _billingRows;
+    final isBrand = (widget.role ?? ref.watch(authControllerProvider).role ?? AccountRole.brand) == AccountRole.brand;
+    final isSpace = (widget.role ?? ref.read(authControllerProvider).role) == AccountRole.space;
+    final sourceRows = _selectedView == 0 ? _lockedDeals : _billingRows;
+    final activeRows = sourceRows.where((row) {
+      if ((!isBrand && !isSpace) || _selectedDealType == 'ALL') return true;
+      if (_selectedDealType == 'BRAND') return row['requesterType'] == 'BRAND' || row['dealKind'] == 'SPONSORSHIP';
+      if (_selectedDealType == 'COMMUNITY') return row['requesterType'] == 'COMMUNITY' || row['dealKind'] == 'SPACE_HOST';
+      final isHub = row['dealKind'] == 'HUB';
+      final isCampaign = !isHub && (row['isCampaign'] == true || row['campaignId'] != null);
+      if (_selectedDealType == 'HUB') return isHub;
+      if (_selectedDealType == 'CAMPAIGN') return isCampaign;
+      return !isHub && !isCampaign;
+    }).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDFC),
@@ -891,7 +958,10 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() => _selectedView = 1),
+                        onTap: () => setState(() {
+                          _selectedView = 1;
+                          if (_selectedDealType == 'HUB') _selectedDealType = 'ALL';
+                        }),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
                           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -926,7 +996,33 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
               ),
               const SizedBox(height: 16),
 
+              if (isBrand || isSpace) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final entry in <String, String>{
+                      'ALL': 'All',
+                      if (isSpace) ...{'BRAND': 'Brand deals', 'COMMUNITY': 'Community deals'}
+                      else ...{'SPONSORSHIP': 'Sponsorships', 'CAMPAIGN': 'Campaigns',
+                        if (_selectedView == 0) 'HUB': 'Hubs'},
+                    }.entries)
+                      ChoiceChip(
+                        label: Text(entry.value),
+                        selected: _selectedDealType == entry.key,
+                        selectedColor: MeetdayColors.accentYellow,
+                        onSelected: (_) => setState(() => _selectedDealType = entry.key),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+
               // Content List
+              if (_loadError != null) ListTile(
+                title: Text(_loadError!),
+                trailing: TextButton(onPressed: _load, child: const Text('Retry')),
+              ),
               if (_isLoading)
                 const Padding(
                   padding: EdgeInsets.all(40),
@@ -978,11 +1074,68 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                   ),
                 )
               else
-                ...activeRows.map((row) => _dealCard(row, hub: row['dealKind'] == 'HUB')),
+                ...activeRows.map((row) => _dealCard(row, hub: row['dealKind'] == 'HUB' || row['dealKind'] == 'SPACE_HOST')),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+class _InvoiceDownloadButton extends StatefulWidget {
+  const _InvoiceDownloadButton({required this.url, required this.fileName});
+
+  final String url;
+  final String fileName;
+
+  @override
+  State<_InvoiceDownloadButton> createState() => _InvoiceDownloadButtonState();
+}
+
+class _InvoiceDownloadButtonState extends State<_InvoiceDownloadButton> {
+  bool _isDownloading = false;
+
+  Future<void> _download() async {
+    if (_isDownloading) return;
+    setState(() => _isDownloading = true);
+    try {
+      final response = await Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 20),
+        receiveTimeout: const Duration(seconds: 45),
+      )).get<List<int>>(widget.url, options: Options(responseType: ResponseType.bytes));
+      final bytes = response.data;
+      if (bytes == null || bytes.length < 4 ||
+          bytes[0] != 0x25 || bytes[1] != 0x50 || bytes[2] != 0x44 || bytes[3] != 0x46) {
+        throw const FormatException('The invoice response was not a PDF.');
+      }
+      if (!mounted) return;
+      final saved = await FilePicker.saveFile(
+        fileName: widget.fileName,
+        bytes: Uint8List.fromList(bytes),
+        mimeType: 'application/pdf',
+      );
+      if (saved != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invoice saved.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not download invoice. Please try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Download invoice',
+    onPressed: _isDownloading ? null : _download,
+    icon: _isDownloading
+        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(
+            color: Colors.white, strokeWidth: 2))
+        : const Icon(Icons.download_rounded, color: Colors.white),
+  );
 }

@@ -2,6 +2,31 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/event_model.dart';
 import '../../../../core/network/api_client.dart';
 
+final communityOwnedEventsProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, int>((ref, page) async {
+  final response = await ref.watch(apiClientProvider).dio.get<dynamic>('/events/me',
+    queryParameters: {'page': page, 'limit': 20});
+  final body = response.data is Map ? response.data['data'] ?? response.data : null;
+  if (body is! Map) throw const FormatException('Invalid event list response.');
+  return Map<String, dynamic>.from(body);
+});
+
+final communityOwnedEventProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, id) async {
+  final response = await ref.watch(apiClientProvider).getRequest('/events/me/${Uri.encodeComponent(id)}');
+  if (response is! Map) throw const FormatException('Invalid event detail response.');
+  return Map<String, dynamic>.from(response);
+});
+
+final communityEventAttendeesProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, (String, int)>((ref, query) async {
+  final response = await ref.watch(apiClientProvider).dio.get<dynamic>(
+    '/events/me/${Uri.encodeComponent(query.$1)}/attendees', queryParameters: {'page': query.$2, 'limit': 50});
+  final body = response.data is Map ? response.data['data'] ?? response.data : null;
+  if (body is! Map) throw const FormatException('Invalid attendee response.');
+  return Map<String, dynamic>.from(body);
+});
+
 final eventsProvider = FutureProvider.autoDispose<List<Event>>((ref) async {
   final api = ref.watch(apiClientProvider);
   try {

@@ -16,6 +16,7 @@ import '../providers/dashboard_provider.dart';
 import '../community_dashboard_screen.dart';
 import '../community_detail_screen.dart';
 import '../spaces/space_dashboard_screen.dart';
+import '../spaces/space_community_listing_form.dart';
 
 const Map<String, String> _genderLabels = {
   'MALE': 'Male',
@@ -49,11 +50,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     _loadNotificationSoundPreference();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (widget.initialOpenPanel == 'community') {
         _openCommunityDetails();
       } else if (widget.initialOpenPanel == 'kyc') {
         _openVerifications();
+      } else if (widget.initialOpenPanel == 'brand-edit') {
+        try {
+          final profile = await ref.read(apiClientProvider).getBrandProfile();
+          if (mounted) _openEditBrandProfile(profile);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Could not load your brand profile. Please try again.'),
+            ));
+          }
+        }
       }
     });
   }
@@ -124,18 +136,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             spaceCommunity['logoUrl'] ??
             spaceProfile['avatarUrl'] ??
             userMap['avatarUrl'],
-        'secondaryImageUrl': spaceCommunity['secondaryImageUrl'],
+        'secondaryImageUrl': spaceCommunity['posterUrl'] ?? spaceCommunity['secondaryImageUrl'],
         'about': spaceCommunity['about'] ?? spaceProfile['bio'] ?? '',
         'operatingCities':
+          spaceCommunity['activeLocations'] ??
             spaceCommunity['operatingCities'] ??
             spaceProfile['operatingCities'] ??
             [],
         'venueCount':
-            spaceProfile['venueCount'] ?? spaceCommunity['venueCount'] ?? 1,
+          spaceCommunity['numberOfVenues'] ?? spaceCommunity['venueCount'] ?? 0,
         'capacity':
-            spaceProfile['capacity'] ??
+          spaceCommunity['venueCapacity'] ??
             spaceCommunity['capacity'] ??
-            '50 - 200',
+          '',
+        'size': spaceCommunity['communitySize'] ?? '',
         'categories':
             spaceCommunity['categories'] ?? spaceProfile['categories'] ?? [],
         'amenities':
@@ -298,7 +312,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           isHub: true,
           onEdit: () {
             Navigator.of(context).pop();
-            _openEditHubProfile();
+            _openEditHubListing();
           },
           onBrandPreview: _openBrandPreview,
         ),
@@ -320,7 +334,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         hostProfile: host,
         onEdit: () {
           Navigator.of(context).pop();
-          _openEditProfile();
+          _openEditCommunityListing();
         },
         onBrandPreview: _openBrandPreview,
       ),
@@ -337,6 +351,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _VerificationsDetailsSheet(hostProfile: host),
     );
+  }
+
+  Future<void> _openEditCommunityListing() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+      SpaceCommunityListingForm(isCommunity: true, onEditAccount: _openEditProfile)));
+    if (!mounted) return;
+    ref.invalidate(communityProfileProvider);
+    ref.invalidate(hostProfileProvider);
   }
 
   void _openTeamMembers() {
@@ -385,6 +407,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _openEditHubListing() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => SpaceCommunityListingForm(onEditAccount: _openEditHubProfile),
+    ));
+    if (!mounted) return;
+    ref.invalidate(spaceDashboardProfileProvider);
+    ref.invalidate(spaceCommunityProfileProvider);
   }
 
   void _openEditBrandProfile(Map<String, dynamic> brandProfile) {

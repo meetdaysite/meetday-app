@@ -75,9 +75,8 @@ class _ProposalPdfViewerScreenState extends State<ProposalPdfViewerScreen> {
       debugPrint('Could not fetch fresh docUrl from /sponsorships/$proposalId: $e');
     }
 
-    // 2. Fallback to public explore endpoint (e.g. for brand view or public preview)
     try {
-      final res = await dio.get<dynamic>('/sponsorships/explore/$proposalId');
+      final res = await dio.get<dynamic>('/sponsorships/published/$proposalId');
       if (res.statusCode == 200 && res.data != null) {
         final body = res.data;
         final map = (body is Map && body.containsKey('data')) ? body['data'] : body;
@@ -86,7 +85,7 @@ class _ProposalPdfViewerScreenState extends State<ProposalPdfViewerScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Could not fetch fresh docUrl from /sponsorships/explore/$proposalId: $e');
+      debugPrint('Could not fetch fresh docUrl from /sponsorships/published/$proposalId: $e');
     }
 
     return null;

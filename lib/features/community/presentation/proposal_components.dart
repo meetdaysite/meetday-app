@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/meetday_colors.dart';
 import 'proposal/proposal_form_screen.dart';
 import 'proposal/proposal_pdf_viewer_screen.dart';
+import 'profile/profile_screen.dart';
+import 'community_detail_screen.dart';
 
 export 'proposal/proposal_form_screen.dart';
 export 'proposal/proposal_pdf_viewer_screen.dart';
@@ -294,6 +298,15 @@ class ProposalListItemCard extends StatelessWidget {
 
 // ── Proposal Detail Dialog ───────────────────────────────────────────────────
 
+final publishedProposalDetailProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, String>((ref, proposalId) async {
+  final response = await ref.watch(apiClientProvider).getRequest(
+    '/sponsorships/published/${Uri.encodeComponent(proposalId)}',
+  );
+  if (response is! Map) throw const FormatException('Invalid proposal detail response.');
+  return Map<String, dynamic>.from(response);
+});
+
 class ProposalDetailDialog extends StatelessWidget {
   const ProposalDetailDialog({
     super.key,
@@ -303,6 +316,7 @@ class ProposalDetailDialog extends StatelessWidget {
     this.onDelete,
     this.isBrand = false,
     this.onChatStarted,
+    this.loadPublishedDetail = true,
   });
 
   final Map<String, dynamic> proposal;
@@ -311,6 +325,7 @@ class ProposalDetailDialog extends StatelessWidget {
   final VoidCallback? onDelete;
   final bool isBrand;
   final VoidCallback? onChatStarted;
+  final bool loadPublishedDetail;
 
   static String _formatDate(String raw) {
     if (raw.isEmpty) return '';
@@ -398,6 +413,32 @@ class ProposalDetailDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final id = (proposal['id'] ?? '').toString();
+    if (isBrand && loadPublishedDetail && id.isNotEmpty &&
+        onEdit == null && onSubmitApproval == null && onDelete == null) {
+      return Consumer(builder: (context, ref, child) {
+        return ref.watch(publishedProposalDetailProvider(id)).when(
+          data: (detail) => ProposalDetailDialog(
+            proposal: {...proposal, ...detail},
+            isBrand: true,
+            onChatStarted: onChatStarted,
+            loadPublishedDetail: false,
+          ),
+          loading: () => const Dialog(child: Padding(
+            padding: EdgeInsets.all(40),
+            child: SizedBox(height: 48, child: Center(child: CircularProgressIndicator())),
+          )),
+          error: (error, stack) => AlertDialog(
+            title: const Text('Could not load proposal'),
+            content: const Text('Please try again.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+              TextButton(onPressed: () => ref.invalidate(publishedProposalDetailProvider(id)),
+                child: const Text('Retry')),
+            ],
+          ),
+        );
+      });
+    }
     final name = (proposal['name'] ?? proposal['title'] ?? 'Proposal').toString();
     final about = (proposal['about'] ?? '').toString();
     final imageUrl = proposal['imageUrl'] as String?;
@@ -419,6 +460,9 @@ class ProposalDetailDialog extends StatelessWidget {
     final docType = (proposal['docType'] ?? 'PDF').toString();
     final docSize = proposal['docSize'] as int?;
     final docUrl = proposal['docUrl'] as String?;
+    final community = proposal['community'] is Map
+      ? Map<String, dynamic>.from(proposal['community'] as Map)
+      : null;
 
     final startDisplay = _formatDate(eventDate);
     final endDisplay = _formatDate(eventEndDate);
@@ -510,6 +554,32 @@ class ProposalDetailDialog extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (isBrand && community != null) ...[
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: community['logoUrl'] is String
+                            ? Image.network(community['logoUrl'] as String, width: 44, height: 44,
+                                fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.groups_rounded))
+                            : const Icon(Icons.groups_rounded),
+                        title: Text((community['name'] ?? 'Community').toString()),
+                        subtitle: Text((community['about'] ?? '').toString(), maxLines: 3,
+                          overflow: TextOverflow.ellipsis),
+                        trailing: community['id'] == null ? null : const Icon(Icons.chevron_right_rounded),
+                        onTap: community['id'] == null ? null : () => Navigator.of(context).push<void>(
+                          MaterialPageRoute(builder: (_) => CommunityDetailScreen(
+                            community: community,
+                            activeProposals: [proposal],
+                            isBrandPreview: true,
+                            isHub: proposal['spaceProfileId'] != null,
+                          )),
+                        ),
+                      ),
+                      Wrap(spacing: 6, runSpacing: 6, children:
+                        (community['categories'] as List? ?? const []).whereType<Map>().map(
+                          (category) => Chip(label: Text((category['name'] ?? '').toString())),
+                        ).toList()),
+                      const Divider(),
+                    ],
                     // Title & Status
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1394,6 +1464,10 @@ class ProposalDetailDialog extends StatelessWidget {
                           onTap: () async {
                             final id = (proposal['id'] ?? '').toString();
                             if (id.isEmpty) return;
+                            if (proposal['alreadyInterested'] == true) {
+                              onChatStarted?.call();
+                              return;
+                            }
                             try {
                               final res = await ApiClient.instance.markSponsorshipInterest(id);
                               final already = res['alreadyInterested'] == true;
@@ -1413,6 +1487,40 @@ class ProposalDetailDialog extends StatelessWidget {
                                 onChatStarted?.call();
                               }
                             } catch (e) {
+                              final response = e is DioException ? e.response : null;
+                              final errorBody = response?.data;
+                              final errorMessage = errorBody is Map
+                                  ? (errorBody['message'] ?? '').toString().toLowerCase()
+                                  : '';
+                              if (btnCtx.mounted && response?.statusCode == 400 &&
+                                  errorMessage.contains('profile') &&
+                                  errorMessage.contains('complete')) {
+                                final openProfile = await showDialog<bool>(
+                                  context: btnCtx,
+                                  builder: (dialogContext) => AlertDialog(
+                                    title: const Text('Please complete your profile'),
+                                    content: const Text(
+                                      'Add your brand name, categories, and social links before expressing interest in a proposal.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(dialogContext, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(dialogContext, true),
+                                        child: const Text('Complete Profile'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (openProfile == true && btnCtx.mounted) {
+                                  await Navigator.of(btnCtx).push<void>(MaterialPageRoute(
+                                    builder: (_) => const ProfileScreen(initialOpenPanel: 'brand-edit'),
+                                  ));
+                                }
+                                return;
+                              }
                               if (btnCtx.mounted) {
                                 ScaffoldMessenger.of(btnCtx).showSnackBar(
                                   SnackBar(
@@ -1445,7 +1553,7 @@ class ProposalDetailDialog extends StatelessWidget {
                                 const Icon(Icons.star_rounded, size: 18, color: Colors.black),
                                 const SizedBox(width: 6),
                                 Text(
-                                  'EXPRESS INTEREST ➔',
+                                  proposal['alreadyInterested'] == true ? 'INTEREST SENT' : 'EXPRESS INTEREST ➔',
                                   style: GoogleFonts.poppins(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w900,

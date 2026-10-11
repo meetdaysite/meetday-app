@@ -22,6 +22,11 @@ import 'community_detail_screen.dart';
 import 'profile/profile_screen.dart';
 import 'proposal_components.dart';
 import 'providers/dashboard_provider.dart';
+import 'events/events_list_screen.dart';
+import 'attendees/attendees_screen.dart';
+import 'payouts/payouts_screen.dart';
+import 'analytics/analytics_screen.dart';
+import 'messages/messages_screen.dart';
 import 'providers/profile_provider.dart';
 import 'support/community_support_chat_view.dart';
 import '../../../core/widgets/top_notification_banner.dart';
@@ -482,6 +487,28 @@ class _CommunityDashboardScreenState
               ),
             ),
             actions: [
+              if (effectiveRole == AccountRole.community)
+                PopupMenuButton<String>(
+                  tooltip: 'Community tools',
+                  icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'events', child: Text('Events')),
+                    PopupMenuItem(value: 'attendees', child: Text('Attendees')),
+                    PopupMenuItem(value: 'payouts', child: Text('Revenue & payouts')),
+                    PopupMenuItem(value: 'insights', child: Text('Insights')),
+                    PopupMenuItem(value: 'activity', child: Text('Activity inbox')),
+                  ],
+                  onSelected: (value) {
+                    final Widget screen = switch (value) {
+                      'events' => const EventsListScreen(),
+                      'attendees' => const AttendeesScreen(),
+                      'payouts' => const PayoutsScreen(),
+                      'insights' => const AnalyticsScreen(),
+                      _ => const Scaffold(body: MessagesScreen()),
+                    };
+                    Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => screen));
+                  },
+                ),
               // Notifications icon on top right corner
               Padding(
                 padding: const EdgeInsets.only(right: 16),
@@ -3395,6 +3422,8 @@ class _CuratedExperiencesExploreView extends ConsumerStatefulWidget {
 class _CuratedExperiencesExploreViewState
     extends ConsumerState<_CuratedExperiencesExploreView> {
   String _selectedSegment = 'ALL';
+  String? _selectedCategoryId;
+  String _searchQuery = '';
 
   void _openProposalDetail(Map<String, dynamic> proposal) {
     showDialog<void>(
@@ -3416,6 +3445,16 @@ class _CuratedExperiencesExploreViewState
 
     return proposalsAsync.when(
       data: (proposals) {
+        final categories = <String, String>{};
+        for (final proposal in proposals) {
+          for (final category in (proposal['categories'] as List? ?? const []).whereType<Map>()) {
+            final categoryId = category['id']?.toString();
+            final categoryName = category['name']?.toString();
+            if (categoryId != null && categoryName != null) {
+              categories[categoryId] = categoryName;
+            }
+          }
+        }
         final allCount = proposals.length;
         final cashCount = proposals.where((p) {
           final t = (p['sponsorshipType'] ?? '').toString().toUpperCase();
@@ -3427,6 +3466,17 @@ class _CuratedExperiencesExploreViewState
         }).length;
 
         final filtered = proposals.where((p) {
+          if (widget.isBrand) {
+            if (_selectedCategoryId != null &&
+                !(p['categories'] as List? ?? const []).whereType<Map>().any(
+                  (category) => category['id']?.toString() == _selectedCategoryId,
+                )) return false;
+            final query = _searchQuery.trim().toLowerCase();
+            if (query.isNotEmpty &&
+                !['name', 'about', 'hostName', 'city'].any(
+                  (field) => (p[field] ?? '').toString().toLowerCase().contains(query),
+                )) return false;
+          }
           if (_selectedSegment == 'ALL') return true;
           final type = (p['sponsorshipType'] ?? '').toString().toUpperCase();
           if (_selectedSegment == 'CASH') {
@@ -3489,6 +3539,34 @@ class _CuratedExperiencesExploreViewState
               ),
             ),
             const SizedBox(height: 16),
+            if (widget.isBrand) ...[
+              TextField(
+                onChanged: (value) => setState(() => _searchQuery = value),
+                decoration: const InputDecoration(
+                  hintText: 'Search experiences, communities or cities',
+                  prefixIcon: Icon(Icons.search_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownMenu<String>(
+                expandedInsets: EdgeInsets.zero,
+                enableFilter: true,
+                enableSearch: true,
+                label: const Text('Category'),
+                initialSelection: '',
+                onSelected: (value) => setState(() {
+                  _selectedCategoryId = value == null || value.isEmpty ? null : value;
+                }),
+                dropdownMenuEntries: [
+                  const DropdownMenuEntry(value: '', label: 'All Categories'),
+                  ...categories.entries.map((category) => DropdownMenuEntry(
+                    value: category.key,
+                    label: category.value,
+                  )),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),

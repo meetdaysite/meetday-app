@@ -1,225 +1,138 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-class MessagesScreen extends ConsumerStatefulWidget {
+import '../../../../core/network/api_client.dart';
+import '../chat/community_chat_hub.dart';
+import '../profile/profile_screen.dart';
+import '../proposal_components.dart';
+import '../providers/chat_provider.dart';
+import '../providers/dashboard_provider.dart';
+import '../providers/profile_provider.dart';
+import '../support/community_support_chat_view.dart';
+
+class MessagesScreen extends ConsumerWidget {
   const MessagesScreen({super.key});
 
-  @override
-  ConsumerState<MessagesScreen> createState() => _MessagesScreenState();
-}
+  void _profile(BuildContext context) {
+    Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => const ProfileScreen(initialOpenPanel: 'community'),
+    ));
+  }
 
-class _MessagesScreenState extends ConsumerState<MessagesScreen> {
-  final searchController = TextEditingController();
+  void _proposal(BuildContext context, WidgetRef ref, Map<String, dynamic> proposal) {
+    showDialog<void>(context: context, builder: (dialogContext) => ProposalDetailDialog(
+      proposal: proposal,
+      onEdit: () {
+        Navigator.pop(dialogContext);
+        Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => ProposalFormScreen(
+          initialProposal: proposal, onSuccess: () => ref.invalidate(dashboardProposalsProvider),
+        )));
+      },
+    ));
+  }
 
-  @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
+  Future<void> _notification(BuildContext context, WidgetRef ref, Map<String, dynamic> notification) async {
+    try {
+      final id = notification['id']?.toString();
+      if (id != null) await ref.read(apiClientProvider).markNotificationRead(id);
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
+    } catch (_) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not mark notification as read.')),
+      );
+    }
+    if (!context.mounted) return;
+    final metadata = notification['metadata'] is Map ? notification['metadata'] as Map : const {};
+    final type = (notification['type'] ?? '').toString();
+    if (type.contains('meetday_chat') || metadata['threadId'] == 'support') {
+      Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => const Scaffold(body: CommunitySupportChatView()),
+      ));
+      return;
+    }
+    final thread = (metadata['sponsorshipInterestId'] ?? metadata['spaceInterestId'] ??
+        metadata['spaceHostInterestId'] ?? metadata['communityCollaborationInterestId'] ??
+        metadata['interestId'] ?? metadata['chatId'] ?? metadata['threadId'])?.toString();
+    if (thread != null) {
+      final category = type.contains('campaign') || metadata['campaignId'] != null ? 'campaigns'
+          : type.startsWith('space_') ? 'spaces' : type.contains('collaboration') ? 'communities' : 'sponsorships';
+      Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => Scaffold(body: CommunityChatHubScreen(
+        initialTarget: ChatHubInitialTarget(category: category, threadId: thread),
+      ))));
+      return;
+    }
+    final proposalId = (metadata['proposalId'] ?? metadata['sponsorshipProposalId'])?.toString();
+    if (proposalId != null) {
+      try {
+        final proposals = await ref.read(dashboardProposalsProvider.future);
+        final proposal = proposals.where((proposal) => proposal['id']?.toString() == proposalId).firstOrNull;
+        if (context.mounted && proposal != null) _proposal(context, ref, proposal);
+      } catch (_) {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load proposal. Please retry.')),
+        );
+      }
+    } else if (type.contains('profile') || type.contains('verification')) {
+      _profile(context);
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final conversations = [
-      {
-        'id': '1',
-        'name': 'Aster Labs',
-        'type': 'brand',
-        'lastMessage': 'Looking forward to the event!',
-        'time': '2 min',
-        'unread': 2,
-        'avatar': 'AL',
-      },
-      {
-        'id': '2',
-        'name': 'Adrita Team',
-        'type': 'community',
-        'lastMessage': 'Got the event details, thanks!',
-        'time': '1 hour',
-        'unread': 0,
-        'avatar': 'AT',
-      },
-      {
-        'id': '3',
-        'name': 'Urban Mint',
-        'type': 'brand',
-        'lastMessage': 'Can we schedule a call?',
-        'time': '5 hours',
-        'unread': 1,
-        'avatar': 'UM',
-      },
-    ];
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Messages',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search conversations...',
-                  prefixIcon: const Icon(Icons.search),
-                  filled: false,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.black, width: 2),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: conversations.length,
-            itemBuilder: (context, index) {
-              final conv = conversations[index];
-              return GestureDetector(
-                onTap: () {
-                  // TODO: Open chat
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFFE5E7EB)),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 24,
-                            backgroundColor: const Color(0xFFE5E7EB),
-                            child: Text(
-                              conv['avatar'] as String,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          if ((conv['unread'] as int) > 0)
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEE2C2C),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: Text(
-                                  (conv['unread'] as int).toString(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    conv['name'] as String,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF111111),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  flex: 2,
-                                  child: Text(
-                                    conv['time'] as String,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.end,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF667085),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              conv['lastMessage'] as String,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: (conv['unread'] as int) > 0
-                                    ? const Color(0xFF111111)
-                                    : const Color(0xFF667085),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0A12B).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          conv['type'] as String,
-                          style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFFF0A12B),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final host = ref.watch(hostProfileProvider);
+    final community = ref.watch(communityProfileProvider);
+    final proposals = ref.watch(dashboardProposalsProvider);
+    final notifications = ref.watch(notificationsProvider);
+    return RefreshIndicator(onRefresh: () async {
+      ref.invalidate(hostProfileProvider);
+      ref.invalidate(communityProfileProvider);
+      ref.invalidate(dashboardProposalsProvider);
+      ref.invalidate(notificationsProvider);
+      await ref.read(notificationsProvider.future);
+    }, child: ListView(padding: const EdgeInsets.all(16), children: [
+      Row(children: [
+        Expanded(child: Text('Notifications', style: GoogleFonts.bricolageGrotesque(fontSize: 22, fontWeight: FontWeight.w800))),
+        IconButton(tooltip: 'Mark all read', icon: const Icon(Icons.done_all_rounded), onPressed: () async {
+          try {
+            await ref.read(apiClientProvider).markAllNotificationsRead();
+            ref.invalidate(notificationsProvider);
+            ref.invalidate(unreadNotificationsCountProvider);
+          } catch (_) {
+            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not mark notifications as read.')),
+            );
+          }
+        }),
+      ]),
+      const Divider(),
+      for (final entry in [host.asData?.value, community.asData?.value])
+        if (entry != null && ['REJECTED', 'PENDING'].contains(entry['approvalStatus']))
+          ListTile(leading: const Icon(Icons.pending_actions_rounded),
+            title: Text('${entry['name'] ?? entry['displayName'] ?? 'Profile'}: ${entry['approvalStatus']}'),
+            subtitle: Text((entry['adminRejectionRemark'] ?? entry['rejectionReason'] ?? 'Awaiting review.').toString()),
+            trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _profile(context)),
+      if (proposals.hasError || host.hasError || community.hasError)
+        ListTile(title: const Text('Could not load status alerts'), trailing: TextButton(onPressed: () {
+          ref.invalidate(dashboardProposalsProvider); ref.invalidate(hostProfileProvider); ref.invalidate(communityProfileProvider);
+        }, child: const Text('Retry'))),
+      for (final proposal in proposals.asData?.value ?? <Map<String, dynamic>>[])
+        if (['REJECTED', 'UNDER_REVIEW', 'PUBLISHED'].contains(proposal['rawStatus'] ?? proposal['status']))
+          ListTile(leading: const Icon(Icons.description_outlined),
+            title: Text('${proposal['name']} - ${proposal['rawStatus'] ?? proposal['status']}'),
+            subtitle: Text((proposal['adminRejectionRemark'] ?? 'Review proposal status.').toString()),
+            trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _proposal(context, ref, proposal)),
+      const Divider(),
+      if (notifications.isLoading) const Center(child: CircularProgressIndicator()),
+      if (notifications.hasError) ListTile(title: const Text('Could not load notifications'), trailing: TextButton(
+        onPressed: () => ref.invalidate(notificationsProvider), child: const Text('Retry'))),
+      if (notifications.asData?.value.isEmpty == true) const ListTile(title: Text('No notifications yet')),
+      for (final notification in notifications.asData?.value ?? <Map<String, dynamic>>[])
+        ListTile(leading: Icon(notification['isRead'] == true ? Icons.notifications_none_rounded : Icons.notifications_active_rounded),
+          title: Text((notification['title'] ?? 'Notification').toString()),
+          subtitle: Text((notification['body'] ?? notification['message'] ?? '').toString()),
+          onTap: () => _notification(context, ref, notification)),
+    ]));
   }
 }

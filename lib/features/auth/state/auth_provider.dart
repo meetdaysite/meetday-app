@@ -513,11 +513,7 @@ class AuthController extends Notifier<AuthState> {
       if (logoKey?.trim().isNotEmpty == true) 'logoKey': logoKey!.trim(),
     };
     if (profileUpdates.isNotEmpty) {
-      try {
-        await api.dio.patch<dynamic>('/brands/me', data: profileUpdates);
-      } on DioException catch (error) {
-        if (error.response?.statusCode != 400) rethrow;
-      }
+      await api.dio.patch<dynamic>('/brands/me', data: profileUpdates);
     }
 
     final profile = await api.getMe();

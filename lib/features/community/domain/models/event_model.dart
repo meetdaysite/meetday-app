@@ -4,7 +4,7 @@ part 'event_model.freezed.dart';
 part 'event_model.g.dart';
 
 @freezed
-class Event with _$Event {
+abstract class Event with _$Event {
   const factory Event({
     required String id,
     required String title,
@@ -23,7 +23,7 @@ class Event with _$Event {
 }
 
 @freezed
-class Attendee with _$Attendee {
+abstract class Attendee with _$Attendee {
   const factory Attendee({
     required String id,
     required String name,
@@ -38,7 +38,7 @@ class Attendee with _$Attendee {
 }
 
 @freezed
-class EventStats with _$EventStats {
+abstract class EventStats with _$EventStats {
   const factory EventStats({
     required int totalEvents,
     required int totalAttendees,

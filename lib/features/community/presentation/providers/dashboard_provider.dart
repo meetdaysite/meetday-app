@@ -129,6 +129,7 @@ Map<String, dynamic> _mapProposalItem(Map item) {
     'docSize': docSize,
     'status': effectiveStatus,
     'rawStatus': rawStatus,
+    'pendingRevision': item['pendingRevision'],
     'isCompleted': isCompleted,
     'adminRejectionRemark': item['adminRejectionRemark'] as String?,
     'sponsorshipType': sponsorshipType,
@@ -138,6 +139,9 @@ Map<String, dynamic> _mapProposalItem(Map item) {
     'hostName': hostName,
     'hostProfileId': hostProfileId,
     'communityId': communityId,
+    'categories': hostProfile?['categories'] ??
+      (item['spaceProfile'] is Map ? item['spaceProfile']['categories'] : null) ??
+      <dynamic>[],
   };
 }
 
@@ -174,6 +178,7 @@ final dashboardProposalsProvider =
         }
       } catch (e) {
         debugPrint('Could not fetch /sponsorships/me: $e');
+        if (role == AccountRole.brand || role == AccountRole.space) rethrow;
       }
 
       return myProposals;
@@ -184,6 +189,7 @@ final dashboardProposalsProvider =
 final publishedProposalsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
       final api = ref.watch(apiClientProvider);
+  final role = ref.watch(authControllerProvider).role;
       final List<Map<String, dynamic>> publishedList = [];
 
       try {
@@ -205,6 +211,7 @@ final publishedProposalsProvider =
         }
       } catch (e) {
         debugPrint('Error fetching /sponsorships/published: $e');
+        if (role == AccountRole.brand || role == AccountRole.space) rethrow;
       }
 
       return publishedList;

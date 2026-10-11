@@ -23,42 +23,42 @@ String _spaceChatRole(AccountRole? role) {
   return 'COMMUNITY';
 }
 
-bool _canCreateThreadDeal(UnifiedActiveThread thread, AccountRole? role) {
+bool canCreateThreadDeal(UnifiedActiveThread thread, AccountRole? role) {
   return switch (thread.kind) {
     'CAMPAIGN' => role == AccountRole.brand,
-    'SPONSORSHIP' => role == AccountRole.community,
+    'SPONSORSHIP' => role == AccountRole.community || role == AccountRole.space,
     'SPACE_INTEREST' => role == AccountRole.space,
-    'SPACE_HOST' => role == AccountRole.community,
-    _ => false,
-  };
-}
-
-bool _canReviewThreadDeal(UnifiedActiveThread thread, AccountRole? role) {
-  return switch (thread.kind) {
-    'CAMPAIGN' => role == AccountRole.community,
-    'SPONSORSHIP' => role == AccountRole.brand,
-    'SPACE_INTEREST' =>
-      role == AccountRole.brand || role == AccountRole.community,
     'SPACE_HOST' => role == AccountRole.space,
     _ => false,
   };
 }
 
-bool _canReviewThreadReport(UnifiedActiveThread thread, AccountRole? role) {
+bool canReviewThreadDeal(UnifiedActiveThread thread, AccountRole? role) {
+  return switch (thread.kind) {
+    'CAMPAIGN' => role == AccountRole.community || role == AccountRole.space,
+    'SPONSORSHIP' => role == AccountRole.brand,
+    'SPACE_INTEREST' =>
+      role == AccountRole.brand || role == AccountRole.community,
+    'SPACE_HOST' => role == AccountRole.community,
+    _ => false,
+  };
+}
+
+bool canReviewThreadReport(UnifiedActiveThread thread, AccountRole? role) {
   return switch (thread.kind) {
     'CAMPAIGN' || 'SPONSORSHIP' => role == AccountRole.brand,
     'SPACE_INTEREST' =>
       role == AccountRole.brand || role == AccountRole.community,
-    'SPACE_HOST' => role == AccountRole.space,
+    'SPACE_HOST' => role == AccountRole.community,
     _ => false,
   };
 }
 
-bool _canSubmitThreadReport(UnifiedActiveThread thread, AccountRole? role) {
+bool canSubmitThreadReport(UnifiedActiveThread thread, AccountRole? role) {
   return switch (thread.kind) {
-    'CAMPAIGN' || 'SPONSORSHIP' => role == AccountRole.community,
+    'CAMPAIGN' || 'SPONSORSHIP' => role == AccountRole.community || role == AccountRole.space,
     'SPACE_INTEREST' => role == AccountRole.space,
-    'SPACE_HOST' => role == AccountRole.community,
+    'SPACE_HOST' => role == AccountRole.space,
     _ => false,
   };
 }
@@ -332,7 +332,7 @@ class _CommunityChatHubScreenState
         case 'SPACE_HOST':
           await api.dio.post<dynamic>(
             '/space-host/chats/$id/accept',
-            queryParameters: {'role': 'HOST'},
+            queryParameters: {'role': spaceHostChatRole(ref.read(authControllerProvider).role)},
           );
           break;
         case 'COMMUNITY_COLLAB':
@@ -404,6 +404,12 @@ class _CommunityChatHubScreenState
           await api.dio.post<dynamic>(
             '/spaces/chats/$id/decline',
             queryParameters: {'role': spaceRole},
+          );
+          break;
+        case 'SPACE_HOST':
+          await api.dio.post<dynamic>(
+            '/space-host/chats/$id/decline',
+            queryParameters: {'role': spaceHostChatRole(ref.read(authControllerProvider).role)},
           );
           break;
         case 'COMMUNITY_COLLAB':
@@ -2309,7 +2315,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       } else {
         final currentRole = ref.read(authControllerProvider).role;
         final isBrandViewer = currentRole == AccountRole.brand;
-        final sponsorshipRole = isBrandViewer ? 'BRAND' : 'HOST';
+        final sponsorshipRole = sponsorshipChatRole(currentRole);
 
         final payload = <String, dynamic>{if (text.isNotEmpty) 'content': text};
         if (mediaKey != null && mediaKey.isNotEmpty) {
@@ -3269,7 +3275,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   Widget _buildDealBanner() {
     final currentRole = ref.watch(authControllerProvider).role;
-    final canCreateDeal = _canCreateThreadDeal(widget.thread, currentRole);
+    final canCreateDeal = canCreateThreadDeal(widget.thread, currentRole);
     final dealAsync = ref.watch(threadDealProvider(widget.thread));
     final reportAsync = ref.watch(threadReportProvider(widget.thread));
 
@@ -4347,6 +4353,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   // ─── Context Menu Bottom Sheet ─────────────────────────────────────────────
 
   void _showMessageContextMenu(UnifiedChatMessage msg) {
+    // Edit/Delete are now supported for all chat types (SPONSORSHIP, CAMPAIGN, SPACE_INTEREST, SPACE_HOST, COMMUNITY_COLLAB, BRAND_COMMUNITY_COLLAB)
+    final isUnsupportedMessageAction = false;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
@@ -4400,7 +4408,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   );
                 },
               ),
-              if (msg.isMe && !msg.isDeleted) ...[
+              if (msg.isMe && !msg.isDeleted && !isUnsupportedMessageAction) ...[
                 ListTile(
                   leading: const Icon(Icons.edit_rounded, color: Colors.black),
                   title: Text(
@@ -5387,7 +5395,7 @@ class _DealDetailsModalSheetState
     final isChangesRequested = dealStatus == 'CHANGES_REQUESTED';
     final isCampaign = widget.thread.kind == 'CAMPAIGN';
     final currentRole = ref.watch(authControllerProvider).role;
-    final canApproveOrRequestChanges = _canReviewThreadDeal(
+    final canApproveOrRequestChanges = canReviewThreadDeal(
       widget.thread,
       currentRole,
     );
@@ -6067,7 +6075,8 @@ class _DealReportModalSheetState extends ConsumerState<DealReportModalSheet> {
               },
             )
           : widget.thread.kind == 'SPACE_HOST'
-          ? await api.dio.get<dynamic>('/space-host/chats/$id/deal/report')
+            ? await api.dio.get<dynamic>('/space-host/chats/$id/deal/report',
+              queryParameters: {'role': spaceHostChatRole(ref.read(authControllerProvider).role)})
           : await api.dio.get<dynamic>('/sponsorships/chats/$id/deal/report');
       final raw = res.data is Map ? (res.data['data'] ?? res.data) : null;
       if (raw is Map && mounted) {
@@ -6085,7 +6094,7 @@ class _DealReportModalSheetState extends ConsumerState<DealReportModalSheet> {
     }
     if (mounted) {
       final currentRole = ref.read(authControllerProvider).role;
-      final isReviewer = _canReviewThreadReport(widget.thread, currentRole);
+      final isReviewer = canReviewThreadReport(widget.thread, currentRole);
       setState(() {
         isLoading = false;
         isEditing = !isReviewer;
@@ -6114,11 +6123,9 @@ class _DealReportModalSheetState extends ConsumerState<DealReportModalSheet> {
       final key = await api.uploadMediaFile(
         bytes: bytes,
         fileName: picked.name,
-        context:
-            widget.thread.kind == 'SPACE_INTEREST' ||
-                widget.thread.kind == 'SPACE_HOST'
-            ? 'SPACE_DEAL_REPORT_MEDIA'
-            : 'SPONSORSHIP_DEAL_REPORT_MEDIA',
+        context: widget.thread.kind == 'SPACE_HOST' ? 'SPACE_HOST_DEAL_REPORT_MEDIA'
+          : widget.thread.kind == 'SPACE_INTEREST' ? 'SPACE_DEAL_REPORT_MEDIA'
+          : 'SPONSORSHIP_DEAL_REPORT_MEDIA',
         resourceId: widget.thread.id,
       );
       if (key != null && mounted) {
@@ -6412,8 +6419,8 @@ class _DealReportModalSheetState extends ConsumerState<DealReportModalSheet> {
   @override
   Widget build(BuildContext context) {
     final currentRole = ref.watch(authControllerProvider).role;
-    final isReviewer = _canReviewThreadReport(widget.thread, currentRole);
-    final isReportSubmitter = _canSubmitThreadReport(
+    final isReviewer = canReviewThreadReport(widget.thread, currentRole);
+    final isReportSubmitter = canSubmitThreadReport(
       widget.thread,
       currentRole,
     );

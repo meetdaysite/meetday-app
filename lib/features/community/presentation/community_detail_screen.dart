@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/meetday_colors.dart';
@@ -535,11 +536,18 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     if (_isSendingCollaboration) return;
     setState(() => _isSendingCollaboration = true);
     try {
-      final isBrand =
-          ref.read(authControllerProvider).role == AccountRole.brand;
+      final accountRole = ref.read(authControllerProvider).role;
+      final isBrand = accountRole == AccountRole.brand;
+      final isSpace = accountRole == AccountRole.space;
+      final hostProfileId = (widget.community['hostProfileId'] ?? '').toString();
+      if (isSpace && hostProfileId.isEmpty) {
+        throw const FormatException('This community has no partnership profile.');
+      }
       final api = ref.read(apiClientProvider);
       final response = await api.dio.post<dynamic>(
-        isBrand
+        isSpace
+            ? '/space-host/communities/$hostProfileId/interest'
+            : isBrand
             ? '/brand-community-collaboration/interest/$targetCommunityId'
             : '/community-collaboration/interest/$targetCommunityId',
       );
@@ -565,7 +573,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
         ),
       );
       Navigator.of(context).pop();
-      widget.onSelectTab?.call(isBrand ? 9 : 5);
+      widget.onSelectTab?.call(isBrand || isSpace ? 9 : 5);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -636,10 +644,11 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     final numberOfVenues = (c['numberOfVenues'] ?? '').toString();
     final businessName = (c['businessName'] ?? '').toString();
     final currentRole = ref.watch(authControllerProvider).role;
-    final canCollaborate = !widget.isBrandPreview &&
-      (currentRole == AccountRole.community || currentRole == AccountRole.brand);
-
     final isHub = widget.isHub || c['isHub'] == true || c['type'] == 'HUB';
+    final canCollaborate = !widget.isBrandPreview &&
+      (currentRole == AccountRole.community || currentRole == AccountRole.brand ||
+          (currentRole == AccountRole.space && !isHub));
+
     final categories = (c['categories'] as List?)?.whereType<Map>().toList() ?? [];
     final operatingCities = (c['operatingCities'] as List?)?.map((e) => e.toString()).toList() ??
         (c['locations'] as List?)?.map((e) => e.toString()).toList() ??
@@ -1308,6 +1317,23 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                 ],
 
                 // Associated Brands
+                if (isHub) ...[
+                  const SizedBox(height: 18),
+                  for (final offer in const {'popup': 'Pop-up activation', 'branding': 'Branding'}.entries)
+                    if ((c['${offer.key}Price'] ?? '').toString().isNotEmpty)
+                      ListTile(contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.local_offer_outlined),
+                        title: Text(offer.value),
+                        subtitle: Text('${c['${offer.key}Days'] ?? ''} days'),
+                        trailing: Text(c['${offer.key}Price'].toString())),
+                  if ((c['proposalPdfUrl'] ?? '').toString().isNotEmpty)
+                    OutlinedButton.icon(icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Open Hub proposal PDF'),
+                      onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
+                        builder: (_) => ProposalPdfViewerScreen(pdfUrl: c['proposalPdfUrl'].toString(),
+                          title: (c['name'] ?? 'Hub proposal').toString()),
+                      ))),
+                ],
                 if (brandsWorkedWith.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   Text(
@@ -1810,9 +1836,19 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
     );
   }
 
+  Future<void> _openExternalLink(String url) async {
+    final value = url.trim();
+    final uri = Uri.tryParse(value.contains('://') ? value : 'https://$value');
+    if (uri == null || !['http', 'https'].contains(uri.scheme) || uri.host.isEmpty) return;
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {}
+    if (mounted) _copyToClipboard(value, 'Link');
+  }
+
   Widget _socialChip(String platform, String url) {
     return GestureDetector(
-      onTap: () => _copyToClipboard(url, platform),
+      onTap: () => _openExternalLink(url),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
@@ -1845,7 +1881,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
 
   Widget _videoChip(String label, String url) {
     return GestureDetector(
-      onTap: () => _copyToClipboard(url, 'Video'),
+      onTap: () => _openExternalLink(url),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(

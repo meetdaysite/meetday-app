@@ -148,9 +148,10 @@ class _BrandDataRoomScreenState extends ConsumerState<BrandDataRoomScreen> {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                final returnPath = widget.proposalId == null
-                    ? '/brand/data-room'
-                    : '/brand/proposal/${Uri.encodeComponent(widget.proposalId!)}';
+                final proposalId = (proposal['id'] ?? widget.proposalId ?? '').toString();
+                final returnPath = proposalId.isEmpty
+                  ? '/brand/data-room'
+                  : '/brand/proposal/${Uri.encodeComponent(proposalId)}';
                 context.push(
                   '/login/brand?redirectTo=${Uri.encodeQueryComponent(returnPath)}',
                 );

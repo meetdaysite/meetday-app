@@ -1,305 +1,122 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/events_provider.dart';
 
 class AttendeesScreen extends ConsumerStatefulWidget {
-  const AttendeesScreen({super.key});
-
+  const AttendeesScreen({super.key, this.eventId});
+  final String? eventId;
   @override
   ConsumerState<AttendeesScreen> createState() => _AttendeesScreenState();
 }
 
 class _AttendeesScreenState extends ConsumerState<AttendeesScreen> {
-  final searchController = TextEditingController();
-  String selectedEvent = 'All Events';
-  String selectedStatus = 'All';
-
+  String? _eventId;
+  int _eventPage = 1;
+  int _page = 1;
+  String _search = '';
+  String _status = 'ALL';
+  bool _exporting = false;
   @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
+  void initState() { super.initState(); _eventId = widget.eventId; }
+
+  List<Map> _filtered(List rows) => rows.whereType<Map>().where((row) {
+    final checked = row['isCheckedIn'] == true;
+    if (_status == 'CHECKED' && !checked || _status == 'PENDING' && checked) return false;
+    return '${row['firstName'] ?? ''} ${row['lastName'] ?? ''} ${row['bookingId'] ?? ''} ${row['email'] ?? ''}'
+        .toLowerCase().contains(_search);
+  }).toList();
+
+  String _csv(dynamic value) {
+    final text = (value ?? '').toString();
+    final safe = RegExp(r'^[=+@\-\t\r]').hasMatch(text) ? "'$text" : text;
+    return '"${safe.replaceAll('"', '""')}"';
+  }
+
+  Future<void> _export() async {
+    if (_eventId == null || _exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final rows = <Map>[];
+      int page = 1;
+      while (true) {
+        final data = await ref.read(communityEventAttendeesProvider((_eventId!, page)).future);
+        final batch = data['attendees'] as List? ?? const [];
+        rows.addAll(batch.whereType<Map>());
+        if (batch.isEmpty || rows.length >= ((data['total'] as num?)?.toInt() ?? rows.length)) break;
+        page++;
+      }
+      final csv = [
+        'Name,Booking ID,Ticket,Checked In,Booking Date,Amount Paid',
+        ..._filtered(rows).map((row) => [
+          '${row['firstName'] ?? ''} ${row['lastName'] ?? ''}'.trim(), row['bookingId'], row['ticketType'],
+          row['isCheckedIn'] == true ? 'Yes' : 'No', row['bookingDate'], row['amountPaid'],
+        ].map(_csv).join(',')),
+      ].join('\r\n');
+      await FilePicker.saveFile(fileName: 'attendees-$_eventId.csv',
+        bytes: Uint8List.fromList(utf8.encode(csv)), mimeType: 'text/csv');
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not export attendees.')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final attendees = [
-      {'name': 'Aman Singh', 'email': 'aman@example.com', 'status': 'checked', 'date': '12 Oct'},
-      {'name': 'Priya Sharma', 'email': 'priya@example.com', 'status': 'checked', 'date': '12 Oct'},
-      {'name': 'Rajesh Kumar', 'email': 'rajesh@example.com', 'status': 'unchecked', 'date': '13 Oct'},
-      {'name': 'Neha Patel', 'email': 'neha@example.com', 'status': 'checked', 'date': '12 Oct'},
-      {'name': 'Vikram Desai', 'email': 'vikram@example.com', 'status': 'unchecked', 'date': '14 Oct'},
-    ];
-
-    final filtered = attendees
-        .where((a) => selectedStatus == 'All' || a['status'] == (selectedStatus == 'Checked' ? 'checked' : 'unchecked'))
-        .where((a) => a['name']!.toLowerCase().contains(searchController.text.toLowerCase()))
-        .toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Attendees',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Manage and check-in attendees',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-              ],
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                // TODO: Navigate to QR scanner
-              },
-              icon: const Icon(Icons.qr_code_2),
-              label: const Text('Scan QR'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFEE2C2C),
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        // Search
-        TextField(
-          controller: searchController,
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            hintText: 'Search attendees...',
-            prefixIcon: const Icon(Icons.search),
-            filled: false,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.black, width: 2),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Filters
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              DropdownButton<String>(
-                value: selectedEvent,
-                items: ['All Events', 'Block Party', 'Creator Night', 'Pop-Up']
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (v) => setState(() => selectedEvent = v!),
-              ),
-              const SizedBox(width: 8),
-              DropdownButton<String>(
-                value: selectedStatus,
-                items: ['All', 'Checked', 'Unchecked']
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (v) => setState(() => selectedStatus = v!),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Export list
-                },
-                icon: const Icon(Icons.download),
-                label: const Text('Export'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Stats
-        Row(
-          children: [
-            Expanded(
-              child: _StatBox(label: 'Total', value: '${filtered.length}'),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatBox(
-                label: 'Checked In',
-                value: '${filtered.where((a) => a['status'] == 'checked').length}',
-                color: const Color(0xFF12B76A),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatBox(
-                label: 'Pending',
-                value: '${filtered.where((a) => a['status'] == 'unchecked').length}',
-                color: const Color(0xFFF0A12B),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        // Attendees list
-        ...filtered.map((attendee) => _AttendeeCard(attendee: attendee)).toList(),
-      ],
-    );
-  }
-}
-
-class _StatBox extends StatelessWidget {
-  const _StatBox({
-    required this.label,
-    required this.value,
-    this.color = const Color(0xFF2673E8),
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF667085),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: color,
-            ),
-          ),
+    final events = ref.watch(communityOwnedEventsProvider(_eventPage));
+    final attendees = _eventId == null ? null : ref.watch(communityEventAttendeesProvider((_eventId!, _page)));
+    return Scaffold(appBar: AppBar(title: const Text('Attendees'), actions: [
+      IconButton(tooltip: 'Export attendees', icon: const Icon(Icons.download_rounded), onPressed: _eventId == null || _exporting ? null : _export),
+    ]), body: ListView(padding: const EdgeInsets.all(16), children: [
+      if (widget.eventId == null) ...events.when<List<Widget>>(
+        loading: () => [const Center(child: CircularProgressIndicator())],
+        error: (error, stack) => [ListTile(title: const Text('Could not load events'), trailing: TextButton(
+          onPressed: () => ref.invalidate(communityOwnedEventsProvider(_eventPage)), child: const Text('Retry')))],
+        data: (data) => [DropdownMenu<String>(label: const Text('Event'), expandedInsets: EdgeInsets.zero,
+          dropdownMenuEntries: (data['events'] as List? ?? const []).whereType<Map>().map((event) => DropdownMenuEntry(
+            value: event['id'].toString(), label: (event['title'] ?? 'Untitled event').toString())).toList(),
+          onSelected: (id) => setState(() { _eventId = id; _page = 1; })),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            IconButton(tooltip: 'Previous events', icon: const Icon(Icons.chevron_left_rounded), onPressed: _eventPage == 1 ? null : () => setState(() => _eventPage--)),
+            Text('Events page $_eventPage'),
+            IconButton(tooltip: 'Next events', icon: const Icon(Icons.chevron_right_rounded),
+              onPressed: _eventPage * 20 >= ((data['total'] as num?)?.toInt() ?? 0) ? null : () => setState(() => _eventPage++)),
+          ]),
         ],
       ),
-    );
-  }
-}
-
-class _AttendeeCard extends StatelessWidget {
-  const _AttendeeCard({required this.attendee});
-
-  final Map<String, dynamic> attendee;
-
-  @override
-  Widget build(BuildContext context) {
-    final isChecked = attendee['status'] == 'checked';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+      TextField(decoration: const InputDecoration(hintText: 'Search attendee or booking', prefixIcon: Icon(Icons.search_rounded)),
+        onChanged: (value) => setState(() => _search = value.trim().toLowerCase())),
+      const SizedBox(height: 12),
+      SegmentedButton<String>(segments: const [ButtonSegment(value: 'ALL', label: Text('All')),
+        ButtonSegment(value: 'CHECKED', label: Text('Checked in')), ButtonSegment(value: 'PENDING', label: Text('Pending'))],
+        selected: {_status}, onSelectionChanged: (value) => setState(() => _status = value.single)),
+      if (_exporting) const LinearProgressIndicator(),
+      if (attendees == null) const ListTile(title: Text('Select an event'))
+      else ...attendees.when<List<Widget>>(
+        loading: () => [const Center(child: CircularProgressIndicator())],
+        error: (error, stack) => [ListTile(title: const Text('Could not load attendees'), trailing: TextButton(
+          onPressed: () => ref.invalidate(communityEventAttendeesProvider((_eventId!, _page))), child: const Text('Retry')))],
+        data: (data) {
+          final rows = _filtered(data['attendees'] as List? ?? const []);
+          return [
+            Text('Total registrations: ${data['total'] ?? 0}'),
+            if (rows.isEmpty) const ListTile(title: Text('No attendees found')),
+            for (final row in rows) ListTile(leading: Icon(row['isCheckedIn'] == true ? Icons.how_to_reg_rounded : Icons.person_outline_rounded),
+              title: Text('${row['firstName'] ?? ''} ${row['lastName'] ?? ''}'.trim()),
+              subtitle: Text('${row['bookingId'] ?? ''}\n${row['ticketType'] ?? ''}'), isThreeLine: true,
+              trailing: Text(row['isCheckedIn'] == true ? 'Checked in' : 'Pending')),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              IconButton(tooltip: 'Previous attendees', icon: const Icon(Icons.chevron_left_rounded), onPressed: _page == 1 ? null : () => setState(() => _page--)),
+              Text('Page $_page'),
+              IconButton(tooltip: 'Next attendees', icon: const Icon(Icons.chevron_right_rounded),
+                onPressed: _page * 50 >= ((data['total'] as num?)?.toInt() ?? rows.length) ? null : () => setState(() => _page++)),
+            ]),
+          ];
+        },
       ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: const Color(0xFFE5E7EB),
-            child: Text(
-              (attendee['name'] as String)[0].toUpperCase(),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  attendee['name'] as String,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  attendee['email'] as String,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isChecked ? const Color(0xFFDCFCE7) : const Color(0xFFFFF2C8),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  isChecked ? 'Checked' : 'Pending',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: isChecked ? const Color(0xFF12B76A) : const Color(0xFFF0A12B),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                attendee['date'] as String,
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF667085),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            onPressed: () {
-              // TODO: Mark check-in
-            },
-            icon: Icon(
-              isChecked ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: isChecked ? const Color(0xFF12B76A) : const Color(0xFF667085),
-            ),
-          ),
-        ],
-      ),
-    );
+    ]));
   }
 }

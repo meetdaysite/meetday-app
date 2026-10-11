@@ -86,7 +86,10 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
   void initState() {
     super.initState();
 
-    final p = widget.initialProposal;
+    final original = widget.initialProposal;
+    final p = original == null ? null : <String, dynamic>{...original,
+      if (original['pendingRevision'] is Map) ...Map<String, dynamic>.from(original['pendingRevision'] as Map),
+    };
     _nameController = TextEditingController(text: p?['name']?.toString() ?? '');
     _aboutController = TextEditingController(text: p?['about']?.toString() ?? '');
     _ageGroupController = TextEditingController(text: p?['ageGroup']?.toString() ?? '21-40');
@@ -183,7 +186,8 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
           }
         });
       } else {
-        final res = await api.dio.get<dynamic>('/hosts/community');
+        final res = await api.dio.get<dynamic>(auth.role == AccountRole.space
+          ? '/spaces/community' : '/hosts/community');
         if (res.statusCode == 200 && res.data is Map) {
           final data = res.data['data'] is Map ? res.data['data'] as Map : res.data as Map;
           setState(() {
@@ -929,7 +933,8 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
           }
         }
       }
-      if (_proposalDocumentFile == null && (_docKey == null || _docKey!.isEmpty)) {
+        if (ref.read(authControllerProvider).role != AccountRole.space &&
+          _proposalDocumentFile == null && (_docKey == null || _docKey!.isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Proposal Document file / PDF is required'),
@@ -1015,7 +1020,10 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
       }
 
       // If user clicked Submit, call PATCH /sponsorships/:id/submit
-      if (submitForReview && targetProposalId != null) {
+        final originalStatus = (widget.initialProposal?['rawStatus'] ??
+          widget.initialProposal?['status'] ?? 'DRAFT').toString().toUpperCase();
+        if (submitForReview && targetProposalId != null &&
+          (!_isEditing || originalStatus == 'DRAFT' || originalStatus == 'REJECTED')) {
         await api.dio.patch<dynamic>('/sponsorships/$targetProposalId/submit');
       }
 
@@ -1720,7 +1728,8 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                     const SizedBox(height: 16),
 
                     // 9. Proposal Document (PDF)
-                    _buildLabel('Proposal Document (PDF)', isRequired: true),
+                    _buildLabel('Proposal Document (PDF)',
+                      isRequired: ref.watch(authControllerProvider).role != AccountRole.space),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.all(12),
