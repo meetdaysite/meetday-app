@@ -152,10 +152,35 @@ class _MeetdaySidebarDrawerState extends ConsumerState<MeetdaySidebarDrawer> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SvgPicture.asset(
-                    'assets/logo/meetday-white.svg',
-                    height: 28,
-                    fit: BoxFit.contain,
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              offset: Offset(1, 1),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.asset(
+                          'assets/logo/app_logo.png',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      SvgPicture.asset(
+                        'assets/logo/meetday-white.svg',
+                        height: 24,
+                        fit: BoxFit.contain,
+                      ),
+                    ],
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),

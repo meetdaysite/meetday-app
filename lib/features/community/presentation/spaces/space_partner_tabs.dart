@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/meetday_colors.dart';
+import '../../../auth/domain/account_role.dart';
+import '../deals/brand_deals_screen.dart';
 import '../proposal/proposal_form_screen.dart';
 import '../providers/chat_provider.dart';
 import '../providers/dashboard_provider.dart';
@@ -26,13 +28,10 @@ class SpaceProposalsScreen extends ConsumerWidget {
     WidgetRef ref, {
     Map<String, dynamic>? proposal,
   }) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => ProposalFormScreen(
-          initialProposal: proposal,
-          onSuccess: () => ref.invalidate(dashboardProposalsProvider),
-        ),
-      ),
+    await ProposalFormScreen.showAsModal(
+      context,
+      initialProposal: proposal,
+      onSuccess: () => ref.invalidate(dashboardProposalsProvider),
     );
     ref.invalidate(dashboardProposalsProvider);
   }
@@ -326,59 +325,7 @@ class SpaceDealsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final chatAsync = ref.watch(chatHubProvider);
-    return chatAsync.when(
-      loading: () => const Center(
-        child: CircularProgressIndicator(color: MeetdayColors.primaryRed),
-      ),
-      error: (error, _) => _SpaceErrorState(
-        title: 'Could not load deals',
-        onRetry: () => ref.invalidate(chatHubProvider),
-      ),
-      data: (chatData) {
-        final threads = (chatData.activeThreadsByCategory['spaces'] ?? [])
-            .where((thread) => thread.isDealLocked)
-            .toList();
-        return RefreshIndicator(
-          color: MeetdayColors.primaryRed,
-          onRefresh: () async => ref.invalidate(chatHubProvider),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            children: [
-              const _SpacePageHeading(
-                title: 'Locked Deals',
-                subtitle: 'Approved Hub agreements and their chat threads.',
-              ),
-              const SizedBox(height: 14),
-              if (threads.isEmpty)
-                const _SpaceEmptyState(
-                  icon: Icons.lock_outline_rounded,
-                  title: 'No locked deals yet',
-                  subtitle: 'Approved deal terms will appear here.',
-                )
-              else
-                ...threads.map(
-                  (thread) => ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      side: const BorderSide(color: Colors.black, width: 1.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    title: Text(thread.counterpartName),
-                    subtitle: Text(thread.title),
-                    trailing: const Icon(Icons.arrow_forward_ios_rounded),
-                    onTap: () => onOpenThread(thread),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
+    return const BrandDealsScreen(role: AccountRole.space);
   }
 }
 

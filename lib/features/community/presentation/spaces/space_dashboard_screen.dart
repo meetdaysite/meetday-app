@@ -1138,15 +1138,12 @@ class _SpaceProposalsTabBodyState
   bool _openedNotificationProposal = false;
 
   void _openCreateProposalModal([Map<String, dynamic>? initialProposal]) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (ctx) => ProposalFormScreen(
-          initialProposal: initialProposal,
-          onSuccess: () {
-            ref.invalidate(dashboardProposalsProvider);
-          },
-        ),
-      ),
+    ProposalFormScreen.showAsModal(
+      context,
+      initialProposal: initialProposal,
+      onSuccess: () {
+        ref.invalidate(dashboardProposalsProvider);
+      },
     );
   }
 

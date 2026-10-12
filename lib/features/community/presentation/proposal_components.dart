@@ -317,6 +317,7 @@ class ProposalDetailDialog extends StatelessWidget {
     this.isBrand = false,
     this.onChatStarted,
     this.loadPublishedDetail = true,
+    this.showCommunityHeader = true,
   });
 
   final Map<String, dynamic> proposal;
@@ -326,6 +327,7 @@ class ProposalDetailDialog extends StatelessWidget {
   final bool isBrand;
   final VoidCallback? onChatStarted;
   final bool loadPublishedDetail;
+  final bool showCommunityHeader;
 
   static String _formatDate(String raw) {
     if (raw.isEmpty) return '';
@@ -422,6 +424,7 @@ class ProposalDetailDialog extends StatelessWidget {
             isBrand: true,
             onChatStarted: onChatStarted,
             loadPublishedDetail: false,
+            showCommunityHeader: showCommunityHeader,
           ),
           loading: () => const Dialog(child: Padding(
             padding: EdgeInsets.all(40),
@@ -554,7 +557,7 @@ class ProposalDetailDialog extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (isBrand && community != null) ...[
+                    if (isBrand && showCommunityHeader && community != null) ...[
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: community['logoUrl'] is String

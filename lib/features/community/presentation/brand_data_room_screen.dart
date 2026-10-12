@@ -169,6 +169,7 @@ class _BrandDataRoomScreenState extends ConsumerState<BrandDataRoomScreen> {
       builder: (_) => ProposalDetailDialog(
         proposal: proposal,
         isBrand: true,
+        showCommunityHeader: false,
         onChatStarted: () => context.go('/dashboard'),
       ),
     );

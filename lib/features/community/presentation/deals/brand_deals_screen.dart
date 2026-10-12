@@ -870,7 +870,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
     final isSpace = (widget.role ?? ref.read(authControllerProvider).role) == AccountRole.space;
     final sourceRows = _selectedView == 0 ? _lockedDeals : _billingRows;
     final activeRows = sourceRows.where((row) {
-      if ((!isBrand && !isSpace) || _selectedDealType == 'ALL') return true;
+      if (_selectedDealType == 'ALL') return true;
       if (_selectedDealType == 'BRAND') return row['requesterType'] == 'BRAND' || row['dealKind'] == 'SPONSORSHIP';
       if (_selectedDealType == 'COMMUNITY') return row['requesterType'] == 'COMMUNITY' || row['dealKind'] == 'SPACE_HOST';
       final isHub = row['dealKind'] == 'HUB';
@@ -879,6 +879,21 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
       if (_selectedDealType == 'CAMPAIGN') return isCampaign;
       return !isHub && !isCampaign;
     }).toList();
+
+    final filterOptions = <String, String>{
+      'ALL': 'All',
+      if (isSpace) ...{
+        'BRAND': 'Brand deals',
+        'COMMUNITY': 'Community deals',
+      } else if (isBrand) ...{
+        'SPONSORSHIP': 'Sponsorships',
+        'CAMPAIGN': 'Campaigns',
+        if (_selectedView == 0) 'HUB': 'Hubs',
+      } else ...{
+        'SPONSORSHIP': 'Sponsorships',
+        'CAMPAIGN': 'Campaigns',
+      },
+    };
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDFC),
@@ -916,9 +931,9 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF3F4F6),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black, width: 2),
+                  border: Border.all(color: Colors.black, width: 2.5),
                   boxShadow: const [
-                    BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
+                    BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
                   ],
                 ),
                 child: Row(
@@ -928,13 +943,13 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                         onTap: () => setState(() => _selectedView = 0),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 9),
                           decoration: BoxDecoration(
                             color: _selectedView == 0 ? MeetdayColors.accentYellow : Colors.transparent,
                             borderRadius: BorderRadius.circular(12),
-                            border: _selectedView == 0 ? Border.all(color: Colors.black, width: 1.5) : null,
+                            border: _selectedView == 0 ? Border.all(color: Colors.black, width: 2) : null,
                             boxShadow: _selectedView == 0
-                                ? const [BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0)]
+                                ? const [BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0)]
                                 : null,
                           ),
                           child: Row(
@@ -946,7 +961,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                                 'Locked Deals (${_lockedDeals.length})',
                                 style: GoogleFonts.poppins(
                                   fontSize: 11.5,
-                                  fontWeight: _selectedView == 0 ? FontWeight.w900 : FontWeight.w600,
+                                  fontWeight: _selectedView == 0 ? FontWeight.w900 : FontWeight.w700,
                                   color: _selectedView == 0 ? Colors.black : Colors.black54,
                                 ),
                               ),
@@ -964,13 +979,13 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                         }),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 9),
                           decoration: BoxDecoration(
                             color: _selectedView == 1 ? MeetdayColors.accentYellow : Colors.transparent,
                             borderRadius: BorderRadius.circular(12),
-                            border: _selectedView == 1 ? Border.all(color: Colors.black, width: 1.5) : null,
+                            border: _selectedView == 1 ? Border.all(color: Colors.black, width: 2) : null,
                             boxShadow: _selectedView == 1
-                                ? const [BoxShadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 0)]
+                                ? const [BoxShadow(color: Colors.black, offset: Offset(1.5, 1.5), blurRadius: 0)]
                                 : null,
                           ),
                           child: Row(
@@ -982,7 +997,7 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
                                 'Billing (${_billingRows.length})',
                                 style: GoogleFonts.poppins(
                                   fontSize: 11.5,
-                                  fontWeight: _selectedView == 1 ? FontWeight.w900 : FontWeight.w600,
+                                  fontWeight: _selectedView == 1 ? FontWeight.w900 : FontWeight.w700,
                                   color: _selectedView == 1 ? Colors.black : Colors.black54,
                                 ),
                               ),
@@ -996,27 +1011,54 @@ class _BrandDealsScreenState extends ConsumerState<BrandDealsScreen> {
               ),
               const SizedBox(height: 16),
 
-              if (isBrand || isSpace) ...[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+              // Neo-Brutalist Filter Pills across all three roles
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
                   children: [
-                    for (final entry in <String, String>{
-                      'ALL': 'All',
-                      if (isSpace) ...{'BRAND': 'Brand deals', 'COMMUNITY': 'Community deals'}
-                      else ...{'SPONSORSHIP': 'Sponsorships', 'CAMPAIGN': 'Campaigns',
-                        if (_selectedView == 0) 'HUB': 'Hubs'},
-                    }.entries)
-                      ChoiceChip(
-                        label: Text(entry.value),
-                        selected: _selectedDealType == entry.key,
-                        selectedColor: MeetdayColors.accentYellow,
-                        onSelected: (_) => setState(() => _selectedDealType = entry.key),
+                    for (final entry in filterOptions.entries)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedDealType = entry.key),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: _selectedDealType == entry.key
+                                  ? Colors.black
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: Colors.black, width: 1.8),
+                              boxShadow: _selectedDealType == entry.key
+                                  ? const [
+                                      BoxShadow(
+                                        color: Colors.black,
+                                        offset: Offset(1.5, 1.5),
+                                        blurRadius: 0,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Text(
+                              entry.value,
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: _selectedDealType == entry.key
+                                    ? Colors.white
+                                    : const Color(0xFF4B5563),
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 16),
-              ],
+              ),
+              const SizedBox(height: 16),
 
               // Content List
               if (_loadError != null) ListTile(

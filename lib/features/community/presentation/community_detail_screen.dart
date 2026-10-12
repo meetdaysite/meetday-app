@@ -1060,150 +1060,6 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                   ),
                 ],
 
-                if (isHub) ...[
-                  const SizedBox(height: 16),
-                  if (hasExistingChannel) ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFBEB),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.black, width: 2),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black,
-                            offset: Offset(2, 2),
-                            blurRadius: 0,
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'A communication channel already exists with this hub.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              if (Navigator.of(context).canPop()) {
-                                Navigator.of(context).pop();
-                              }
-                              final isBrand = currentRole == AccountRole.brand;
-                              widget.onSelectTab?.call(isBrand ? 9 : 5);
-                            },
-                            icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-                            label: Text(
-                              'GO TO CHANNEL',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: MeetdayColors.accentYellow,
-                              foregroundColor: Colors.black,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                side: const BorderSide(color: Colors.black, width: 2),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 11),
-                              elevation: 0,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    Container(
-                      width: double.infinity,
-                      decoration: const BoxDecoration(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black,
-                            offset: Offset(2, 2),
-                            blurRadius: 0,
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton.icon(
-                        onPressed: _isSendingCollaboration
-                            ? null
-                            : () => _sendHubInterest((c['id'] ?? '').toString()),
-                        icon: _isSendingCollaboration
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.send_rounded, size: 18),
-                        label: Text(
-                          _isSendingCollaboration ? 'Sending...' : 'I\'M INTERESTED',
-                          style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.5),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: MeetdayColors.primaryRed,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.black, width: 2),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
-                  ],
-                ] else if (canCollaborate) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black,
-                          offset: Offset(2, 2),
-                          blurRadius: 0,
-                        ),
-                      ],
-                    ),
-                    child: ElevatedButton.icon(
-                      onPressed: _isSendingCollaboration
-                          ? null
-                          : () => _sendCollaborationRequest((c['id'] ?? '').toString()),
-                      icon: _isSendingCollaboration
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.handshake_rounded, size: 18),
-                      label: Text(
-                        _isSendingCollaboration ? 'Sending...' : 'COLLABORATE',
-                        style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.5),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: MeetdayColors.primaryRed,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: const BorderSide(color: Colors.black, width: 2),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        elevation: 0,
-                      ),
-                    ),
-                  ),
-                ],
 
                 // Experience / Venue Categories
                 if (categories.isNotEmpty) ...[
@@ -1778,8 +1634,10 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
                               builder: (ctx) => ProposalDetailDialog(
                                 proposal: p,
                                 isBrand: true,
+                                showCommunityHeader: false,
                                 onChatStarted: () {
-                                  widget.onSelectTab?.call(5);
+                                  final isBrandRole = ref.read(authControllerProvider).role == AccountRole.brand;
+                                  widget.onSelectTab?.call(isBrandRole ? 9 : 5);
                                 },
                               ),
                             );
@@ -1791,6 +1649,121 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
               );
             }),
           ],
+
+          // Collaborate button at the end of the page after all details (Community and Hubs)
+          if (isHub ? !hasExistingChannel : canCollaborate) ...[
+            const SizedBox(height: 24),
+            Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                borderRadius: BorderRadius.all(Radius.circular(14)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black,
+                    offset: Offset(2, 2),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: _isSendingCollaboration
+                    ? null
+                    : () {
+                        if (isHub) {
+                          _sendHubInterest((c['id'] ?? '').toString());
+                        } else {
+                          _sendCollaborationRequest((c['id'] ?? '').toString());
+                        }
+                      },
+                icon: _isSendingCollaboration
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.handshake_rounded, size: 18),
+                label: Text(
+                  _isSendingCollaboration ? 'Sending...' : 'COLLABORATE',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: MeetdayColors.primaryRed,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: const BorderSide(color: Colors.black, width: 2),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ] else if (isHub && hasExistingChannel) ...[
+            const SizedBox(height: 24),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.black, width: 2),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black,
+                    offset: Offset(2, 2),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'A communication channel already exists with this hub.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                      final isBrand = currentRole == AccountRole.brand;
+                      widget.onSelectTab?.call(isBrand ? 9 : 5);
+                    },
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                    label: Text(
+                      'GO TO CHANNEL',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MeetdayColors.accentYellow,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: const BorderSide(color: Colors.black, width: 2),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      elevation: 0,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
         ],
       ),
     );

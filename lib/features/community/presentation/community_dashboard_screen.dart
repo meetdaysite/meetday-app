@@ -680,6 +680,7 @@ class _DashboardTabBody extends ConsumerWidget {
           builder: (ctx) => ProposalDetailDialog(
             proposal: p,
             isBrand: isBrand,
+            showCommunityHeader: !isBrand,
             onChatStarted: () {
               onNavigateToTab(5);
             },
@@ -1266,7 +1267,7 @@ class _DashboardTabBody extends ConsumerWidget {
                     itemBuilder: (context, index) => campaignCards[index],
                   ),
                 ),
-
+          const SizedBox(height: 22),
         ],
 
         if (isBrand) ...[
@@ -3017,15 +3018,12 @@ class _ProposalTabBodyState extends ConsumerState<_ProposalTabBody> {
   String _selectedSegment = 'ALL';
 
   void _openCreateProposalModal([Map<String, dynamic>? initialProposal]) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (ctx) => ProposalFormScreen(
-          initialProposal: initialProposal,
-          onSuccess: () {
-            ref.invalidate(dashboardProposalsProvider);
-          },
-        ),
-      ),
+    ProposalFormScreen.showAsModal(
+      context,
+      initialProposal: initialProposal,
+      onSuccess: () {
+        ref.invalidate(dashboardProposalsProvider);
+      },
     );
   }
 
@@ -3431,6 +3429,7 @@ class _CuratedExperiencesExploreViewState
       builder: (ctx) => ProposalDetailDialog(
         proposal: proposal,
         isBrand: widget.isBrand,
+        showCommunityHeader: false,
         onChatStarted: () {
           Navigator.of(context).pop();
           widget.onNavigateToTab(9);
@@ -3470,12 +3469,16 @@ class _CuratedExperiencesExploreViewState
             if (_selectedCategoryId != null &&
                 !(p['categories'] as List? ?? const []).whereType<Map>().any(
                   (category) => category['id']?.toString() == _selectedCategoryId,
-                )) return false;
+                )) {
+              return false;
+            }
             final query = _searchQuery.trim().toLowerCase();
             if (query.isNotEmpty &&
                 !['name', 'about', 'hostName', 'city'].any(
                   (field) => (p[field] ?? '').toString().toLowerCase().contains(query),
-                )) return false;
+                )) {
+              return false;
+            }
           }
           if (_selectedSegment == 'ALL') return true;
           final type = (p['sponsorshipType'] ?? '').toString().toUpperCase();
@@ -3760,55 +3763,46 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
         const SizedBox(height: 18),
 
         if (isBrand) ...[
-          // Brand Card 1: Curated Experiences (Proposals - Yellow)
+          // Brand Card 1: Curated Experiences (Proposals - Yellow logo part)
           _buildExploreCard(
             icon: Icons.auto_awesome_rounded,
-            cardBg: MeetdayColors.accentYellow,
-            iconBg: Colors.black,
-            iconColor: MeetdayColors.accentYellow,
-            textColor: Colors.black,
-            descColor: const Color(0xFF222222),
-            arrowBg: Colors.black,
-            arrowColor: Colors.white,
+            iconBg: MeetdayColors.accentYellow,
+            iconColor: Colors.black,
             title: 'Curated Experiences',
             description:
                 'Browse hand-picked, curated experiences from top communities and secure offline marketing opportunities.',
+            metaLabel: 'Handpicked opportunities',
+            actionLabel: 'Explore →',
             onTap: () =>
                 ref.read(exploreSubViewProvider.notifier).state = 'experiences',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
-          // Brand Card 2: Communities (Yellow)
+          // Brand Card 2: Communities (Yellow logo part)
           _buildExploreCard(
             icon: Icons.groups_rounded,
-            cardBg: MeetdayColors.accentYellow,
-            iconBg: Colors.black,
-            iconColor: MeetdayColors.accentYellow,
-            textColor: Colors.black,
-            descColor: const Color(0xFF222222),
-            arrowBg: Colors.black,
-            arrowColor: Colors.white,
+            iconBg: MeetdayColors.accentYellow,
+            iconColor: Colors.black,
             title: 'Communities',
             description:
                 'Browse, partner, and sponsor verified creator & host communities.',
+            metaLabel: 'Verified communities',
+            actionLabel: 'Explore →',
             onTap: () =>
                 ref.read(exploreSubViewProvider.notifier).state = 'communities',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
-          // Brand Card 3: Community Hubs (Black)
+          // Brand Card 3: Community Hubs (Black logo part)
           _buildExploreCard(
             icon: Icons.apartment_rounded,
-            cardBg: Colors.black,
-            iconBg: MeetdayColors.accentYellow,
-            iconColor: Colors.black,
-            textColor: Colors.white,
-            descColor: const Color(0xFFE2E8F0),
-            arrowBg: Colors.white,
-            arrowColor: Colors.black,
+            iconBg: Colors.black,
+            iconColor: Colors.white,
             title: 'Community Hubs',
             description:
                 'Discover partner venues, studios, and physical spaces for events and activations.',
+            metaLabel: 'Partner venues & spaces',
+            actionLabel: 'Explore →',
             onTap: () =>
                 ref.read(exploreSubViewProvider.notifier).state = 'hubs',
           ),
@@ -3821,10 +3815,12 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             title: 'Campaigns',
             description:
                 'Browse active brand campaigns, apply with your community, and secure deals.',
+            metaLabel: 'Active brand campaigns',
+            actionLabel: 'Explore →',
             onTap: () =>
                 ref.read(exploreSubViewProvider.notifier).state = 'campaigns',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           // Community Card 2: Communities second
           _buildExploreCard(
@@ -3834,10 +3830,12 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             title: 'Communities',
             description:
                 'Browse, partner, and co-host with verified creator & host communities.',
+            metaLabel: 'Verified communities',
+            actionLabel: 'Explore →',
             onTap: () =>
                 ref.read(exploreSubViewProvider.notifier).state = 'communities',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           // Community Card 3: Hubs third
           _buildExploreCard(
@@ -3847,6 +3845,8 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
             title: 'Hubs',
             description:
                 'Discover partner venues, studios, and physical spaces for events.',
+            metaLabel: 'Partner venues & spaces',
+            actionLabel: 'Explore →',
             onTap: () =>
                 ref.read(exploreSubViewProvider.notifier).state = 'hubs',
           ),
@@ -3862,98 +3862,130 @@ class _ExploreTabBodyState extends ConsumerState<_ExploreTabBody> {
     required String title,
     required String description,
     required VoidCallback onTap,
-    Color cardBg = Colors.white,
-    Color textColor = const Color(0xFF111111),
-    Color descColor = const Color(0xFF667085),
-    Color arrowBg = const Color(0xFFF3F4F6),
-    Color arrowColor = Colors.black,
+    String? metaLabel,
+    String actionLabel = 'Open →',
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.black, width: 2.5),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: iconBg,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.black, width: 2),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(2, 2),
-                    blurRadius: 0,
-                  ),
-                ],
-              ),
-              child: Center(child: Icon(icon, color: iconColor, size: 24)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.black, width: 3),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 0),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(19),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: textColor,
-                    ),
+                  // Top Row: Icon Box + Title & Description
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: iconBg,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.black, width: 2.5),
+                        ),
+                        child: Center(
+                          child: Icon(icon, size: 22, color: iconColor),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: GoogleFonts.bricolageGrotesque(
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              description,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: const Color(0x99000000), // text-black/60
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: descColor,
-                      height: 1.3,
+                  const SizedBox(height: 12),
+
+                  // Bottom Meta Row: Green Live Dot + Meta Label | "Explore →"
+                  Container(
+                    padding: const EdgeInsets.only(top: 10),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: Color(0x1F000000), width: 1.2),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: const Color(0x4D000000),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              metaLabel ?? 'Available now',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xCC000000),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          actionLabel,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: arrowBg,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.black, width: 1.5),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(1.5, 1.5),
-                    blurRadius: 0,
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 13,
-                  color: arrowColor,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

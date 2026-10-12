@@ -21,11 +21,30 @@ class ProposalFormScreen extends ConsumerStatefulWidget {
     super.key,
     this.initialProposal,
     required this.onSuccess,
+    this.isModal = false,
   });
 
   /// Null when creating a new proposal; populated when editing an existing one.
   final Map<String, dynamic>? initialProposal;
   final VoidCallback onSuccess;
+  final bool isModal;
+
+  static Future<void> showAsModal(
+    BuildContext context, {
+    Map<String, dynamic>? initialProposal,
+    required VoidCallback onSuccess,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ProposalFormScreen(
+        initialProposal: initialProposal,
+        onSuccess: onSuccess,
+        isModal: true,
+      ),
+    );
+  }
 
   @override
   ConsumerState<ProposalFormScreen> createState() => _ProposalFormScreenState();
@@ -1062,112 +1081,15 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('MMM d, yyyy');
 
-    return Theme(
-      data: Theme.of(context).copyWith(
-        inputDecorationTheme: const InputDecorationTheme(
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          focusedErrorBorder: InputBorder.none,
-          filled: false,
-        ),
-      ),
-      child: Scaffold(
-      backgroundColor: const Color(0xFFFFFDFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: GestureDetector(
-            onTap: () {
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
-            },
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.black, width: 2),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black, offset: Offset(2, 2)),
-                ],
-              ),
-              child: const Icon(Icons.arrow_back_rounded, color: Colors.black, size: 20),
-            ),
-          ),
-        ),
-        title: Text(
-          _isEditing ? 'Edit Proposal' : 'Create Proposal',
-          style: GoogleFonts.bricolageGrotesque(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: Colors.black,
-          ),
-        ),
-        actions: [
-          // Save Draft Action in AppBar
-          TextButton(
-            onPressed: _isLoading ? null : () => _handleSave(submitForReview: false),
-            child: Text(
-              'Draft',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Colors.black54,
-              ),
-            ),
-          ),
-          // Submit Action
-          Padding(
-            padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: MeetdayColors.primaryRed,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: const BorderSide(color: Colors.black, width: 1.5),
-                ),
-              ),
-              onPressed: _isLoading ? null : () => _handleSave(submitForReview: true),
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(
-                      'SUBMIT',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(2),
-          child: Container(color: Colors.black, height: 2),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 36),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Clickable Back Option
+    final formContent = SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(widget.isModal ? 0 : 16, widget.isModal ? 4 : 16, widget.isModal ? 0 : 16, 36),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Clickable Back Option (only when not in modal)
+            if (!widget.isModal) ...[
               GestureDetector(
                 onTap: () {
                   if (Navigator.of(context).canPop()) {
@@ -1189,7 +1111,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                       Text(
                         'Back to Proposals',
                         style: GoogleFonts.poppins(
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: MeetdayColors.primaryRed,
                         ),
@@ -1198,6 +1120,7 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                   ),
                 ),
               ),
+            ],
 
               // Header title card
               Text(
@@ -1327,17 +1250,19 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // Main Form Container: Neo-Brutalist White Card
+              // Main Form Container: Neo-Brutalist White Card (expanded in modal mode)
               Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.black, width: 2.5),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 0),
-                  ],
-                ),
+                padding: widget.isModal ? const EdgeInsets.only(top: 8) : const EdgeInsets.all(16),
+                decoration: widget.isModal
+                    ? null
+                    : BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.black, width: 2.5),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(4, 4), blurRadius: 0),
+                        ],
+                      ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2002,10 +1927,163 @@ class _ProposalFormScreenState extends ConsumerState<ProposalFormScreen> {
             ],
           ),
         ),
+      );
+
+    return Theme(
+      data: Theme.of(context).copyWith(
+        inputDecorationTheme: const InputDecorationTheme(
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          filled: false,
+        ),
       ),
-    ),
-  );
-}
+      child: widget.isModal
+          ? Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.92,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border(
+                  top: BorderSide(color: Colors.black, width: 3),
+                  left: BorderSide(color: Colors.black, width: 3),
+                  right: BorderSide(color: Colors.black, width: 3),
+                ),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                14,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const SizedBox(width: 28),
+                      Container(
+                        width: 44,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.black26,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F4F6),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.black, width: 1.5),
+                          ),
+                          child: const Icon(Icons.close, size: 16),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Flexible(child: formContent),
+                ],
+              ),
+            )
+          : Scaffold(
+              backgroundColor: const Color(0xFFFFFDFC),
+              appBar: AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                leadingWidth: 56,
+                leading: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2)),
+                        ],
+                      ),
+                      child: const Icon(Icons.arrow_back_rounded, color: Colors.black, size: 20),
+                    ),
+                  ),
+                ),
+                title: Text(
+                  _isEditing ? 'Edit Proposal' : 'Create Proposal',
+                  style: GoogleFonts.bricolageGrotesque(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: _isLoading ? null : () => _handleSave(submitForReview: false),
+                    child: Text(
+                      'Draft',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MeetdayColors.primaryRed,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: const BorderSide(color: Colors.black, width: 1.5),
+                        ),
+                      ),
+                      onPressed: _isLoading ? null : () => _handleSave(submitForReview: true),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : Text(
+                              'SUBMIT',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(2),
+                  child: Container(color: Colors.black, height: 2),
+                ),
+              ),
+              body: formContent,
+            ),
+    );
+  }
 
   // ── Helper Widgets ─────────────────────────────────────────────────────────
 
