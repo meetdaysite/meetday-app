@@ -1248,8 +1248,10 @@ class _CommunitySupportChatViewState extends ConsumerState<CommunitySupportChatV
       );
     }
 
-    final isBrand = ref.watch(authControllerProvider).role == AccountRole.brand;
-    final isMine = m.isMine;
+    final authUser = ref.watch(authControllerProvider);
+    final isBrand = authUser.role == AccountRole.brand;
+    // Check if message is mine: senderType must be USER AND senderId must match current user
+    final isMine = m.isMine && (m.senderId == null || m.senderId == authUser.uid);
     final isBot = m.isBot;
     final isHighlighted = _highlightedMessageId == m.id;
     final senderLabel = isMine ? 'YOU' : (isBot ? 'MEETDAY' : 'ADMIN');
