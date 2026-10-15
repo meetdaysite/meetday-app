@@ -40,6 +40,11 @@ class MeetdayApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
 
+    // Set router for FCM notification navigation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FCMService.setRouter(router);
+    });
+
     return MaterialApp.router(
       title: 'Meetday',
       debugShowCheckedModeBanner: false,

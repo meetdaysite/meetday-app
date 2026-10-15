@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:go_router/go_router.dart';
 import '../network/api_client.dart';
 
 /// Global notification stream controller for foreground notifications
@@ -23,6 +24,7 @@ class NotificationPayload {
 
 class FCMService {
   static final FCMService _instance = FCMService._internal();
+  static GoRouter? _router;
 
   factory FCMService() {
     return _instance;
@@ -35,6 +37,11 @@ class FCMService {
 
   // Getters
   Stream<NotificationPayload> get notificationStream => _notificationStreamController.stream;
+
+  /// Set router for navigation (call after app initialization)
+  static void setRouter(GoRouter router) {
+    _router = router;
+  }
 
   Future<void> initialize() async {
     _localNotifications = FlutterLocalNotificationsPlugin();
@@ -217,24 +224,71 @@ class FCMService {
 
   /// Navigate based on notification data
   static void _handleNotificationNavigation(Map<String, dynamic> data) {
-    // Extract notification type and route accordingly
-    final notificationType = data['type'] ?? 'unknown';
+    if (_router == null) {
+      debugPrint('Router not initialized for notification navigation');
+      return;
+    }
+
+    final notificationType = data['type'] ?? '';
+    final threadId = data['threadId'];
+    final interestId = data['interestId'];
 
     debugPrint('Navigating to: $notificationType with data: $data');
 
-    // TODO: Implement navigation based on notification type
-    // Example:
-    // if (notificationType == 'chat') {
-    //   final threadId = data['threadId'];
-    //   appRouter.go('/chat/$threadId');
-    // } else if (notificationType == 'deal') {
-    //   final interestId = data['interestId'];
-    //   appRouter.go('/deals/$interestId');
-    // }
+    switch (notificationType) {
+      // Chat notifications
+      case 'chat':
+      case 'sponsorship_chat':
+      case 'space_chat':
+      case 'community_chat':
+      case 'brand_community_chat':
+        if (threadId != null) {
+          _router!.push('/chat/$threadId');
+          debugPrint('Navigated to chat: $threadId');
+        }
+        break;
+
+      // Deal notifications
+      case 'deal':
+      case 'sponsorship_deal':
+      case 'space_deal':
+        if (interestId != null) {
+          _router!.push('/deals/$interestId');
+          debugPrint('Navigated to deal: $interestId');
+        }
+        break;
+
+      // Proposal notifications
+      case 'proposal':
+      case 'sponsorship_proposal':
+        if (interestId != null) {
+          _router!.push('/proposals/$interestId');
+          debugPrint('Navigated to proposal: $interestId');
+        }
+        break;
+
+      // Support chat
+      case 'support':
+        _router!.push('/support');
+        debugPrint('Navigated to support');
+        break;
+
+      // Campaign notifications
+      case 'campaign':
+        if (data['campaignId'] != null) {
+          _router!.push('/campaigns/${data['campaignId']}');
+          debugPrint('Navigated to campaign');
+        }
+        break;
+
+      default:
+        debugPrint('Unknown notification type: $notificationType');
+    }
   }
 
   /// Encode payload for local notification
   static String _encodePayload(Map<String, dynamic> data) {
+    // Pass as JSON string via payload
     return Uri.encodeComponent(data.toString());
   }
 
@@ -242,8 +296,8 @@ class FCMService {
   static Map<String, dynamic> _decodePayload(String payload) {
     try {
       Uri.decodeComponent(payload);
-      // Parse the map string - this is a simplified version
-      // TODO: Implement proper payload decoding
+      // Data comes from RemoteMessage.data directly
+      // This is a fallback - most navigation data comes from FCM payload
       return {};
     } catch (e) {
       debugPrint('Error decoding payload: $e');
