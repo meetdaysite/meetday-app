@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../network/api_client.dart';
 
 /// Global notification stream controller for foreground notifications
 final _notificationStreamController = StreamController<NotificationPayload>.broadcast();
@@ -108,8 +109,9 @@ class FCMService {
     try {
       final token = await _messaging.getToken();
       debugPrint('FCM Token: $token');
-      // TODO: Send this token to the backend to save for this user
-      // This is needed so the backend can send push notifications to this device
+      if (token != null) {
+        await _sendTokenToBackend(token);
+      }
     } catch (e) {
       debugPrint('Error getting FCM token: $e');
     }
@@ -117,8 +119,21 @@ class FCMService {
     // Listen for token refresh (when the token is regenerated)
     _messaging.onTokenRefresh.listen((newToken) {
       debugPrint('FCM Token refreshed: $newToken');
-      // TODO: Update the token on the backend
+      _sendTokenToBackend(newToken);
     });
+  }
+
+  /// Send FCM token to backend
+  Future<void> _sendTokenToBackend(String token) async {
+    try {
+      await ApiClient.instance.dio.post<dynamic>(
+        '/users/fcm-token',
+        data: {'fcmToken': token},
+      );
+      debugPrint('FCM token sent to backend');
+    } catch (e) {
+      debugPrint('Error sending FCM token to backend: $e');
+    }
   }
 
   /// Handle messages received when app is in foreground
